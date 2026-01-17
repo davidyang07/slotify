@@ -127,6 +127,40 @@ const runFfmpeg = (args) =>
     });
   });
 
+const getAudioDuration = async (filePath) =>
+  new Promise((resolve, reject) => {
+    const process = spawn(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        filePath,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let stdout = "";
+    let stderr = "";
+    process.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    process.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    process.on("error", reject);
+    process.on("close", (code) => {
+      if (code === 0) {
+        const duration = Number.parseFloat(stdout.trim());
+        resolve(Number.isFinite(duration) && duration > 0 ? duration : null);
+      } else {
+        reject(new Error(stderr || `ffprobe exited with code ${code}`));
+      }
+    });
+  });
+
 app.post(
   "/api/merge",
   upload.fields([
@@ -180,32 +214,8 @@ app.post(
       await fs.promises.writeFile(insertPath, insertFile.buffer);
 
       // Get main audio duration to validate and clamp insertAt
-      const getDuration = async (filePath) => {
-        return new Promise((resolve, reject) => {
-          const process = spawn("ffprobe", [
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            filePath,
-          ], { stdio: ["ignore", "pipe", "pipe"] });
-          let stdout = "";
-          let stderr = "";
-          process.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-          process.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-          process.on("error", reject);
-          process.on("close", (code) => {
-            if (code === 0) {
-              const duration = Number.parseFloat(stdout.trim());
-              resolve(Number.isFinite(duration) && duration > 0 ? duration : null);
-            } else {
-              reject(new Error(stderr || `ffprobe exited with code ${code}`));
-            }
-          });
-        });
-      };
-
-      const mainDuration = await getDuration(basePath);
-      const adDuration = await getDuration(insertPath);
+      const mainDuration = await getAudioDuration(basePath);
+      const adDuration = await getAudioDuration(insertPath);
 
       // Validate and clamp insertAt
       let clampedInsertAt = insertAt;
@@ -260,7 +270,7 @@ app.post(
       await fs.promises.access(outPath);
       
       // Log final duration for verification
-      const finalDuration = await getDuration(outPath).catch(() => null);
+      const finalDuration = await getAudioDuration(outPath).catch(() => null);
       if (finalDuration !== null) {
         console.log("Merge result:", {
           finalDuration: finalDuration.toFixed(3),
@@ -296,6 +306,179 @@ app.post(
     }
   },
 );
+
+app.post("/api/insert-sections", upload.single("audio"), async (req, res) => {
+  const audioFile = req.file;
+  const count = Number.parseInt(req.body?.count ?? "5", 10);
+
+  if (!audioFile) {
+    res.status(400).json({ error: "audio file is required." });
+    return;
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    res.status(500).json({
+      error: "OPENAI_API_KEY not configured. Please set it in your environment.",
+    });
+    return;
+  }
+
+  const tempDir = await fs.promises.mkdtemp(
+    path.join(os.tmpdir(), "insert-sections-"),
+  );
+  const audioPath = path.join(
+    tempDir,
+    `${Date.now()}-${audioFile.originalname || "audio.mp3"}`,
+  );
+  const cleanup = async () => {
+    await fs.promises.unlink(audioPath).catch(() => undefined);
+    await fs.promises.rmdir(tempDir).catch(() => undefined);
+  };
+
+  try {
+    await fs.promises.writeFile(audioPath, audioFile.buffer);
+    const duration = await getAudioDuration(audioPath).catch(() => null);
+
+    const transcriptForm = new FormData();
+    transcriptForm.append("model", "whisper-1");
+    transcriptForm.append("response_format", "verbose_json");
+    transcriptForm.append(
+      "file",
+      new Blob([audioFile.buffer]),
+      audioFile.originalname || "audio.mp3",
+    );
+
+    const transcriptResponse = await fetch(
+      "https://api.openai.com/v1/audio/transcriptions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: transcriptForm,
+      },
+    );
+
+    if (!transcriptResponse.ok) {
+      const detail = await transcriptResponse.text();
+      throw new Error(
+        `Transcription failed: ${transcriptResponse.status} ${detail}`,
+      );
+    }
+
+    const transcript = await transcriptResponse.json();
+    const segments = Array.isArray(transcript?.segments)
+      ? transcript.segments
+      : [];
+
+    const candidates = [];
+    let prevEnd = 0;
+    for (const segment of segments) {
+      const start = Number(segment.start ?? 0);
+      const end = Number(segment.end ?? 0);
+      if (Number.isFinite(start) && start - prevEnd >= 0.4) {
+        candidates.push((start + prevEnd) / 2);
+      }
+      if (Number.isFinite(end)) {
+        prevEnd = Math.max(prevEnd, end);
+      }
+    }
+    if (duration !== null && duration - prevEnd >= 0.4) {
+      candidates.push((duration + prevEnd) / 2);
+    }
+
+    const prompt = [
+      "Pick natural ad insertion points for the audio.",
+      "Return JSON with a points array of seconds (numbers).",
+      `Max points: ${Number.isFinite(count) ? count : 5}.`,
+      duration !== null
+        ? `Audio duration: ${duration.toFixed(2)} seconds.`
+        : "Audio duration unknown.",
+      candidates.length > 0
+        ? `Candidate silent midpoints (seconds): ${candidates
+            .map((value) => value.toFixed(2))
+            .join(", ")}.`
+        : "No candidate silences detected; pick evenly spaced points.",
+      `Transcript segments: ${segments
+        .map((segment) => {
+          const start = Number(segment.start ?? 0);
+          const end = Number(segment.end ?? 0);
+          const text = String(segment.text ?? "").trim();
+          return `${start.toFixed(2)}-${end.toFixed(2)}: ${text}`;
+        })
+        .join(" | ")}`,
+    ].join(" ");
+
+    let points = [];
+    const completionResponse = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          temperature: 0.2,
+          messages: [
+            {
+              role: "system",
+              content:
+                "Choose insertion points based on when the person talking in the audio clip completley finishes a sentence. Look for pauses between sentences. Choose points where the waveform is lowest. Never choose in between sentences.",
+            },
+            { role: "user", content: prompt },
+          ],
+          response_format: { type: "json_object" },
+        }),
+      },
+    );
+
+    if (!completionResponse.ok) {
+      const detail = await completionResponse.text();
+      throw new Error(
+        `OpenAI selection failed: ${completionResponse.status} ${detail}`,
+      );
+    }
+
+    const completion = await completionResponse.json();
+    const rawContent =
+      completion?.choices?.[0]?.message?.content?.trim() ?? "{}";
+    try {
+      const parsed = JSON.parse(rawContent);
+      if (Array.isArray(parsed.points)) {
+        points = parsed.points;
+      }
+    } catch (parseError) {
+      points = [];
+    }
+
+    if (points.length === 0 && candidates.length > 0) {
+      points = candidates;
+    }
+
+    const maxPoints = Number.isFinite(count) ? count : 5;
+    const normalized = points
+      .filter((value) => Number.isFinite(value))
+      .map((value) => Number(value))
+      .filter((value) => (duration ? value >= 0 && value <= duration : value >= 0))
+      .sort((a, b) => a - b)
+      .slice(0, Math.max(1, maxPoints));
+
+    res.json({
+      points: normalized,
+      duration,
+      source: normalized.length === points.length ? "openai" : "fallback",
+    });
+  } catch (error) {
+    res.status(500).json({
+      error:
+        error instanceof Error ? error.message : "Insert analysis failed.",
+    });
+  } finally {
+    await cleanup();
+  }
+});
 
 app.post("/api/tts", async (req, res) => {
   const { voiceId, text, modelId, outputFormat } = req.body ?? {};
