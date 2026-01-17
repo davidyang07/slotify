@@ -2,6 +2,8 @@
 
 This module inserts a provided promo audio clip into a main audio track (podcast or song). It can optionally use an LLM to generate a 1-sentence promo text and choose the best insertion point based on semantic context.
 
+prompt engineering for intelligent choice of insertion point
+
 # Here’s what each file in backend/ad_inserter/ does:
 
 `__init__.py` exposes the package modules (analysis, llm, mix) and version.

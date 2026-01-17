@@ -28,6 +28,18 @@ def _build_snippets(
     return snippets
 
 
+def _filter_candidates(
+    candidates: List[int],
+    audio_len_ms: int,
+    min_offset_ms: int,
+    end_buffer_ms: int,
+) -> List[int]:
+    if audio_len_ms <= 0:
+        return candidates
+    max_allowed = max(0, audio_len_ms - end_buffer_ms)
+    return [cand for cand in candidates if min_offset_ms <= cand <= max_allowed]
+
+
 def _ensure_debug_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
@@ -155,14 +167,13 @@ def run() -> None:
     main_audio = analysis.standardize_audio(analysis.load_audio(args.main))
 
     candidates: List[int] = []
+    candidates_for_prompt: List[int] = []
     tempo: Optional[float] = None
     beat_times_ms: List[int] = []
     snippets: Dict[int, str] = {}
 
     if args.mode == "podcast":
         candidates = analysis.detect_podcast_candidates(main_audio)
-        if analysis.whisper_available() and candidates:
-            snippets = _build_snippets(main_audio, candidates)
     else:
         song = analysis.analyze_song(args.main)
         candidates = song.candidates_ms
@@ -170,8 +181,22 @@ def run() -> None:
         beat_times_ms = song.beat_times_ms
 
     min_insert_ms = 30000
+    end_buffer_ms = 15000
+    candidates_for_prompt = _filter_candidates(
+        candidates,
+        audio_len_ms=len(main_audio),
+        min_offset_ms=min_insert_ms,
+        end_buffer_ms=end_buffer_ms,
+    )
+    if not candidates_for_prompt:
+        candidates_for_prompt = candidates
+
+    if args.mode == "podcast":
+        if analysis.whisper_available() and candidates_for_prompt:
+            snippets = _build_snippets(main_audio, candidates_for_prompt)
+
     chosen_ms = analysis.choose_default_insertion(
-        candidates, min_offset_ms=min_insert_ms
+        candidates_for_prompt, min_offset_ms=min_insert_ms
     )
     if len(main_audio) > 0:
         chosen_ms = min(chosen_ms, len(main_audio) - 1)
@@ -182,7 +207,7 @@ def run() -> None:
         product_desc=args.product_desc,
         product_url=args.product_url,
         mode=args.mode,
-        candidates=analysis.build_candidate_payload(candidates, snippets),
+        candidates=analysis.build_candidate_payload(candidates_for_prompt, snippets),
     )
 
     promo_audio = analysis.standardize_audio(
@@ -200,12 +225,17 @@ def run() -> None:
     if len(promo_audio) > 20000:
         raise RuntimeError("Promo audio is longer than 20 seconds; please shorten it.")
 
-    if args.mode == "podcast" and llm_result.chosen_index is not None:
-        if 0 <= llm_result.chosen_index < len(candidates):
-            chosen_ms = candidates[llm_result.chosen_index]
+    if llm_result.chosen_index is not None:
+        if 0 <= llm_result.chosen_index < len(candidates_for_prompt):
+            chosen_ms = candidates_for_prompt[llm_result.chosen_index]
             if chosen_ms < min_insert_ms:
                 chosen_ms = analysis.choose_default_insertion(
-                    candidates, min_offset_ms=min_insert_ms
+                    candidates_for_prompt, min_offset_ms=min_insert_ms
+                )
+            max_allowed = max(0, len(main_audio) - end_buffer_ms)
+            if chosen_ms > max_allowed:
+                chosen_ms = analysis.choose_default_insertion(
+                    candidates_for_prompt, min_offset_ms=min_insert_ms
                 )
 
     transcript_before = snippets.get(chosen_ms, "TRANSCRIPT_UNAVAILABLE")
@@ -239,6 +269,7 @@ def run() -> None:
         debug_payload = {
             "chosen_insertion_ms": chosen_ms,
             "candidates_ms": candidates,
+            "candidates_for_prompt_ms": candidates_for_prompt,
             "mode": args.mode,
             "tempo": tempo,
             "beat_times_count": len(beat_times_ms),
@@ -247,6 +278,8 @@ def run() -> None:
             "loudness_target_lufs": loudness_match.target_lufs,
             "loudness_promo_before": loudness_match.promo_before_lufs,
             "loudness_promo_after": loudness_match.promo_after_lufs,
+            "min_insert_ms": min_insert_ms,
+            "end_buffer_ms": end_buffer_ms,
             "transcript_snippet_before": transcript_before,
             "llm_prompt": llm_result.prompt[:500],
             "llm_output_text": llm_result.raw_text,
