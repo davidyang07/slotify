@@ -12,7 +12,17 @@ import { fileURLToPath } from "node:url";
 
 const app = express();
 const port = Number.parseInt(process.env.PORT ?? "3001", 10);
-const elevenlabs = new ElevenLabsClient();
+
+// Check for ElevenLabs API key
+if (!process.env.ELEVENLABS_API_KEY) {
+  console.warn(
+    "Warning: ELEVENLABS_API_KEY not set. Voice cloning and TTS will fail.",
+  );
+}
+
+const elevenlabs = new ElevenLabsClient({
+  apiKey: process.env.ELEVENLABS_API_KEY,
+});
 const upload = multer({ storage: multer.memoryStorage() });
 
 const allowedOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:5173")
@@ -33,10 +43,27 @@ app.use(
 );
 app.use(express.json({ limit: "2mb" }));
 
+// Health check endpoint
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    elevenlabsConfigured: !!process.env.ELEVENLABS_API_KEY,
+  });
+});
+
 app.post("/api/clone", upload.array("files"), async (req, res) => {
   const files = req.files ?? [];
   if (!Array.isArray(files) || files.length === 0) {
     res.status(400).json({ error: "No audio files uploaded." });
+    return;
+  }
+
+  if (!process.env.ELEVENLABS_API_KEY) {
+    res.status(500).json({
+      error:
+        "ELEVENLABS_API_KEY not configured. Please set it in your environment variables.",
+    });
     return;
   }
 
@@ -67,8 +94,11 @@ app.post("/api/clone", upload.array("files"), async (req, res) => {
 
     res.json({ voiceId: voice.voiceId });
   } catch (error) {
+    console.error("Clone error:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Clone failed.";
     res.status(500).json({
-      error: error instanceof Error ? error.message : "Clone failed.",
+      error: errorMessage,
     });
   } finally {
     await Promise.all(
@@ -149,58 +179,76 @@ app.post(
       await fs.promises.writeFile(basePath, audioFile.buffer);
       await fs.promises.writeFile(insertPath, insertFile.buffer);
 
-      let filter;
-      const baseSplit =
-        `[0:a]aresample=44100,aformat=channel_layouts=mono,` +
-        `asplit=2[ahead][atail]`;
-      const baseHead =
-        `[ahead]atrim=end=${insertAt},loudnorm=I=-16:TP=-1.5:LRA=11,` +
-        `asetpts=PTS-STARTPTS[a0]`;
-      const baseTail =
-        `[atail]atrim=start=${insertAt},loudnorm=I=-16:TP=-1.5:LRA=11,` +
-        `asetpts=PTS-STARTPTS[a1]`;
-      const insert =
-        `[1:a]aresample=44100,aformat=channel_layouts=mono,` +
-        `loudnorm=I=-16:TP=-1.5:LRA=11,asetpts=PTS-STARTPTS[ins]`;
+      // Get main audio duration to validate and clamp insertAt
+      const getDuration = async (filePath) => {
+        return new Promise((resolve, reject) => {
+          const process = spawn("ffprobe", [
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            filePath,
+          ], { stdio: ["ignore", "pipe", "pipe"] });
+          let stdout = "";
+          let stderr = "";
+          process.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+          process.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+          process.on("error", reject);
+          process.on("close", (code) => {
+            if (code === 0) {
+              const duration = Number.parseFloat(stdout.trim());
+              resolve(Number.isFinite(duration) && duration > 0 ? duration : null);
+            } else {
+              reject(new Error(stderr || `ffprobe exited with code ${code}`));
+            }
+          });
+        });
+      };
 
-      if (pause > 0) {
-        filter = [
-          baseSplit,
-          baseHead,
-          baseTail,
-          insert,
-          `anullsrc=r=44100:cl=mono,atrim=0:${pause}[sil]`,
-          `[a0][sil][ins][sil][a1]concat=n=5:v=0:a=1[aout]`,
-        ].join(";");
-      } else if (crossfade > 0) {
-        filter = [
-          baseSplit,
-          baseHead,
-          baseTail,
-          insert,
-          `[a0][ins]acrossfade=d=${crossfade}:curve1=tri:curve2=tri[a01]`,
-          `[a01][a1]acrossfade=d=${crossfade}:curve1=tri:curve2=tri[aout]`,
-        ].join(";");
-      } else {
-        filter = [
-          baseSplit,
-          baseHead,
-          baseTail,
-          insert,
-          `[a0][ins][a1]concat=n=3:v=0:a=1[aout]`,
-        ].join(";");
+      const mainDuration = await getDuration(basePath);
+      const adDuration = await getDuration(insertPath);
+
+      // Validate and clamp insertAt
+      let clampedInsertAt = insertAt;
+      if (mainDuration !== null) {
+        if (clampedInsertAt < 0) {
+          clampedInsertAt = 0;
+        } else if (clampedInsertAt > mainDuration) {
+          clampedInsertAt = mainDuration;
+        }
       }
 
+      // Debug logging
+      const expectedDuration =
+        mainDuration !== null && adDuration !== null
+          ? mainDuration + adDuration
+          : null;
+      console.log("Merge debug:", {
+        mainDuration: mainDuration?.toFixed(3),
+        insertDuration: adDuration?.toFixed(3),
+        insertAt: insertAt.toFixed(3),
+        expectedDuration: expectedDuration?.toFixed(3),
+      });
+
+      const filter = [
+        `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
+          `atrim=0:${clampedInsertAt},asetpts=PTS-STARTPTS[a0]`,
+        `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
+          `atrim=${clampedInsertAt},asetpts=PTS-STARTPTS[a1]`,
+        `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
+          `asetpts=PTS-STARTPTS[ad]`,
+        `[a0][ad][a1]concat=n=3:v=0:a=1[out]`,
+      ].join(";");
+
+      // Input 0: main audio
+      // Input 1: insert audio
       const args = [
         "-y",
-        "-i",
-        basePath,
-        "-i",
-        insertPath,
+        "-i", basePath,
+        "-i", insertPath,
         "-filter_complex",
         filter,
         "-map",
-        "[aout]",
+        "[out]",
         "-c:a",
         "libmp3lame",
         "-q:a",
@@ -210,6 +258,20 @@ app.post(
 
       await runFfmpeg(args);
       await fs.promises.access(outPath);
+      
+      // Log final duration for verification
+      const finalDuration = await getDuration(outPath).catch(() => null);
+      if (finalDuration !== null) {
+        console.log("Merge result:", {
+          finalDuration: finalDuration.toFixed(3),
+          expectedDuration: expectedDuration?.toFixed(3),
+          match:
+            expectedDuration !== null
+              ? Math.abs(finalDuration - expectedDuration) < 0.1
+              : "unknown",
+        });
+      }
+      
       res.setHeader("Content-Type", "audio/mpeg");
 
       const stream = fs.createReadStream(outPath);
@@ -375,4 +437,12 @@ app.post("/api/generate", upload.single("audio"), async (req, res) => {
 
 app.listen(port, () => {
   console.log(`API listening on http://localhost:${port}`);
+  console.log(`CORS allowed origins: ${allowedOrigins.join(", ")}`);
+  if (!process.env.ELEVENLABS_API_KEY) {
+    console.warn(
+      "⚠️  ELEVENLABS_API_KEY not set. Voice cloning and TTS endpoints will fail.",
+    );
+  } else {
+    console.log("✓ ElevenLabs API key configured");
+  }
 });

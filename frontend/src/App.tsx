@@ -47,6 +47,25 @@ function App() {
 
     setIsCloning(true);
     try {
+      // First, check if backend is reachable
+      try {
+        const healthCheck = await fetch(`${apiBase}/api/health`, {
+          method: "GET",
+        });
+        if (!healthCheck.ok) {
+          throw new Error(
+            `Backend server returned ${healthCheck.status}. Is the server running?`,
+          );
+        }
+      } catch (healthError) {
+        if (healthError instanceof TypeError && healthError.message.includes("fetch")) {
+          throw new Error(
+            `Cannot connect to backend at ${apiBase}. Make sure the backend server is running on port 3001.`,
+          );
+        }
+        throw healthError;
+      }
+
       const form = new FormData();
       form.append("name", voiceName);
       Array.from(files).forEach((file) => form.append("files", file));
@@ -57,8 +76,15 @@ function App() {
       });
 
       if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Clone request failed.");
+        let message = "Clone request failed.";
+        try {
+          const errorData = await response.json();
+          message = errorData.error || message;
+        } catch {
+          const text = await response.text();
+          message = text || message;
+        }
+        throw new Error(message);
       }
 
       const data = (await response.json()) as { voiceId?: string };
