@@ -72,6 +72,5 @@ Rhythmic context (songs):
 
 ## LLM configuration
 
-- `--llm-provider openai|anthropic|none` (default `openai`).
+- `--llm-provider openai` (default `openai`).
 - Set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in your environment.
-- Use `--llm-provider none` to skip text generation and insertion choice.

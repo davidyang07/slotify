@@ -61,15 +61,6 @@ def generate_promo_and_choice(
         candidates=candidates,
     )
 
-    if provider == "none":
-        return LLMResult(
-            promo_text=product_name,
-            chosen_index=None,
-            rationale="LLM disabled; using heuristic insertion and product name only.",
-            prompt=prompt,
-            raw_text="",
-        )
-
     if provider == "openai":
         from openai import OpenAI
 
