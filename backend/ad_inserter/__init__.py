@@ -1,6 +1,6 @@
 """Ad inserter package."""
 
-__all__ = ["analysis", "llm", "mix"]
+__all__ = ["analysis", "llm", "mix", "tts"]
 __version__ = "0.1.0"
 
 

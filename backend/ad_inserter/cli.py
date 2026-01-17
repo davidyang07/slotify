@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import tempfile
+import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from pydub import AudioSegment
 
-from ad_inserter import analysis, llm, mix
+from ad_inserter import analysis, llm, mix, tts
 
 
 def _default_model(provider: str) -> str:
@@ -28,10 +32,105 @@ def _ensure_debug_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
+def _encode_multipart(
+    fields: Dict[str, str],
+    files: List[Dict[str, str | bytes]],
+) -> tuple[str, bytes]:
+    boundary = uuid.uuid4().hex
+    body = bytearray()
+
+    def _add_line(line: str) -> None:
+        body.extend(line.encode("utf-8"))
+        body.extend(b"\r\n")
+
+    for name, value in fields.items():
+        _add_line(f"--{boundary}")
+        _add_line(f'Content-Disposition: form-data; name="{name}"')
+        _add_line("")
+        _add_line(value)
+
+    for file_info in files:
+        name = str(file_info["name"])
+        filename = str(file_info["filename"])
+        content_type = str(file_info["content_type"])
+        data = bytes(file_info["data"])
+
+        _add_line(f"--{boundary}")
+        _add_line(
+            f'Content-Disposition: form-data; name="{name}"; filename="{filename}"'
+        )
+        _add_line(f"Content-Type: {content_type}")
+        _add_line("")
+        body.extend(data)
+        body.extend(b"\r\n")
+
+    _add_line(f"--{boundary}--")
+    return boundary, bytes(body)
+
+
+def _merge_with_api(
+    merge_url: str,
+    main_path: Path,
+    insert_audio: AudioSegment,
+    insert_at_ms: int,
+    crossfade: float,
+    pause: float,
+    out_path: Path,
+) -> None:
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        insert_audio.export(tmp_path, format="mp3")
+        boundary, body = _encode_multipart(
+            fields={
+                "insertAt": f"{insert_at_ms / 1000.0:.3f}",
+                "crossfade": str(crossfade),
+                "pause": str(pause),
+            },
+            files=[
+                {
+                    "name": "audio",
+                    "filename": main_path.name,
+                    "content_type": "audio/mpeg",
+                    "data": main_path.read_bytes(),
+                },
+                {
+                    "name": "insert",
+                    "filename": tmp_path.name,
+                    "content_type": "audio/mpeg",
+                    "data": tmp_path.read_bytes(),
+                },
+            ],
+        )
+        request = Request(
+            merge_url,
+            data=body,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            method="POST",
+        )
+        with urlopen(request) as response:
+            if response.status != 200:
+                raise RuntimeError(
+                    f"Merge request failed with status {response.status}."
+                )
+            out_path.write_bytes(response.read())
+    except HTTPError as error:
+        detail = error.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(
+            f"Merge request failed with status {error.code}: {detail}"
+        ) from error
+    except URLError as error:
+        raise RuntimeError(f"Merge request failed: {error.reason}") from error
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
 def run() -> None:
     parser = argparse.ArgumentParser(description="Insert a promo into audio.")
     parser.add_argument("--main", required=True, type=Path)
-    parser.add_argument("--promo-audio", required=True, type=Path)
+    parser.add_argument("--voice-id", required=True)
     parser.add_argument("--product-name", required=True)
     parser.add_argument("--product-desc", required=True)
     parser.add_argument("--product-url", default=None)
@@ -39,8 +138,14 @@ def run() -> None:
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--debug-dir", type=Path)
-    parser.add_argument("--llm-provider", choices=["openai"], default="openai")
+    parser.add_argument("--llm-provider", choices=["openai", "none"], default="openai")
     parser.add_argument("--llm-model", default=None)
+    parser.add_argument("--tts-url", default="http://localhost:3001/api/tts")
+    parser.add_argument("--tts-model-id", default=None)
+    parser.add_argument("--tts-output-format", default=None)
+    parser.add_argument("--merge-url", default="http://localhost:3001/api/merge")
+    parser.add_argument("--merge-crossfade", type=float, default=0.08)
+    parser.add_argument("--merge-pause", type=float, default=0.2)
     parser.add_argument("--duck-db", type=float, default=0.0)
 
     args = parser.parse_args()
@@ -48,10 +153,6 @@ def run() -> None:
     analysis.check_ffmpeg()
 
     main_audio = analysis.standardize_audio(analysis.load_audio(args.main))
-    promo_audio = analysis.standardize_audio(analysis.load_audio(args.promo_audio))
-
-    if len(promo_audio) > 20000:
-        raise RuntimeError("Promo audio is longer than 20 seconds; please shorten it.")
 
     candidates: List[int] = []
     tempo: Optional[float] = None
@@ -68,7 +169,10 @@ def run() -> None:
         tempo = song.tempo
         beat_times_ms = song.beat_times_ms
 
-    chosen_ms = analysis.choose_default_insertion(candidates)
+    min_insert_ms = 30000
+    chosen_ms = analysis.choose_default_insertion(
+        candidates, min_offset_ms=min_insert_ms
+    )
     if len(main_audio) > 0:
         chosen_ms = min(chosen_ms, len(main_audio) - 1)
     llm_result = llm.generate_promo_and_choice(
@@ -81,9 +185,28 @@ def run() -> None:
         candidates=analysis.build_candidate_payload(candidates, snippets),
     )
 
+    promo_audio = analysis.standardize_audio(
+        tts.synthesize_audio(
+            tts.TTSRequest(
+                voice_id=args.voice_id,
+                text=llm_result.promo_text,
+                url=args.tts_url,
+                model_id=args.tts_model_id,
+                output_format=args.tts_output_format,
+            )
+        )
+    )
+
+    if len(promo_audio) > 20000:
+        raise RuntimeError("Promo audio is longer than 20 seconds; please shorten it.")
+
     if args.mode == "podcast" and llm_result.chosen_index is not None:
         if 0 <= llm_result.chosen_index < len(candidates):
             chosen_ms = candidates[llm_result.chosen_index]
+            if chosen_ms < min_insert_ms:
+                chosen_ms = analysis.choose_default_insertion(
+                    candidates, min_offset_ms=min_insert_ms
+                )
 
     transcript_before = snippets.get(chosen_ms, "TRANSCRIPT_UNAVAILABLE")
     if analysis.whisper_available() and not transcript_before and args.mode == "podcast":
@@ -104,20 +227,11 @@ def run() -> None:
 
     promo_processed = mix.apply_room_tone(promo_processed, room_tone)
 
-    merged = mix.insert_with_crossfade(
-        main_audio, promo_processed, chosen_ms, duck_db=args.duck_db
-    )
-
     if args.debug_dir:
         _ensure_debug_dir(args.debug_dir)
         context_audio.export(args.debug_dir / "context.wav", format="wav")
         promo_audio.export(args.debug_dir / "promo_raw.wav", format="wav")
         promo_processed.export(args.debug_dir / "promo_matched.wav", format="wav")
-        preview_start = max(0, chosen_ms - 5000)
-        preview_end = min(len(merged), chosen_ms + 5000)
-        merged[preview_start:preview_end].export(
-            args.debug_dir / "merged_preview.wav", format="wav"
-        )
         chosen_beat_index = None
         if beat_times_ms and chosen_ms in beat_times_ms:
             chosen_beat_index = beat_times_ms.index(chosen_ms)
@@ -148,7 +262,24 @@ def run() -> None:
         print(f"Promo text: {llm_result.promo_text}")
         return
 
-    merged.export(args.out, format="mp3")
+    _merge_with_api(
+        merge_url=args.merge_url,
+        main_path=args.main,
+        insert_audio=promo_processed,
+        insert_at_ms=chosen_ms,
+        crossfade=args.merge_crossfade,
+        pause=args.merge_pause,
+        out_path=args.out,
+    )
+
+    if args.debug_dir:
+        merged_audio = analysis.standardize_audio(analysis.load_audio(args.out))
+        preview_start = max(0, chosen_ms - 5000)
+        preview_end = min(len(merged_audio), chosen_ms + 5000)
+        merged_audio[preview_start:preview_end].export(
+            args.debug_dir / "merged_preview.wav", format="wav"
+        )
+
     print(f"Wrote output: {args.out}")
     print(f"Promo text: {llm_result.promo_text}")
 

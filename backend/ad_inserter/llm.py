@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -61,6 +62,15 @@ def generate_promo_and_choice(
         candidates=candidates,
     )
 
+    if provider == "none":
+        return LLMResult(
+            promo_text=product_name,
+            chosen_index=None,
+            rationale="LLM disabled; using heuristic insertion and product name only.",
+            prompt=prompt,
+            raw_text="",
+        )
+
     if provider == "openai":
         from openai import OpenAI
 
@@ -85,7 +95,15 @@ def generate_promo_and_choice(
     rationale = ""
 
     try:
-        data = json.loads(raw_text)
+        cleaned = raw_text.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```[a-zA-Z0-9_-]*\n", "", cleaned)
+            cleaned = re.sub(r"\n```$", "", cleaned)
+        if not cleaned.startswith("{"):
+            match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+            if match:
+                cleaned = match.group(0)
+        data = json.loads(cleaned)
         promo_text = str(data.get("promo_text", promo_text)).strip()
         chosen_index_val = data.get("chosen_index")
         if chosen_index_val is not None:

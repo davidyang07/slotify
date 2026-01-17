@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const app = express();
 const port = Number.parseInt(process.env.PORT ?? "3001", 10);
@@ -106,8 +107,8 @@ app.post(
     const audioFile = req.files?.audio?.[0];
     const insertFile = req.files?.insert?.[0];
     const insertAt = Number.parseFloat(req.body?.insertAt ?? "");
-    const crossfade = Number.parseFloat(req.body?.crossfade ?? "0.15");
-    const pause = Number.parseFloat(req.body?.pause ?? "0.12");
+    const crossfade = Number.parseFloat(req.body?.crossfade ?? "0.08");
+    const pause = Number.parseFloat(req.body?.pause ?? "0.2");
 
     if (!audioFile || !insertFile) {
       res.status(400).json({ error: "audio and insert files are required." });
@@ -149,18 +150,22 @@ app.post(
       await fs.promises.writeFile(insertPath, insertFile.buffer);
 
       let filter;
+      const baseSplit =
+        `[0:a]aresample=44100,aformat=channel_layouts=mono,` +
+        `asplit=2[ahead][atail]`;
       const baseHead =
-        `[0:a]aresample=44100,aformat=channel_layouts=mono,` +
-        `loudnorm=I=-16:TP=-1.5:LRA=11,atrim=0:${insertAt},asetpts=PTS-STARTPTS[a0]`;
+        `[ahead]atrim=end=${insertAt},loudnorm=I=-16:TP=-1.5:LRA=11,` +
+        `asetpts=PTS-STARTPTS[a0]`;
       const baseTail =
-        `[0:a]aresample=44100,aformat=channel_layouts=mono,` +
-        `loudnorm=I=-16:TP=-1.5:LRA=11,atrim=${insertAt},asetpts=PTS-STARTPTS[a1]`;
+        `[atail]atrim=start=${insertAt},loudnorm=I=-16:TP=-1.5:LRA=11,` +
+        `asetpts=PTS-STARTPTS[a1]`;
       const insert =
         `[1:a]aresample=44100,aformat=channel_layouts=mono,` +
         `loudnorm=I=-16:TP=-1.5:LRA=11,asetpts=PTS-STARTPTS[ins]`;
 
       if (pause > 0) {
         filter = [
+          baseSplit,
           baseHead,
           baseTail,
           insert,
@@ -169,6 +174,7 @@ app.post(
         ].join(";");
       } else if (crossfade > 0) {
         filter = [
+          baseSplit,
           baseHead,
           baseTail,
           insert,
@@ -177,6 +183,7 @@ app.post(
         ].join(";");
       } else {
         filter = [
+          baseSplit,
           baseHead,
           baseTail,
           insert,
@@ -254,6 +261,116 @@ app.post("/api/tts", async (req, res) => {
 
 app.post("/api/speech", async (req, res) => {
   res.redirect(307, "/api/tts");
+});
+
+app.post("/api/generate", upload.single("audio"), async (req, res) => {
+  const audioFile = req.file;
+  const voiceId = req.body?.voiceId?.toString()?.trim();
+  const brand = req.body?.brand?.toString()?.trim();
+  const productDesc = req.body?.productDesc?.toString()?.trim();
+
+  if (!audioFile) {
+    res.status(400).json({ error: "audio file is required." });
+    return;
+  }
+
+  if (!voiceId) {
+    res.status(400).json({ error: "voiceId is required." });
+    return;
+  }
+
+  if (!brand) {
+    res.status(400).json({ error: "brand is required." });
+    return;
+  }
+
+  const resolvedDesc =
+    productDesc || `A short audio ad spot for ${brand}.`;
+
+  const tempDir = await fs.promises.mkdtemp(
+    path.join(os.tmpdir(), "ad-generate-"),
+  );
+  const basePath = path.join(tempDir, "base.mp3");
+  const outPath = path.join(tempDir, "out.mp3");
+  const cleanup = async () => {
+    await Promise.all(
+      [basePath, outPath].map((filePath) =>
+        fs.promises.unlink(filePath).catch(() => undefined),
+      ),
+    );
+    await fs.promises.rmdir(tempDir).catch(() => undefined);
+  };
+
+  try {
+    await fs.promises.writeFile(basePath, audioFile.buffer);
+
+    const pythonBin = process.env.PYTHON_BIN ?? "python";
+    const baseUrl =
+      process.env.API_BASE_URL ?? `http://localhost:${port}`;
+
+    const args = [
+      "-m",
+      "ad_inserter.cli",
+      "--main",
+      basePath,
+      "--voice-id",
+      voiceId,
+      "--product-name",
+      brand,
+      "--product-desc",
+      resolvedDesc,
+      "--out",
+      outPath,
+      "--tts-url",
+      `${baseUrl}/api/tts`,
+      "--merge-url",
+      `${baseUrl}/api/merge`,
+    ];
+
+    await new Promise((resolve, reject) => {
+      const child = spawn(pythonBin, args, {
+        cwd: path.dirname(fileURLToPath(import.meta.url)),
+        env: process.env,
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString();
+      });
+      child.on("error", reject);
+      child.on("close", (code) => {
+        if (code === 0) {
+          resolve(null);
+        } else {
+          reject(
+            new Error(
+              stderr || `ad_inserter exited with code ${code}`,
+            ),
+          );
+        }
+      });
+    });
+    await fs.promises.access(outPath);
+    res.setHeader("Content-Type", "audio/mpeg");
+    const stream = fs.createReadStream(outPath);
+    stream.on("error", (streamError) => {
+      if (!res.headersSent) {
+        res.status(500).json({
+          error:
+            streamError instanceof Error
+              ? streamError.message
+              : "Failed to stream output.",
+        });
+      }
+    });
+    res.on("close", cleanup);
+    res.on("finish", cleanup);
+    stream.pipe(res);
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Generation failed.",
+    });
+    await cleanup();
+  }
 });
 
 app.listen(port, () => {

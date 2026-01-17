@@ -141,7 +141,7 @@ def choose_default_insertion(candidates: List[int], min_offset_ms: int = 30000) 
     for cand in sorted(candidates):
         if cand >= min_offset_ms:
             return cand
-    return candidates[0]
+    return sorted(candidates)[-1]
 
 
 def build_candidate_payload(
