@@ -135,15 +135,29 @@ app.post(
     const basePath = path.join(tempDir, "base.mp3");
     const insertPath = path.join(tempDir, "insert.mp3");
     const outPath = path.join(tempDir, "merged.mp3");
+    const cleanup = async () => {
+      await Promise.all(
+        [basePath, insertPath, outPath].map((filePath) =>
+          fs.promises.unlink(filePath).catch(() => undefined),
+        ),
+      );
+      await fs.promises.rmdir(tempDir).catch(() => undefined);
+    };
 
     try {
       await fs.promises.writeFile(basePath, audioFile.buffer);
       await fs.promises.writeFile(insertPath, insertFile.buffer);
 
       let filter;
-      const baseHead = `[0:a]aresample=44100,aformat=channel_layouts=mono,atrim=0:${insertAt},asetpts=PTS-STARTPTS[a0]`;
-      const baseTail = `[0:a]aresample=44100,aformat=channel_layouts=mono,atrim=${insertAt},asetpts=PTS-STARTPTS[a1]`;
-      const insert = `[1:a]aresample=44100,aformat=channel_layouts=mono,asetpts=PTS-STARTPTS[ins]`;
+      const baseHead =
+        `[0:a]aresample=44100,aformat=channel_layouts=mono,` +
+        `loudnorm=I=-16:TP=-1.5:LRA=11,atrim=0:${insertAt},asetpts=PTS-STARTPTS[a0]`;
+      const baseTail =
+        `[0:a]aresample=44100,aformat=channel_layouts=mono,` +
+        `loudnorm=I=-16:TP=-1.5:LRA=11,atrim=${insertAt},asetpts=PTS-STARTPTS[a1]`;
+      const insert =
+        `[1:a]aresample=44100,aformat=channel_layouts=mono,` +
+        `loudnorm=I=-16:TP=-1.5:LRA=11,asetpts=PTS-STARTPTS[ins]`;
 
       if (pause > 0) {
         filter = [
@@ -188,19 +202,28 @@ app.post(
       ];
 
       await runFfmpeg(args);
+      await fs.promises.access(outPath);
       res.setHeader("Content-Type", "audio/mpeg");
-      fs.createReadStream(outPath).pipe(res);
+
+      const stream = fs.createReadStream(outPath);
+      stream.on("error", (streamError) => {
+        if (!res.headersSent) {
+          res.status(500).json({
+            error:
+              streamError instanceof Error
+                ? streamError.message
+                : "Failed to stream merged audio.",
+          });
+        }
+      });
+      res.on("close", cleanup);
+      res.on("finish", cleanup);
+      stream.pipe(res);
     } catch (error) {
       res.status(500).json({
         error: error instanceof Error ? error.message : "Merge failed.",
       });
-    } finally {
-      await Promise.all(
-        [basePath, insertPath, outPath].map((filePath) =>
-          fs.promises.unlink(filePath).catch(() => undefined),
-        ),
-      );
-      await fs.promises.rmdir(tempDir).catch(() => undefined);
+      await cleanup();
     }
   },
 );
