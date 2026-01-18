@@ -15,6 +15,19 @@ class LLMResult:
     raw_text: str
 
 
+@dataclass
+class AdSegment:
+    speaker: str
+    text: str
+
+
+@dataclass
+class AdScriptResult:
+    segments: List[AdSegment]
+    prompt: str
+    raw_text: str
+
+
 def _build_prompt(
     product_name: str,
     product_desc: str,
@@ -122,3 +135,117 @@ def generate_promo_and_choice(
         prompt=prompt,
         raw_text=raw_text,
     )
+
+
+def _build_ad_script_prompt(
+    product_name: str,
+    product_blurb: str,
+    ad_style: str,
+    ad_mode: str,
+) -> str:
+    return (
+        "You are writing a short, natural-sounding ad read for a two-person conversation. "
+        "Keep it concise (8-15 seconds total)."
+        "\n\n"
+        f"Product name: {product_name}\n"
+        f"Product blurb: {product_blurb}\n"
+        f"Ad style: {ad_style}\n"
+        f"Ad mode: {ad_mode}\n\n"
+        "Return ONLY machine-readable JSON in this exact shape:\n"
+        '{ "segments": [ { "speaker": "A", "text": "..." }, '
+        '{ "speaker": "B", "text": "..." } ] }\n'
+        "Rules:\n"
+        "- speaker must be A or B only.\n"
+        "- If ad_mode is A_ONLY or B_ONLY, include only that speaker.\n"
+        "- If ad_mode is DUO, use a short back-and-forth (2-4 segments).\n"
+        "- Avoid emojis and hashtags.\n"
+    )
+
+
+def _parse_ad_segments(raw_text: str) -> List[AdSegment]:
+    cleaned = raw_text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z0-9_-]*\n", "", cleaned)
+        cleaned = re.sub(r"\n```$", "", cleaned)
+    if not cleaned.startswith("{"):
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        if match:
+            cleaned = match.group(0)
+    data = json.loads(cleaned)
+    segments_raw = data.get("segments", [])
+    segments: List[AdSegment] = []
+    if isinstance(segments_raw, list):
+        for item in segments_raw:
+            if not isinstance(item, dict):
+                continue
+            speaker = str(item.get("speaker", "")).strip().upper()
+            text = str(item.get("text", "")).strip()
+            if speaker in {"A", "B"} and text:
+                segments.append(AdSegment(speaker=speaker, text=text))
+    return segments
+
+
+def generate_ad_script(
+    provider: str,
+    model: str,
+    product_name: str,
+    product_blurb: str,
+    ad_style: str,
+    ad_mode: str,
+) -> AdScriptResult:
+    """Generate a structured multi-speaker ad script."""
+    prompt = _build_ad_script_prompt(
+        product_name=product_name,
+        product_blurb=product_blurb,
+        ad_style=ad_style,
+        ad_mode=ad_mode,
+    )
+
+    if provider == "none":
+        if ad_mode == "B_ONLY":
+            segments = [AdSegment(speaker="B", text=f"{product_name} {product_blurb}")]
+        elif ad_mode == "DUO":
+            segments = [
+                AdSegment(speaker="A", text=f"Have you tried {product_name}?"),
+                AdSegment(speaker="B", text=product_blurb),
+            ]
+        else:
+            segments = [AdSegment(speaker="A", text=f"{product_name} {product_blurb}")]
+        return AdScriptResult(segments=segments, prompt=prompt, raw_text="")
+
+    if provider == "openai":
+        from openai import OpenAI
+
+        client = OpenAI()
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You write short, structured ad scripts.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.7,
+        )
+        raw_text = response.choices[0].message.content or ""
+    else:
+        raise ValueError(f"Unknown LLM provider: {provider}")
+
+    try:
+        segments = _parse_ad_segments(raw_text)
+    except json.JSONDecodeError:
+        segments = []
+
+    if not segments:
+        if ad_mode == "B_ONLY":
+            segments = [AdSegment(speaker="B", text=f"{product_name} {product_blurb}")]
+        elif ad_mode == "DUO":
+            segments = [
+                AdSegment(speaker="A", text=f"Quick shout-out to {product_name}."),
+                AdSegment(speaker="B", text=product_blurb),
+            ]
+        else:
+            segments = [AdSegment(speaker="A", text=f"{product_name} {product_blurb}")]
+
+    return AdScriptResult(segments=segments, prompt=prompt, raw_text=raw_text)

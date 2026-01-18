@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,13 @@ class SongAnalysis:
     candidates_ms: List[int]
     tempo: Optional[float]
     beat_times_ms: List[int]
+
+
+@dataclass
+class SpeakerSegment:
+    speaker: str
+    start_ms: int
+    end_ms: int
 
 
 def check_ffmpeg() -> None:
@@ -151,3 +159,87 @@ def build_candidate_payload(
     for cand in candidates:
         payload.append({"ms": cand, "snippet": snippets.get(cand, "")})
     return payload
+
+
+def build_snippets(
+    audio: AudioSegment, candidates: List[int], max_snippets: int = 5
+) -> Dict[int, str]:
+    snippets: Dict[int, str] = {}
+    for cand in candidates[:max_snippets]:
+        snippet = transcribe_snippet(audio, cand - 15000, cand)
+        snippets[cand] = snippet
+    return snippets
+
+
+def filter_candidates(
+    candidates: List[int],
+    audio_len_ms: int,
+    min_offset_ms: int,
+    end_buffer_ms: int,
+) -> List[int]:
+    if audio_len_ms <= 0:
+        return candidates
+    max_allowed = max(0, audio_len_ms - end_buffer_ms)
+    return [cand for cand in candidates if min_offset_ms <= cand <= max_allowed]
+
+
+def diarization_available() -> bool:
+    try:
+        import pyannote.audio  # noqa: F401
+
+        return True
+    except Exception:
+        return False
+
+
+def diarize_speakers(path: Path) -> Optional[List[SpeakerSegment]]:
+    """Run optional diarization and map the top two speakers to A/B."""
+    try:
+        from pyannote.audio import Pipeline
+    except Exception:
+        return None
+
+    token = (
+        os.getenv("HUGGINGFACE_TOKEN")
+        or os.getenv("PYANNOTE_TOKEN")
+        or os.getenv("HF_TOKEN")
+    )
+    if not token:
+        return None
+
+    pipeline = Pipeline.from_pretrained(
+        "pyannote/speaker-diarization", use_auth_token=token
+    )
+    diarization = pipeline(str(path))
+
+    raw_segments: List[tuple[str, int, int]] = []
+    for turn, _, label in diarization.itertracks(yield_label=True):
+        start_ms = int(turn.start * 1000)
+        end_ms = int(turn.end * 1000)
+        if end_ms > start_ms:
+            raw_segments.append((str(label), start_ms, end_ms))
+
+    if not raw_segments:
+        return []
+
+    totals: Dict[str, int] = {}
+    for label, start_ms, end_ms in raw_segments:
+        totals[label] = totals.get(label, 0) + (end_ms - start_ms)
+
+    top_labels = sorted(totals.keys(), key=lambda l: totals[l], reverse=True)[:2]
+    if not top_labels:
+        return []
+
+    label_map = {top_labels[0]: "A"}
+    if len(top_labels) > 1:
+        label_map[top_labels[1]] = "B"
+
+    segments: List[SpeakerSegment] = []
+    for label, start_ms, end_ms in raw_segments:
+        speaker = label_map.get(label)
+        if speaker:
+            segments.append(
+                SpeakerSegment(speaker=speaker, start_ms=start_ms, end_ms=end_ms)
+            )
+
+    return segments

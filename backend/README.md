@@ -1,3 +1,5 @@
+#TODO: combine with main readme
+
 # Ad Inserter Backend
 
 This module inserts a provided promo audio clip into a main audio track (podcast or song). It can optionally use an LLM to generate a 1-sentence promo text and choose the best insertion point based on semantic context.
@@ -61,6 +63,57 @@ python -m ad_inserter.cli \
   --out song_with_ad.mp3
 ```
 
+## Two-speaker ad insertion
+
+This feature inserts an AI-written ad into a two-person conversation. It can speak as Speaker A, Speaker B, or a short back-and-forth.
+
+### Required env vars
+
+- `OPENAI_API_KEY` for ad script generation (unless `--llm-provider none`).
+- `ELEVENLABS_API_KEY` for TTS.
+- `ELEVENLABS_VOICE_ID_A` and `ELEVENLABS_VOICE_ID_B` for speaker mapping, or set `ELEVENLABS_DEFAULT_VOICE_ID` as a fallback.
+
+Optional diarization (enables DUO mode and voice cloning):
+- Install `pyannote.audio` separately.
+- Set `HUGGINGFACE_TOKEN` (or `PYANNOTE_TOKEN`) for model access.
+
+### CLI example
+
+```bash
+python -m ad_inserter.insert_ad \
+  --input path/to/conversation.mp3 \
+  --product-name "Notion" \
+  --product-blurb "AI-powered productivity workspace" \
+  --ad-style casual \
+  --ad-mode DUO \
+  --out out.mp3
+```
+
+Optional voice cloning (requires diarization + ElevenLabs API key):
+
+```bash
+python -m ad_inserter.insert_ad \
+  --input path/to/conversation.mp3 \
+  --product-name "Notion" \
+  --product-blurb "AI-powered productivity workspace" \
+  --ad-style casual \
+  --ad-mode A_ONLY \
+  --clone-voices \
+  --out out.mp3
+```
+
+### API example
+
+```bash
+curl -X POST http://localhost:3001/ad/insert \
+  -F "audio=@path/to/conversation.mp3" \
+  -F "productName=Notion" \
+  -F "productBlurb=AI-powered productivity workspace" \
+  -F "adStyle=casual" \
+  -F "adMode=DUO" \
+  --output out.mp3
+```
+
 ## How it works
 
 Semantic context (podcasts):
@@ -75,4 +128,4 @@ Rhythmic context (songs):
 ## LLM configuration
 
 - `--llm-provider openai` (default `openai`).
-- Set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in your environment.
+- Set `OPENAI_API_KEY` in your environment.
