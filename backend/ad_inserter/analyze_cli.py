@@ -14,7 +14,7 @@ from ad_inserter import analysis
 def _detect_podcast_silences(audio: AudioSegment) -> List[Dict[str, int]]:
     silence_thresh = audio.dBFS - 16 if audio.dBFS != float("-inf") else -40
     silence_ranges = detect_silence(
-        audio, min_silence_len=500, silence_thresh=silence_thresh
+        audio, min_silence_len=700, silence_thresh=silence_thresh
     )
     silences: List[Dict[str, int]] = []
     for start, end in silence_ranges:

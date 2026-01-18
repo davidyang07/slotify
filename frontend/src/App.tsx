@@ -111,7 +111,7 @@ function UploadDropzone({
         ) : (
           <svg viewBox="0 0 24 24" role="presentation">
             <path
-              d="M12 3a1 1 0 0 1 1 1v8.6l2.3-2.3a1 1 0 1 1 1.4 1.4l-4.01 4a1 1 0 0 1-1.38 0l-4.01-4a1 1 0 1 1 1.42-1.4L11 12.6V4a1 1 0 0 1 1-1z"
+              d="M12 3a1 1 0 0 1 1 1v8.6l2.3-2.3a1 1 0 1 1 1.4 1.4l-4.01 4a1 1 0 0 1-1.38 0l-4.01-4a1 1 0 0 1 1.42-1.4L11 12.6V4a1 1 0 0 1 1-1z"
               fill="currentColor"
             />
             <path
@@ -158,6 +158,7 @@ function App() {
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
+  const [baseAudioUrl, setBaseAudioUrl] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
@@ -196,6 +197,21 @@ function App() {
       URL.revokeObjectURL(audioUrl);
     };
   }, [audioUrl]);
+
+  useEffect(() => {
+    if (!baseAudio) {
+      setBaseAudioUrl("");
+      return;
+    }
+    const nextUrl = URL.createObjectURL(baseAudio);
+    setBaseAudioUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return nextUrl;
+    });
+    return () => {
+      URL.revokeObjectURL(nextUrl);
+    };
+  }, [baseAudio]);
 
   const drawWaveform = () => {
     const canvas = waveformRef.current;
@@ -696,7 +712,7 @@ function App() {
   return (
     <div className={`app page-${activePage}`}>
       <header className="topbar">
-        <a href='/' className="logo">Sl|lotify</a>
+        <a href='/' className="logo ">Slotify</a>
         <div className="nav-steps">
           {timelineSteps.map((step) => (
             <button
@@ -734,7 +750,7 @@ function App() {
               <span className="hero-dot" />
               AI-Powered Audio Insertion
             </div>
-            <a className="hero-title">Sl|lotify</a>
+            <a className="hero-title">Slotify</a>
             <p className="hero-subtitle">
               Seamless sponsor insertion for audio.
             </p>
@@ -748,7 +764,7 @@ function App() {
                 className="primary hero-primary"
                 onClick={() => setActivePage("upload")}
               >
-                Try Sl|lotify
+                Try Slotify
               </button>
               <button
                 type="button"
@@ -826,6 +842,12 @@ function App() {
                   setBaseAudio(nextFiles?.[0] ?? null)
                 }
               />
+              {baseAudioUrl && (
+                <div className="inline-preview">
+                  <div className="inline-preview-title">Original audio</div>
+                  <audio controls src={baseAudioUrl} />
+                </div>
+              )}
               <div className="upload-details">
                 <div className="field">
                   <label>Sponsor companies</label>
@@ -1223,7 +1245,7 @@ function App() {
               />
               <span>
                 I certify that I own the rights to this audio and voice. I
-                understand that Sl|lotify will generate sponsor audio using
+                understand that Slotify will generate sponsor audio using
                 voice cloning technology, and I confirm that no unauthorized
                 voice impersonation is involved.
               </span>

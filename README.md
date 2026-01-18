@@ -1,10 +1,10 @@
 # Seamless Sponsor Insertion (Audio Monetization Dashboard)
 
-A B2B dashboard + API that helps platforms (Spotify / YouTube / podcast networks) insert sponsor ads into podcasts seamlessly.  
-Upload a podcast + sponsor script → AI recommends the best insertion point(s) → ElevenLabs generates a human-like ad read → the system stitches it in smoothly and exports the final audio.
+A B2B web application and API that helps platforms (Spotify / YouTube / podcast networks) insert sponsor ads into podcasts seamlessly.  
+Pipeline: Upload a podcast + sponsor script → AI recommends the best insertion point(s) → ElevenLabs generates a human-like ad read → the system stitches it in smoothly and exports the final audio.
 
 ## Core features
-- Upload podcast audio and product name and details (optional) 
+- User input for podcast audio and product name - product details are optional
 - AI-recommended insertion timestamps using semantic + syntactic analysis
 - ElevenLabs TTS for realistic sponsor reads (single speaker or multi-way conversation)
 - Preview insertions before rendering final output
@@ -55,9 +55,7 @@ The UI runs on `http://localhost:5173` and calls the backend.
 ---
 
 ## Ad Inserter backend module
-This module generates and inserts a product promotion into a main audio track (podcast or rhythmic song). An LLM to generate the 1-sentence promo text and choose the best insertion point based on semantic + syntactic context.
-
-Prompt engineered the AI's choice of insertion point and ad read tone.
+This module generates and inserts a product promotion into a main audio track (podcast or rhythmic song). An LLM generates the 1-sentence promo text and choose the best insertion point based on semantic + syntactic context.
 
 ### What each file in `backend/ad_inserter/` does
 - `__init__.py` exposes the package modules (analysis, llm, mix) and version
