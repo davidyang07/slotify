@@ -2,29 +2,13 @@ import type { DragEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 
-const sampleScripts = [
-  {
-    title: "Morning Roast",
-    text: "",
-  },
-  {
-    title: "City Sprint",
-    text: "Run on City Sprint sneakers. Lightweight, quiet, and built for your every day commute.",
-  },
-  {
-    title: "Glow Skin",
-    text: "Glow Skin Serum is a daily reset for your skin barrier. Clean ingredients, real results.",
-  },
-];
-
 const timelineSteps = [
   { id: "upload", label: "Upload" },
   { id: "analyze", label: "Analyze" },
-  { id: "preview", label: "Preview" },
   { id: "export", label: "Export" },
 ];
 
-type PageId = "landing" | "upload" | "analyze" | "preview" | "export";
+type PageId = "landing" | "upload" | "analyze" | "export";
 
 type UploadDropzoneProps = {
   id: string;
@@ -38,6 +22,11 @@ type UploadDropzoneProps = {
 
 type Slot = {
   id: string;
+  time: number;
+  confidence: number;
+};
+
+type InsertSuggestion = {
   time: number;
   confidence: number;
 };
@@ -136,12 +125,17 @@ function App() {
   const [activePage, setActivePage] = useState<PageId>("landing");
   const [baseAudio, setBaseAudio] = useState<File | null>(null);
   const [voiceId, setVoiceId] = useState("");
+  const [isCloningVoice, setIsCloningVoice] = useState(false);
+  const [voiceCloneError, setVoiceCloneError] = useState("");
   const [insertAt, setInsertAt] = useState("0");
   const [analysisError, setAnalysisError] = useState("");
-  const [insertSuggestions, setInsertSuggestions] = useState<number[]>([]);
+  const [insertSuggestions, setInsertSuggestions] = useState<InsertSuggestion[]>(
+    [],
+  );
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
-  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
+  const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([]);
+  const [focusedSlotId, setFocusedSlotId] = useState<string | null>(null);
   const [sponsors, setSponsors] = useState<Sponsor[]>([
     { id: "sponsor-1", name: "", script: "" },
   ]);
@@ -163,9 +157,13 @@ function App() {
     [baseAudio],
   );
 
-  const selectedSlot = useMemo(
-    () => slots.find((slot) => slot.id === selectedSlotId) ?? null,
-    [slots, selectedSlotId],
+  const selectedSlots = useMemo(
+    () => slots.filter((slot) => selectedSlotIds.includes(slot.id)),
+    [slots, selectedSlotIds],
+  );
+  const focusedSlot = useMemo(
+    () => slots.find((slot) => slot.id === focusedSlotId) ?? null,
+    [slots, focusedSlotId],
   );
   const isUploadReady = Boolean(
     baseAudio && sponsors.some((entry) => entry.name.trim()),
@@ -232,7 +230,9 @@ function App() {
       for (const slot of slots) {
         const x = (slot.time / audioDuration) * width;
         if (Number.isFinite(x)) {
-          ctx.strokeStyle = "rgba(255, 193, 7, 0.75)";
+          ctx.strokeStyle = selectedSlotIds.includes(slot.id)
+            ? "rgba(79, 181, 120, 0.85)"
+            : "rgba(255, 193, 7, 0.75)";
           ctx.beginPath();
           ctx.moveTo(x, 8);
           ctx.lineTo(x, height - 8);
@@ -323,37 +323,46 @@ function App() {
 
   useEffect(() => {
     drawWaveform();
-  }, [insertAt, slots, audioDuration]);
+  }, [insertAt, slots, audioDuration, selectedSlotIds]);
 
   useEffect(() => {
     const fallbackTimes =
       audioDuration && audioDuration > 0
         ? [0.22, 0.48, 0.72].map((ratio) => ratio * audioDuration)
         : [12, 24, 36];
-    const times =
+    const fallbackSlots = fallbackTimes.map((time, index) => ({
+      time,
+      confidence: [92, 85, 78][index] ?? 72,
+    }));
+    const suggestions =
       insertSuggestions.length >= 3
         ? insertSuggestions.slice(0, 3)
-        : fallbackTimes;
-    const confidences = [92, 85, 78];
-    const nextSlots = times.map((time, index) => ({
+        : fallbackSlots;
+    const nextSlots = suggestions.map((entry, index) => ({
       id: `slot-${index + 1}`,
-      time,
-      confidence: confidences[index] ?? 72,
+      time: entry.time,
+      confidence: entry.confidence,
     }));
     setSlots(nextSlots);
-    if (!selectedSlotId && nextSlots.length) {
-      setSelectedSlotId(nextSlots[0].id);
+    if (!selectedSlotIds.length && nextSlots.length) {
+      setSelectedSlotIds([nextSlots[0].id]);
+      setFocusedSlotId(nextSlots[0].id);
     }
-  }, [insertSuggestions, audioDuration, selectedSlotId]);
+  }, [insertSuggestions, audioDuration, selectedSlotIds.length]);
 
   useEffect(() => {
-    if (!selectedSlot) return;
-    setInsertAt(selectedSlot.time.toFixed(2));
-  }, [selectedSlot]);
+    if (!focusedSlot) return;
+    setInsertAt(focusedSlot.time.toFixed(2));
+  }, [focusedSlot]);
 
   useEffect(() => {
     setRightsCertified(false);
   }, [baseAudio, sponsors]);
+
+  useEffect(() => {
+    setVoiceId("");
+    setVoiceCloneError("");
+  }, [baseAudio]);
 
   useEffect(() => {
     setSlotAssignments((prev) => {
@@ -376,13 +385,20 @@ function App() {
     });
   }, [slots, sponsors]);
 
-  const selectedSponsorId = selectedSlot
-    ? slotAssignments[selectedSlot.id]
+  const selectedSponsorId = focusedSlot
+    ? slotAssignments[focusedSlot.id]
     : sponsors[0]?.id;
   const selectedSponsor =
     sponsors.find((entry) => entry.id === selectedSponsorId) ?? sponsors[0];
-  const selectedScript = selectedSponsor?.script ?? "";
   const selectedSponsorName = selectedSponsor?.name ?? "";
+  const selectedSlotSummary = selectedSlots.length
+    ? [...selectedSlots]
+        .sort((a, b) => a.time - b.time)
+        .map((slot) => `Slot ${slot.id.replace("slot-", "")}`)
+        .join(", ")
+    : "Not selected";
+  const selectedConfidence =
+    selectedSlots.length === 1 ? `${selectedSlots[0].confidence}%` : "--";
 
   const updateSponsor = (id: string, patch: Partial<Sponsor>) => {
     setSponsors((prev) =>
@@ -405,6 +421,16 @@ function App() {
 
   const removeSponsor = (id: string) => {
     setSponsors((prev) => prev.filter((entry) => entry.id !== id));
+  };
+
+  const toggleSlotSelection = (slotId: string) => {
+    setSelectedSlotIds((prev) => {
+      if (prev.includes(slotId)) {
+        return prev.filter((id) => id !== slotId);
+      }
+      return [...prev, slotId];
+    });
+    setFocusedSlotId(slotId);
   };
 
   const handleAnalyzeInsert = async () => {
@@ -430,10 +456,34 @@ function App() {
         throw new Error(message || "Insert analysis failed.");
       }
 
-      const data = (await response.json()) as { points?: number[] };
+      const data = (await response.json()) as {
+        points?: Array<number | { time?: number; confidence?: number }>;
+        confidences?: number[];
+      };
       const points = Array.isArray(data.points) ? data.points : [];
-      setInsertSuggestions(points);
-      if (points.length === 0) {
+      const confidences = Array.isArray(data.confidences)
+        ? data.confidences
+        : [];
+      const suggestions = points
+        .map((value, index) => {
+          if (value && typeof value === "object") {
+            const time = Number(value.time);
+            const confidence = Number(value.confidence);
+            return {
+              time,
+              confidence: Number.isFinite(confidence) ? confidence : 72,
+            };
+          }
+          const time = Number(value);
+          const confidence = Number(confidences[index]);
+          return {
+            time,
+            confidence: Number.isFinite(confidence) ? confidence : 72,
+          };
+        })
+        .filter((entry) => Number.isFinite(entry.time));
+      setInsertSuggestions(suggestions);
+      if (suggestions.length === 0) {
         setAnalysisError("No insert points returned.");
       }
     } catch (analysisErr) {
@@ -462,16 +512,56 @@ function App() {
   const handleConfirmRights = async () => {
     setShowRightsModal(false);
     setRightsCertified(true);
+    setVoiceCloneError("");
+    if (!baseAudio) {
+      setError("Upload a base audio file before cloning voice.");
+      return;
+    }
+
+    setIsCloningVoice(true);
+    try {
+      const cloneForm = new FormData();
+      cloneForm.append("files", baseAudio);
+      cloneForm.append(
+        "name",
+        baseAudio.name ? `${baseAudio.name} Clone` : "Podcast Voice Clone",
+      );
+      const response = await fetch(`${apiBase}/api/clone`, {
+        method: "POST",
+        body: cloneForm,
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Voice clone failed.");
+      }
+      const data = (await response.json()) as { voiceId?: string };
+      if (!data.voiceId) {
+        throw new Error("Voice clone response missing voiceId.");
+      }
+      setVoiceId(data.voiceId);
+    } catch (cloneErr) {
+      const message =
+        cloneErr instanceof Error ? cloneErr.message : "Voice clone failed.";
+      setVoiceCloneError(message);
+      setError(message);
+      setIsCloningVoice(false);
+      return;
+    }
+
+    setIsCloningVoice(false);
     await handleAnalyzeInsert();
     setActivePage("analyze");
   };
 
-  const handleMerge = async (mode: "preview" | "render", slotId?: string) => {
+  const handleMerge = async (
+    mode: "preview" | "render",
+    slotIds?: string[],
+  ) => {
     setError("");
     setStatus("");
 
     if (!voiceId) {
-      setError("Add a voice ID before generating audio.");
+      setError("Voice clone not ready yet. Finish cloning from your upload.");
       return;
     }
 
@@ -480,27 +570,31 @@ function App() {
       return;
     }
 
-    const slot =
-      (slotId ? slots.find((entry) => entry.id === slotId) : selectedSlot) ??
-      null;
-    if (!slot) {
-      setError("Select an insertion slot before generating audio.");
+    const slotIdsToUse =
+      slotIds && slotIds.length
+        ? slotIds
+        : selectedSlotIds.length
+          ? selectedSlotIds
+          : focusedSlotId
+            ? [focusedSlotId]
+            : [];
+    const slotsToInsert = slotIdsToUse
+      .map((id) => slots.find((entry) => entry.id === id))
+      .filter((entry): entry is Slot => Boolean(entry));
+    if (!slotsToInsert.length) {
+      setError("Select at least one insertion slot before generating audio.");
       return;
     }
 
-    const sponsorId = slotAssignments[slot.id];
-    const sponsorEntry =
-      sponsors.find((entry) => entry.id === sponsorId) ?? sponsors[0];
-    const scriptText = sponsorEntry?.script ?? "";
-    if (!scriptText.trim()) {
-      setError("Add a sponsor statement for the selected slot.");
-      return;
-    }
-
-    const insertAtSeconds = Number.parseFloat(slot.time.toString());
-    if (!Number.isFinite(insertAtSeconds) || insertAtSeconds < 0) {
-      setError("Insert time must be a positive number.");
-      return;
+    for (const slot of slotsToInsert) {
+      const sponsorId = slotAssignments[slot.id];
+      const sponsorEntry =
+        sponsors.find((entry) => entry.id === sponsorId) ?? sponsors[0];
+      const scriptText = sponsorEntry?.script ?? "";
+      if (!scriptText.trim()) {
+        setError(`Add a sponsor statement for ${slot.id}.`);
+        return;
+      }
     }
 
     if (mode === "preview") {
@@ -510,41 +604,52 @@ function App() {
     }
 
     try {
-      const response = await fetch(`${apiBase}/api/tts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          voiceId,
-          text: scriptText,
-          modelId: "eleven_multilingual_v2",
-          outputFormat: "mp3_44100_128",
-        }),
-      });
+      const slotsInOrder = [...slotsToInsert].sort((a, b) => b.time - a.time);
+      let currentAudio: Blob | File = baseAudio;
 
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "TTS request failed.");
+      for (const slot of slotsInOrder) {
+        const sponsorId = slotAssignments[slot.id];
+        const sponsorEntry =
+          sponsors.find((entry) => entry.id === sponsorId) ?? sponsors[0];
+        const scriptText = sponsorEntry?.script ?? "";
+
+        const response = await fetch(`${apiBase}/api/tts`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            voiceId,
+            text: scriptText,
+            modelId: "eleven_multilingual_v2",
+            outputFormat: "mp3_44100_128",
+          }),
+        });
+
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(message || "TTS request failed.");
+        }
+
+        const ttsBlob = await response.blob();
+        const mergeForm = new FormData();
+        mergeForm.append("audio", currentAudio, "base.mp3");
+        mergeForm.append("insert", ttsBlob, "insert.mp3");
+        mergeForm.append("insertAt", slot.time.toString());
+        mergeForm.append("pause", "0.12");
+
+        const mergeResponse = await fetch(`${apiBase}/api/merge`, {
+          method: "POST",
+          body: mergeForm,
+        });
+
+        if (!mergeResponse.ok) {
+          const message = await mergeResponse.text();
+          throw new Error(message || "Merge request failed.");
+        }
+
+        currentAudio = await mergeResponse.blob();
       }
 
-      const ttsBlob = await response.blob();
-      const mergeForm = new FormData();
-      mergeForm.append("audio", baseAudio);
-      mergeForm.append("insert", ttsBlob, "insert.mp3");
-      mergeForm.append("insertAt", slot.time.toString());
-      mergeForm.append("pause", "0.12");
-
-      const mergeResponse = await fetch(`${apiBase}/api/merge`, {
-        method: "POST",
-        body: mergeForm,
-      });
-
-      if (!mergeResponse.ok) {
-        const message = await mergeResponse.text();
-        throw new Error(message || "Merge request failed.");
-      }
-
-      const mergedBlob = await mergeResponse.blob();
-      const nextUrl = URL.createObjectURL(mergedBlob);
+      const nextUrl = URL.createObjectURL(currentAudio);
       setAudioUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return nextUrl;
@@ -808,47 +913,35 @@ function App() {
                 <h2>Recommended insertion points</h2>
                 <p className="subtitle">
                   Optimized for smooth transitions and listener retention.
-                  Select a slot to continue.
+                  Select slots to continue.
                 </p>
-              </div>
-              <div className="header-actions">
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={handleAnalyzeInsert}
-                  disabled={isAnalyzing || !baseAudio}
-                >
-                  {isAnalyzing ? "Analyzing..." : "Analyze audio"}
-                </button>
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={() => setActivePage("preview")}
-                >
-                  Next: Preview
-                </button>
               </div>
             </div>
 
             <div className="timeline-card">
               <div className="timeline-title">Timeline Visualization</div>
-              <div className="timeline-track">
-                {slots.map((slot) => (
-                  <button
-                    key={slot.id}
-                    type="button"
-                    className={`timeline-dot${
-                      slot.id === selectedSlotId ? " active" : ""
-                    }`}
-                    style={{
-                      left: audioDuration
-                        ? `${(slot.time / audioDuration) * 100}%`
-                        : "50%",
-                    }}
-                    onClick={() => setSelectedSlotId(slot.id)}
-                    aria-label={`Select ${slot.id}`}
-                  />
-                ))}
+              <div className="timeline-waveform">
+                <div className="waveform timeline-canvas">
+                  <canvas ref={waveformRef} />
+                </div>
+                <div className="timeline-markers">
+                  {slots.map((slot) => (
+                    <button
+                      key={slot.id}
+                      type="button"
+                      className={`timeline-dot${
+                        selectedSlotIds.includes(slot.id) ? " active" : ""
+                      }`}
+                      style={{
+                        left: audioDuration
+                          ? `${(slot.time / audioDuration) * 100}%`
+                          : "50%",
+                      }}
+                      onClick={() => toggleSlotSelection(slot.id)}
+                      aria-label={`Select ${slot.id}`}
+                    />
+                  ))}
+                </div>
               </div>
               <div className="timeline-labels">
                 <span>{formatTime(0)}</span>
@@ -871,7 +964,7 @@ function App() {
                   <div
                     key={slot.id}
                     className={`slot-preview${
-                      slot.id === selectedSlotId ? " active" : ""
+                      selectedSlotIds.includes(slot.id) ? " active" : ""
                     }`}
                   >
                     <div className="slot-preview-top">
@@ -931,20 +1024,26 @@ function App() {
                         type="button"
                         className="ghost"
                         onClick={() => {
-                          setSelectedSlotId(slot.id);
-                          handleMerge("preview", slot.id);
+                          setSelectedSlotIds((prev) =>
+                            prev.includes(slot.id) ? prev : [...prev, slot.id],
+                          );
+                          setFocusedSlotId(slot.id);
+                          handleMerge("preview", [slot.id]);
                         }}
+                        disabled={isPreviewing}
                       >
                         Preview
                       </button>
                       <button
                         type="button"
                         className={`primary select-slot${
-                          slot.id === selectedSlotId ? " selected" : ""
+                          selectedSlotIds.includes(slot.id) ? " selected" : ""
                         }`}
-                        onClick={() => setSelectedSlotId(slot.id)}
+                        onClick={() => toggleSlotSelection(slot.id)}
                       >
-                        Select Slot
+                        {selectedSlotIds.includes(slot.id)
+                          ? "Selected"
+                          : "Select Slot"}
                       </button>
                     </div>
                   </div>
@@ -957,111 +1056,13 @@ function App() {
                 <audio ref={audioRef} controls src={audioUrl} />
               </div>
             )}
-          </div>
-        </section>
-      )}
-
-      {activePage === "preview" && (
-        <section className="page">
-          <div className="page-card">
-            <div className="page-header">
-              <div>
-                <p className="eyebrow">Preview</p>
-                <h2>Test the sponsor read before export.</h2>
-                <p className="subtitle">
-                  Select a script and listen to how it lands at the chosen slot.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => setActivePage("export")}
-              >
-                Next: Export
-              </button>
-            </div>
-
-            <div className="preview-grid">
-              <div className="script-panel">
-                <div className="field">
-                  <label htmlFor="voiceId">Voice ID</label>
-                  <input
-                    id="voiceId"
-                    type="text"
-                    placeholder="Paste your ElevenLabs voice ID"
-                    value={voiceId}
-                    onChange={(event) => setVoiceId(event.target.value)}
-                  />
-                </div>
-                <div className="script-list">
-                  {sampleScripts.map((script) => (
-                    <button
-                      key={script.title}
-                      type="button"
-                      className="script-card"
-                      onClick={() => {
-                        if (!selectedSponsor) return;
-                        updateSponsor(selectedSponsor.id, { script: script.text });
-                      }}
-                    >
-                      <div className="script-title">{script.title}</div>
-                      <div className="script-text">{script.text}</div>
-                    </button>
-                  ))}
-                </div>
-                <div className="field">
-                  <label htmlFor="ttsText">Brand script</label>
-                  <textarea
-                    id="ttsText"
-                    rows={4}
-                    value={selectedScript}
-                    onChange={(event) => {
-                      if (!selectedSponsor) return;
-                      updateSponsor(selectedSponsor.id, {
-                        script: event.target.value,
-                      });
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="preview-panel">
-                <div className="preview-summary">
-                  <div className="summary-item">
-                    <span>Selected slot</span>
-                    <strong>
-                      {selectedSlot
-                        ? `${selectedSlot.time.toFixed(2)}s`
-                        : "Not selected"}
-                    </strong>
-                  </div>
-                  <div className="summary-item">
-                    <span>Confidence</span>
-                    <strong>
-                      {selectedSlot ? `${selectedSlot.confidence}%` : "--"}
-                    </strong>
-                  </div>
-                <div className="summary-item">
-                  <span>Sponsor</span>
-                  <strong>
-                    {selectedSponsorName || "Add sponsor name"}
-                  </strong>
-                </div>
-                </div>
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={() =>
-                    handleMerge("preview", selectedSlotId ?? undefined)
-                  }
-                  disabled={isPreviewing}
-                >
-                  {isPreviewing ? "Building preview..." : "Preview slot"}
-                </button>
-                <div className="audio-panel">
-                  <audio ref={audioRef} controls src={audioUrl} />
-                </div>
-              </div>
-            </div>
+            <button
+              type="button"
+              className="primary wide"
+              onClick={() => setActivePage("export")}
+            >
+              Confirm selections
+            </button>
           </div>
         </section>
       )}
@@ -1089,18 +1090,12 @@ function App() {
             <div className="export-grid">
               <div className="export-card">
                 <div className="summary-item">
-                  <span>Selected slot</span>
-                  <strong>
-                    {selectedSlot
-                      ? `${selectedSlot.time.toFixed(2)}s`
-                      : "Not selected"}
-                  </strong>
+                  <span>Selected slots</span>
+                  <strong>{selectedSlotSummary}</strong>
                 </div>
                 <div className="summary-item">
                   <span>Confidence</span>
-                  <strong>
-                    {selectedSlot ? `${selectedSlot.confidence}%` : "--"}
-                  </strong>
+                  <strong>{selectedConfidence}</strong>
                 </div>
                 <div className="summary-item">
                   <span>Sponsor</span>
@@ -1111,9 +1106,7 @@ function App() {
                 <button
                   type="button"
                   className="primary"
-                  onClick={() =>
-                    handleMerge("render", selectedSlotId ?? undefined)
-                  }
+                  onClick={() => handleMerge("render", selectedSlotIds)}
                   disabled={isRendering}
                 >
                   {isRendering ? "Rendering..." : "Render & export"}

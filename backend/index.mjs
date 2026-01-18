@@ -389,7 +389,8 @@ app.post("/api/insert-sections", upload.single("audio"), async (req, res) => {
 
     const prompt = [
       "Pick natural ad insertion points for the audio.",
-      "Return JSON with a points array of seconds (numbers).",
+      "Return JSON with a points array of objects: { time: seconds, confidence: percent }.",
+      "Confidence should be 0-100 indicating how likely the point is a sentence break.",
       `Max points: ${Number.isFinite(count) ? count : 5}.`,
       duration !== null
         ? `Audio duration: ${duration.toFixed(2)} seconds.`
@@ -410,6 +411,7 @@ app.post("/api/insert-sections", upload.single("audio"), async (req, res) => {
     ].join(" ");
 
     let points = [];
+    let confidences = [];
     const completionResponse = await fetch(
       "https://api.openai.com/v1/chat/completions",
       {
@@ -448,9 +450,13 @@ app.post("/api/insert-sections", upload.single("audio"), async (req, res) => {
       const parsed = JSON.parse(rawContent);
       if (Array.isArray(parsed.points)) {
         points = parsed.points;
+        confidences = Array.isArray(parsed.confidences)
+          ? parsed.confidences
+          : [];
       }
     } catch (parseError) {
       points = [];
+      confidences = [];
     }
 
     if (points.length === 0 && candidates.length > 0) {
@@ -458,15 +464,42 @@ app.post("/api/insert-sections", upload.single("audio"), async (req, res) => {
     }
 
     const maxPoints = Number.isFinite(count) ? count : 5;
-    const normalized = points
-      .filter((value) => Number.isFinite(value))
-      .map((value) => Number(value))
-      .filter((value) => (duration ? value >= 0 && value <= duration : value >= 0))
-      .sort((a, b) => a - b)
+    const normalizedEntries = points
+      .map((value, index) => {
+        if (value && typeof value === "object") {
+          const time = Number(value.time);
+          const confidence = Number(value.confidence);
+          return {
+            time,
+            confidence: Number.isFinite(confidence) ? confidence : null,
+            index,
+          };
+        }
+        const time = Number(value);
+        const fallbackConfidence = Number(confidences[index]);
+        return {
+          time,
+          confidence: Number.isFinite(fallbackConfidence)
+            ? fallbackConfidence
+            : null,
+          index,
+        };
+      })
+      .filter((entry) => Number.isFinite(entry.time))
+      .filter((entry) =>
+        duration ? entry.time >= 0 && entry.time <= duration : entry.time >= 0,
+      )
+      .sort((a, b) => a.time - b.time)
       .slice(0, Math.max(1, maxPoints));
+
+    const normalized = normalizedEntries.map((entry) => entry.time);
+    const normalizedConfidences = normalizedEntries.map((entry) =>
+      Number.isFinite(entry.confidence) ? entry.confidence : 72,
+    );
 
     res.json({
       points: normalized,
+      confidences: normalizedConfidences,
       duration,
       source: normalized.length === points.length ? "openai" : "fallback",
     });

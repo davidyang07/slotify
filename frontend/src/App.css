@@ -616,11 +616,17 @@ h1 {
   color: rgba(246, 239, 230, 0.75);
 }
 
-.timeline-track {
+.timeline-waveform {
   position: relative;
-  height: 10px;
-  border-radius: 999px;
-  background: rgba(246, 239, 230, 0.12);
+}
+
+.timeline-canvas {
+  margin: 0;
+}
+
+.timeline-markers {
+  position: absolute;
+  inset: 0;
 }
 
 .timeline-dot {
@@ -636,7 +642,8 @@ h1 {
 }
 
 .timeline-dot.active {
-  background: rgba(240, 179, 90, 0.9);
+  background: rgba(79, 181, 120, 0.9);
+  border-color: rgba(79, 181, 120, 0.85);
 }
 
 .timeline-labels {
@@ -1221,22 +1228,30 @@ input[type="file"] {
   border-radius: 50%;
   border: 1px solid rgba(246, 239, 230, 0.45);
   background: transparent;
-  display: grid;
+  display: inline-grid;
   place-items: center;
+  position: relative;
+  overflow: hidden;
+  padding: 0;
 }
 
 .modal-check input::after {
   content: "";
-  width: 10px;
-  height: 10px;
+  position: absolute;
+  inset: 2px;
   border-radius: 50%;
   background: rgba(240, 179, 90, 0.95);
   transform: scale(0);
+  transform-origin: center;
   transition: transform 0.15s ease;
 }
 
 .modal-check input:checked::after {
   transform: scale(1);
+}
+
+.modal-check input:checked {
+  border-color: rgba(240, 179, 90, 0.95);
 }
 
 .modal-actions {
