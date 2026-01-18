@@ -43,6 +43,8 @@
   display: flex;
   gap: 0.6rem;
   flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
 }
 
 .nav-button {
@@ -52,6 +54,10 @@
   border-radius: 999px;
   padding: 0.45rem 0.95rem;
   font-weight: 600;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .nav-button.active {
@@ -439,10 +445,13 @@ h1 {
 .upload-flow {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
   align-items: center;
+  justify-items: center;
   padding: 0 1.2rem 1.5rem;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
 .flow-line {
@@ -466,6 +475,8 @@ h1 {
   display: grid;
   gap: 0.5rem;
   justify-items: center;
+  align-items: center;
+  text-align: center;
   z-index: 1;
   color: rgba(35, 31, 26, 0.7);
   font-weight: 600;

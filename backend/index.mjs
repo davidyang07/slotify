@@ -161,6 +161,520 @@ const getAudioDuration = async (filePath) =>
     });
   });
 
+const streamToBuffer = async (webStream) => {
+  const chunks = [];
+  const nodeStream = Readable.fromWeb(webStream);
+  for await (const chunk of nodeStream) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+};
+
+const parseJsonField = (value) => {
+  if (!value || typeof value !== "string") return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+};
+
+const normalizeStatements = (value) => {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => (entry == null ? "" : String(entry).trim()))
+      .filter(Boolean);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    const parsed = parseJsonField(trimmed);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((entry) => (entry == null ? "" : String(entry).trim()))
+        .filter(Boolean);
+    }
+    return [trimmed];
+  }
+  return [];
+};
+
+const clamp = (value, min, max) =>
+  Math.min(max, Math.max(min, value));
+
+const scoreCandidate = (candidate, durationSeconds, mode) => {
+  const timeSeconds = candidate.ms / 1000;
+  let score = 0.4;
+  if (candidate.silenceMs) {
+    score += Math.min(0.4, (candidate.silenceMs / 2000) * 0.4);
+  }
+  if (mode === "song") {
+    score += 0.1;
+  }
+  if (candidate.snippet && candidate.snippet !== "TRANSCRIPT_UNAVAILABLE") {
+    score += 0.05;
+  }
+  if (durationSeconds) {
+    const ratio = timeSeconds / durationSeconds;
+    if (ratio >= 0.2 && ratio <= 0.8) {
+      score += 0.1;
+    }
+    if (timeSeconds < 5 || timeSeconds > durationSeconds - 5) {
+      score -= 0.3;
+    }
+  }
+  return clamp(score, 0, 1);
+};
+
+const buildFallbackProsCons = ({ mode, silenceMs, timeSeconds, durationSeconds }) => {
+  const pros = [];
+  if (mode === "song") {
+    pros.push("Beat-aligned low-energy valley");
+  } else if (silenceMs >= 800) {
+    pros.push(`Natural pause detected (~${Math.round(silenceMs)}ms)`);
+  } else if (silenceMs >= 500) {
+    pros.push("Clear pause boundary detected");
+  }
+  pros.push("Low background energy at cut");
+  pros.push("Clean sentence boundary / transition");
+
+  const cons = [];
+  if (silenceMs > 0 && silenceMs < 600) {
+    cons.push("Short pause may feel abrupt");
+  }
+  if (durationSeconds) {
+    if (timeSeconds < 10) {
+      cons.push("Early placement may feel disruptive");
+    } else if (timeSeconds > durationSeconds - 10) {
+      cons.push("Late placement may feel rushed");
+    }
+  }
+  cons.push("Slight background noise present");
+
+  const pickedPros = pros.slice(0, 3);
+  while (pickedPros.length < 3) {
+    pickedPros.push("Natural pacing supports insertion");
+  }
+  const pickedCons = cons.slice(0, 2);
+  while (pickedCons.length < 2) {
+    pickedCons.push("Minor tonal shift possible");
+  }
+
+  return {
+    pros: pickedPros,
+    cons: pickedCons,
+    rationale: `Chosen for a clear pause near ${timeSeconds.toFixed(1)}s that minimizes disruption.`,
+  };
+};
+
+const selectTopSlots = (candidates, durationSeconds, minSeparationSeconds, count) => {
+  const minSeparationMs = minSeparationSeconds * 1000;
+  const sorted = [...candidates].sort(
+    (a, b) => b.score - a.score || a.ms - b.ms,
+  );
+  const selected = [];
+  for (const candidate of sorted) {
+    const tooClose = selected.some(
+      (entry) => Math.abs(entry.ms - candidate.ms) < minSeparationMs,
+    );
+    if (!tooClose) {
+      selected.push(candidate);
+    }
+    if (selected.length >= count) break;
+  }
+
+  if (durationSeconds) {
+    const fallbackTimes = [0.22, 0.5, 0.78].map(
+      (ratio) => ratio * durationSeconds * 1000,
+    );
+    for (const fallback of fallbackTimes) {
+      if (selected.length >= count) break;
+      const tooClose = selected.some(
+        (entry) => Math.abs(entry.ms - fallback) < minSeparationMs,
+      );
+      if (!tooClose && fallback >= 0 && fallback <= durationSeconds * 1000) {
+        selected.push({
+          ms: Math.round(fallback),
+          silenceMs: 0,
+          snippet: "",
+          score: 0.5,
+        });
+      }
+    }
+  }
+
+  while (selected.length < count) {
+    let base = minSeparationMs;
+    if (selected.length) {
+      const latest = [...selected].sort((a, b) => a.ms - b.ms).slice(-1)[0];
+      base = latest.ms + minSeparationMs;
+    }
+    const tooClose = selected.some(
+      (entry) => Math.abs(entry.ms - base) < minSeparationMs,
+    );
+    const candidateMs = tooClose ? base + minSeparationMs : base;
+    selected.push({
+      ms: Math.round(candidateMs),
+      silenceMs: 0,
+      snippet: "",
+      score: 0.4,
+    });
+  }
+
+  return selected.slice(0, count);
+};
+
+const runPythonAnalyze = async (audioPath, mode) =>
+  new Promise((resolve, reject) => {
+    const pythonBin = process.env.PYTHON_BIN ?? "python";
+    const args = [
+      "-m",
+      "ad_inserter.analyze_cli",
+      "--audio",
+      audioPath,
+      "--mode",
+      mode,
+    ];
+    const child = spawn(pythonBin, args, {
+      cwd: path.dirname(fileURLToPath(import.meta.url)),
+      env: process.env,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        try {
+          resolve(JSON.parse(stdout.trim() || "{}"));
+        } catch (parseError) {
+          reject(parseError);
+        }
+      } else {
+        reject(new Error(stderr || `analyze_cli exited with code ${code}`));
+      }
+    });
+  });
+
+const generateStatementFallback = (name, productDesc) => {
+  const brand = name || "Our sponsor";
+  const desc = productDesc || "a thoughtful companion for your day";
+  return `${brand} supports this episode with ${desc}, offering a simple way to stay focused and refreshed.`;
+};
+
+const generateBrandStatement = async ({ name, productDesc }) => {
+  if (!process.env.OPENAI_API_KEY) {
+    return generateStatementFallback(name, productDesc);
+  }
+
+  const prompt = [
+    "Write one sponsor read sentence (8-12 seconds when spoken).",
+    "Sound native to the episode, calm and conversational.",
+    "Avoid hypey marketing language and emojis.",
+    `Brand name: ${name || "Sponsor"}.`,
+    productDesc ? `Product description: ${productDesc}.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  try {
+    const response = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          temperature: 0,
+          messages: [
+            { role: "system", content: "You write concise sponsor reads." },
+            { role: "user", content: prompt },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "sponsor_statement",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  statement: { type: "string" },
+                },
+                required: ["statement"],
+                additionalProperties: false,
+              },
+            },
+          },
+        }),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`OpenAI statement failed: ${response.status}`);
+    }
+    const data = await response.json();
+    const raw = data?.choices?.[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(raw);
+    const statement = String(parsed.statement || "").trim();
+    return statement || generateStatementFallback(name, productDesc);
+  } catch (error) {
+    console.warn("Statement generation failed, using fallback.", error);
+    return generateStatementFallback(name, productDesc);
+  }
+};
+
+const buildSponsorBlock = async ({
+  voiceId,
+  statements,
+  modelId,
+  outputFormat,
+  pauseMs,
+}) => {
+  const tempDir = await fs.promises.mkdtemp(
+    path.join(os.tmpdir(), "sponsor-block-"),
+  );
+  const cleanup = async (paths) => {
+    await Promise.all(
+      paths.map((filePath) =>
+        fs.promises.unlink(filePath).catch(() => undefined),
+      ),
+    );
+    await fs.promises.rmdir(tempDir).catch(() => undefined);
+  };
+
+  const statementPaths = [];
+  const allPaths = [];
+  try {
+    for (let index = 0; index < statements.length; index += 1) {
+      const statement = statements[index];
+      const audio = await elevenlabs.textToSpeech.convert(voiceId, {
+        text: statement,
+        modelId: modelId ?? "eleven_multilingual_v2",
+        outputFormat: outputFormat ?? "mp3_44100_128",
+      });
+      const buffer = await streamToBuffer(audio);
+      const statementPath = path.join(tempDir, `statement-${index}.mp3`);
+      await fs.promises.writeFile(statementPath, buffer);
+      statementPaths.push(statementPath);
+      allPaths.push(statementPath);
+    }
+
+    const pauseSeconds = Math.max(0, (pauseMs ?? 150) / 1000);
+    const pausePath = path.join(tempDir, "pause.mp3");
+    if (statements.length > 1 && pauseSeconds > 0) {
+      await runFfmpeg([
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        `anullsrc=channel_layout=stereo:sample_rate=44100`,
+        "-t",
+        pauseSeconds.toString(),
+        pausePath,
+      ]);
+      allPaths.push(pausePath);
+    }
+
+    const concatInputs = [];
+    const inputPaths = [];
+    statementPaths.forEach((statementPath, index) => {
+      inputPaths.push(statementPath);
+      concatInputs.push(statementPath);
+      if (index < statementPaths.length - 1 && pauseSeconds > 0) {
+        inputPaths.push(pausePath);
+        concatInputs.push(pausePath);
+      }
+    });
+
+    const outputPath = path.join(tempDir, "sponsor_block.mp3");
+    if (concatInputs.length === 1) {
+      await fs.promises.copyFile(concatInputs[0], outputPath);
+    } else {
+      const filterParts = inputPaths.map(
+        (_, idx) =>
+          `[${idx}:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
+          `asetpts=PTS-STARTPTS[a${idx}]`,
+      );
+      const concatLabels = inputPaths.map((_, idx) => `[a${idx}]`).join("");
+      const filter = [
+        ...filterParts,
+        `${concatLabels}concat=n=${inputPaths.length}:v=0:a=1[concat]`,
+        `[concat]loudnorm=I=-16:TP=-1.5:LRA=11[out]`,
+      ].join(";");
+      const args = [
+        "-y",
+        ...inputPaths.flatMap((inputPath) => ["-i", inputPath]),
+        "-filter_complex",
+        filter,
+        "-map",
+        "[out]",
+        "-c:a",
+        "libmp3lame",
+        "-q:a",
+        "2",
+        outputPath,
+      ];
+      await runFfmpeg(args);
+    }
+
+    const duration = await getAudioDuration(outputPath);
+    if (duration !== null && duration > 20) {
+      throw new Error("Sponsor block exceeds 20s limit.");
+    }
+
+    return {
+      tempDir,
+      outputPath,
+      duration,
+      cleanup: () => cleanup([...allPaths, outputPath]),
+    };
+  } catch (error) {
+    await cleanup(allPaths);
+    throw error;
+  }
+};
+
+const buildMergeFilter = ({ insertAt, previewSeconds, mainDuration }) => {
+  const normalizedInsertAt = Math.max(0, insertAt);
+  if (previewSeconds && previewSeconds > 0) {
+    const previewStart = Math.max(0, normalizedInsertAt - previewSeconds);
+    const previewEnd = mainDuration
+      ? Math.min(mainDuration, normalizedInsertAt + previewSeconds)
+      : normalizedInsertAt + previewSeconds;
+    return {
+      filter: [
+        `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
+          `atrim=${previewStart}:${normalizedInsertAt},asetpts=PTS-STARTPTS[a0]`,
+        `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
+          `atrim=${normalizedInsertAt}:${previewEnd},asetpts=PTS-STARTPTS[a1]`,
+        `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
+          `asetpts=PTS-STARTPTS[ad]`,
+        `[a0][ad][a1]concat=n=3:v=0:a=1[out]`,
+      ].join(";"),
+      previewStart,
+      previewEnd,
+    };
+  }
+  return {
+    filter: [
+      `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
+        `atrim=0:${normalizedInsertAt},asetpts=PTS-STARTPTS[a0]`,
+      `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
+        `atrim=${normalizedInsertAt},asetpts=PTS-STARTPTS[a1]`,
+      `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
+        `asetpts=PTS-STARTPTS[ad]`,
+      `[a0][ad][a1]concat=n=3:v=0:a=1[out]`,
+    ].join(";"),
+    previewStart: null,
+    previewEnd: null,
+  };
+};
+
+const enhanceSlotsWithOpenAI = async ({ slots, candidates, mode, durationSeconds }) => {
+  if (!process.env.OPENAI_API_KEY) return null;
+  const payload = {
+    mode,
+    duration_seconds: durationSeconds,
+    slots: slots.map((slot) => ({
+      insertion_ms: slot.insertion_ms,
+      insertion_time_seconds: slot.insertion_time_seconds,
+      silence_ms: slot.silence_ms ?? 0,
+      snippet: slot.snippet ?? "",
+    })),
+    candidates: candidates.map((cand) => ({
+      insertion_ms: cand.ms,
+      silence_ms: cand.silenceMs ?? 0,
+      snippet: cand.snippet ?? "",
+    })),
+    rules: {
+      pros_count: 3,
+      cons_count: 2,
+      max_words_per_bullet: 7,
+    },
+  };
+
+  const prompt = [
+    "Generate pros/cons and rationale for each slot.",
+    "Use the provided slots; do not invent new times.",
+    "Pros: exactly 3 bullets, short and specific.",
+    "Cons: exactly 2 bullets, short and specific.",
+    "Rationale: one sentence.",
+  ].join(" ");
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      messages: [
+        { role: "system", content: "You are a precise audio editor." },
+        { role: "user", content: `${prompt}\n\n${JSON.stringify(payload)}` },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "slot_details",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              slots: {
+                type: "array",
+                minItems: slots.length,
+                maxItems: slots.length,
+                items: {
+                  type: "object",
+                  properties: {
+                    insertion_ms: { type: "integer" },
+                    pros: {
+                      type: "array",
+                      minItems: 3,
+                      maxItems: 3,
+                      items: { type: "string" },
+                    },
+                    cons: {
+                      type: "array",
+                      minItems: 2,
+                      maxItems: 2,
+                      items: { type: "string" },
+                    },
+                    rationale: { type: "string" },
+                  },
+                  required: ["insertion_ms", "pros", "cons", "rationale"],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ["slots"],
+            additionalProperties: false,
+          },
+        },
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenAI slot details failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const raw = data?.choices?.[0]?.message?.content ?? "{}";
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed.slots)) return null;
+  return parsed.slots;
+};
+
 app.post(
   "/api/merge",
   upload.fields([
@@ -173,6 +687,13 @@ app.post(
     const insertAt = Number.parseFloat(req.body?.insertAt ?? "");
     const crossfade = Number.parseFloat(req.body?.crossfade ?? "0.08");
     const pause = Number.parseFloat(req.body?.pause ?? "0.2");
+    const previewFlag = req.body?.preview ?? req.body?.mode;
+    const previewSecondsValue = Number.parseFloat(req.body?.previewSeconds ?? "3");
+    const previewSeconds = Number.isFinite(previewSecondsValue)
+      ? previewSecondsValue
+      : 3;
+    const isPreview =
+      previewFlag === "1" || previewFlag === "true" || previewFlag === "preview";
 
     if (!audioFile || !insertFile) {
       res.status(400).json({ error: "audio and insert files are required." });
@@ -228,10 +749,19 @@ app.post(
       }
 
       // Debug logging
-      const expectedDuration =
-        mainDuration !== null && adDuration !== null
-          ? mainDuration + adDuration
-          : null;
+      let expectedDuration = null;
+      if (adDuration !== null) {
+        if (isPreview) {
+          const start = Math.max(0, clampedInsertAt - previewSeconds);
+          const end =
+            mainDuration !== null
+              ? Math.min(mainDuration, clampedInsertAt + previewSeconds)
+              : clampedInsertAt + previewSeconds;
+          expectedDuration = Math.max(0, end - start) + adDuration;
+        } else if (mainDuration !== null) {
+          expectedDuration = mainDuration + adDuration;
+        }
+      }
       console.log("Merge debug:", {
         mainDuration: mainDuration?.toFixed(3),
         insertDuration: adDuration?.toFixed(3),
@@ -239,15 +769,18 @@ app.post(
         expectedDuration: expectedDuration?.toFixed(3),
       });
 
-      const filter = [
-        `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
-          `atrim=0:${clampedInsertAt},asetpts=PTS-STARTPTS[a0]`,
-        `[0:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
-          `atrim=${clampedInsertAt},asetpts=PTS-STARTPTS[a1]`,
-        `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,` +
-          `asetpts=PTS-STARTPTS[ad]`,
-        `[a0][ad][a1]concat=n=3:v=0:a=1[out]`,
-      ].join(";");
+      const { filter, previewStart, previewEnd } = buildMergeFilter({
+        insertAt: clampedInsertAt,
+        previewSeconds: isPreview ? previewSeconds : 0,
+        mainDuration,
+      });
+
+      if (isPreview) {
+        console.log("Preview window:", {
+          start: previewStart?.toFixed(3),
+          end: previewEnd?.toFixed(3),
+        });
+      }
 
       // Input 0: main audio
       // Input 1: insert audio
@@ -316,13 +849,6 @@ app.post("/api/insert-sections", upload.single("audio"), async (req, res) => {
     return;
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    res.status(500).json({
-      error: "OPENAI_API_KEY not configured. Please set it in your environment.",
-    });
-    return;
-  }
-
   const tempDir = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "insert-sections-"),
   );
@@ -338,170 +864,184 @@ app.post("/api/insert-sections", upload.single("audio"), async (req, res) => {
   try {
     await fs.promises.writeFile(audioPath, audioFile.buffer);
     const duration = await getAudioDuration(audioPath).catch(() => null);
-
-    const transcriptForm = new FormData();
-    transcriptForm.append("model", "whisper-1");
-    transcriptForm.append("response_format", "verbose_json");
-    transcriptForm.append(
-      "file",
-      new Blob([audioFile.buffer]),
-      audioFile.originalname || "audio.mp3",
-    );
-
-    const transcriptResponse = await fetch(
-      "https://api.openai.com/v1/audio/transcriptions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        },
-        body: transcriptForm,
-      },
-    );
-
-    if (!transcriptResponse.ok) {
-      const detail = await transcriptResponse.text();
-      throw new Error(
-        `Transcription failed: ${transcriptResponse.status} ${detail}`,
-      );
-    }
-
-    const transcript = await transcriptResponse.json();
-    const segments = Array.isArray(transcript?.segments)
-      ? transcript.segments
-      : [];
-
-    const candidates = [];
-    let prevEnd = 0;
-    for (const segment of segments) {
-      const start = Number(segment.start ?? 0);
-      const end = Number(segment.end ?? 0);
-      if (Number.isFinite(start) && start - prevEnd >= 0.4) {
-        candidates.push((start + prevEnd) / 2);
-      }
-      if (Number.isFinite(end)) {
-        prevEnd = Math.max(prevEnd, end);
-      }
-    }
-    if (duration !== null && duration - prevEnd >= 0.4) {
-      candidates.push((duration + prevEnd) / 2);
-    }
-
-    const prompt = [
-      "Pick natural ad insertion points for the audio.",
-      "Return JSON with a points array of objects: { time: seconds, confidence: percent }.",
-      "Confidence should be 0-100 indicating how likely the point is a sentence break.",
-      `Max points: ${Number.isFinite(count) ? count : 5}.`,
-      duration !== null
-        ? `Audio duration: ${duration.toFixed(2)} seconds.`
-        : "Audio duration unknown.",
-      candidates.length > 0
-        ? `Candidate silent midpoints (seconds): ${candidates
-            .map((value) => value.toFixed(2))
-            .join(", ")}.`
-        : "No candidate silences detected; pick evenly spaced points.",
-      `Transcript segments: ${segments
-        .map((segment) => {
-          const start = Number(segment.start ?? 0);
-          const end = Number(segment.end ?? 0);
-          const text = String(segment.text ?? "").trim();
-          return `${start.toFixed(2)}-${end.toFixed(2)}: ${text}`;
-        })
-        .join(" | ")}`,
-    ].join(" ");
-
-    let points = [];
-    let confidences = [];
-    const completionResponse = await fetch(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          temperature: 0.2,
-          messages: [
-            {
-              role: "system",
-              content:
-                "Choose insertion points based on when the person talking in the audio clip completley finishes a sentence. Look for pauses between sentences. Choose points where the waveform is lowest. Never choose in between sentences.",
-            },
-            { role: "user", content: prompt },
-          ],
-          response_format: { type: "json_object" },
-        }),
-      },
-    );
-
-    if (!completionResponse.ok) {
-      const detail = await completionResponse.text();
-      throw new Error(
-        `OpenAI selection failed: ${completionResponse.status} ${detail}`,
-      );
-    }
-
-    const completion = await completionResponse.json();
-    const rawContent =
-      completion?.choices?.[0]?.message?.content?.trim() ?? "{}";
+    const mode =
+      String(req.body?.mode ?? "podcast").trim().toLowerCase() === "song"
+        ? "song"
+        : "podcast";
+    let analysisResult = null;
     try {
-      const parsed = JSON.parse(rawContent);
-      if (Array.isArray(parsed.points)) {
-        points = parsed.points;
-        confidences = Array.isArray(parsed.confidences)
-          ? parsed.confidences
-          : [];
-      }
-    } catch (parseError) {
-      points = [];
-      confidences = [];
+      analysisResult = await runPythonAnalyze(audioPath, mode);
+    } catch (error) {
+      console.warn("Analyze CLI failed, using fallback.", error);
     }
 
-    if (points.length === 0 && candidates.length > 0) {
-      points = candidates;
-    }
+    const durationMs = Number(analysisResult?.duration_ms ?? 0) || null;
+    const durationSeconds =
+      duration ?? (durationMs ? durationMs / 1000 : null);
 
-    const maxPoints = Number.isFinite(count) ? count : 5;
-    const normalizedEntries = points
-      .map((value, index) => {
-        if (value && typeof value === "object") {
-          const time = Number(value.time);
-          const confidence = Number(value.confidence);
-          return {
-            time,
-            confidence: Number.isFinite(confidence) ? confidence : null,
-            index,
-          };
-        }
-        const time = Number(value);
-        const fallbackConfidence = Number(confidences[index]);
-        return {
-          time,
-          confidence: Number.isFinite(fallbackConfidence)
-            ? fallbackConfidence
-            : null,
-          index,
-        };
-      })
-      .filter((entry) => Number.isFinite(entry.time))
-      .filter((entry) =>
-        duration ? entry.time >= 0 && entry.time <= duration : entry.time >= 0,
-      )
-      .sort((a, b) => a.time - b.time)
-      .slice(0, Math.max(1, maxPoints));
-
-    const normalized = normalizedEntries.map((entry) => entry.time);
-    const normalizedConfidences = normalizedEntries.map((entry) =>
-      Number.isFinite(entry.confidence) ? entry.confidence : 72,
+    const snippetsRaw = analysisResult?.snippets ?? {};
+    const snippets = Object.fromEntries(
+      Object.entries(snippetsRaw).map(([key, value]) => [
+        Number.parseInt(key, 10),
+        String(value ?? "").trim(),
+      ]),
     );
+
+    const candidates = Array.isArray(analysisResult?.candidates)
+      ? analysisResult.candidates
+          .map((entry) => {
+            const ms = Number(entry.mid_ms ?? entry.ms ?? entry.time_ms ?? 0);
+            if (!Number.isFinite(ms) || ms < 0) return null;
+            const silenceMs = Number(entry.silence_ms ?? 0);
+            return {
+              ms: Math.round(ms),
+              silenceMs: Number.isFinite(silenceMs) ? silenceMs : 0,
+              snippet: snippets[Math.round(ms)] ?? "",
+            };
+          })
+          .filter(Boolean)
+      : [];
+    const maxMs = durationSeconds ? durationSeconds * 1000 : null;
+    const boundedCandidates =
+      maxMs !== null
+        ? candidates.filter((entry) => entry.ms <= maxMs)
+        : candidates;
+
+    const fallbackCandidates =
+      durationSeconds && durationSeconds > 0
+        ? [0.25, 0.5, 0.75].map((ratio) => ({
+            ms: Math.round(durationSeconds * ratio * 1000),
+            silenceMs: 0,
+            snippet: "",
+          }))
+        : [
+            { ms: 12000, silenceMs: 0, snippet: "" },
+            { ms: 24000, silenceMs: 0, snippet: "" },
+            { ms: 36000, silenceMs: 0, snippet: "" },
+          ];
+
+    const usableCandidates = boundedCandidates.length
+      ? boundedCandidates
+      : fallbackCandidates;
+    const scoredCandidates = usableCandidates.map((candidate) => ({
+      ...candidate,
+      score: scoreCandidate(candidate, durationSeconds, mode),
+    }));
+
+    console.log("Analyze candidates:", {
+      count: scoredCandidates.length,
+      mode,
+    });
+
+    const selected = selectTopSlots(
+      scoredCandidates,
+      durationSeconds,
+      6,
+      Number.isFinite(count) ? Math.max(3, count) : 3,
+    ).slice(0, 3);
+
+    let slots = selected.map((candidate) => {
+      const timeSeconds = candidate.ms / 1000;
+      const confidence = Math.round(clamp(70 + candidate.score * 25, 70, 95));
+      const fallbackText = buildFallbackProsCons({
+        mode,
+        silenceMs: candidate.silenceMs,
+        timeSeconds,
+        durationSeconds,
+      });
+      return {
+        insertion_ms: candidate.ms,
+        insertion_time_seconds: Number(timeSeconds.toFixed(3)),
+        confidence_percent: confidence,
+        pros: fallbackText.pros,
+        cons: fallbackText.cons,
+        rationale: fallbackText.rationale,
+        silence_ms: candidate.silenceMs,
+        snippet: candidate.snippet ?? "",
+      };
+    });
+
+    try {
+      const openAiDetails = await enhanceSlotsWithOpenAI({
+        slots,
+        candidates: scoredCandidates,
+        mode,
+        durationSeconds,
+      });
+      if (openAiDetails) {
+        slots = slots.map((slot) => {
+          const match = openAiDetails.find(
+            (entry) => Number(entry.insertion_ms) === slot.insertion_ms,
+          );
+          if (!match) return slot;
+          return {
+            ...slot,
+            pros:
+              Array.isArray(match.pros) && match.pros.length === 3
+                ? match.pros
+                : slot.pros,
+            cons:
+              Array.isArray(match.cons) && match.cons.length === 2
+                ? match.cons
+                : slot.cons,
+            rationale:
+              typeof match.rationale === "string" && match.rationale.trim()
+                ? match.rationale.trim()
+                : slot.rationale,
+          };
+        });
+      }
+    } catch (error) {
+      console.warn("OpenAI slot details failed, using fallback.", error);
+    }
+
+    slots.sort((a, b) => b.confidence_percent - a.confidence_percent);
+
+    console.log("Analyze top slots:", slots.map((slot) => ({
+      insertion_ms: slot.insertion_ms,
+      confidence_percent: slot.confidence_percent,
+    })));
+
+    const sponsorsField = parseJsonField(req.body?.sponsors);
+    const statementsField = req.body?.statements ?? req.body?.statement;
+    let sponsorStatements = [];
+    if (Array.isArray(sponsorsField)) {
+      sponsorStatements = await Promise.all(
+        sponsorsField.map(async (entry, index) => {
+          const name = String(entry?.name ?? entry?.brand ?? "").trim();
+          const productDesc = String(entry?.productDesc ?? "").trim();
+          const rawStatement = String(entry?.statement ?? "").trim();
+          const statement =
+            rawStatement ||
+            (await generateBrandStatement({ name, productDesc }));
+          return {
+            id: entry?.id ?? `sponsor-${index + 1}`,
+            name,
+            statement,
+            generated: !rawStatement,
+          };
+        }),
+      );
+    } else {
+      const statements = normalizeStatements(statementsField);
+      sponsorStatements = statements.map((statement, index) => ({
+        id: `sponsor-${index + 1}`,
+        name: "",
+        statement,
+        generated: false,
+      }));
+    }
+
+    const points = slots.map((slot) => slot.insertion_time_seconds);
+    const confidences = slots.map((slot) => slot.confidence_percent);
 
     res.json({
-      points: normalized,
-      confidences: normalizedConfidences,
-      duration,
-      source: normalized.length === points.length ? "openai" : "fallback",
+      points,
+      confidences,
+      duration: durationSeconds,
+      source: analysisResult ? "heuristic" : "fallback",
+      slots,
+      sponsorStatements,
     });
   } catch (error) {
     res.status(500).json({
@@ -514,21 +1054,75 @@ app.post("/api/insert-sections", upload.single("audio"), async (req, res) => {
 });
 
 app.post("/api/tts", async (req, res) => {
-  const { voiceId, text, modelId, outputFormat } = req.body ?? {};
-  if (!voiceId || !text) {
-    res.status(400).json({ error: "voiceId and text are required." });
+  const { voiceId, modelId, outputFormat, pauseMs } = req.body ?? {};
+  let statements = normalizeStatements(
+    req.body?.statements ?? req.body?.texts ?? req.body?.text,
+  );
+  if (!voiceId) {
+    res.status(400).json({ error: "voiceId is required." });
+    return;
+  }
+
+  if (statements.length === 0) {
+    const sponsor = req.body?.sponsor ?? {};
+    const name = String(
+      sponsor?.name ?? req.body?.name ?? req.body?.brand ?? "",
+    ).trim();
+    const productDesc = String(
+      sponsor?.productDesc ?? req.body?.productDesc ?? "",
+    ).trim();
+    const generated = await generateBrandStatement({ name, productDesc });
+    if (generated) {
+      statements = [generated];
+    }
+  }
+
+  if (statements.length === 0) {
+    res.status(400).json({ error: "text is required." });
     return;
   }
 
   try {
-    const audio = await elevenlabs.textToSpeech.convert(voiceId, {
-      text,
-      modelId: modelId ?? "eleven_multilingual_v2",
-      outputFormat: outputFormat ?? "mp3_44100_128",
+    console.log("TTS statements:", { count: statements.length, statements });
+    if (statements.length === 1) {
+      const audio = await elevenlabs.textToSpeech.convert(voiceId, {
+        text: statements[0],
+        modelId: modelId ?? "eleven_multilingual_v2",
+        outputFormat: outputFormat ?? "mp3_44100_128",
+      });
+      res.setHeader("Content-Type", "audio/mpeg");
+      const stream = Readable.fromWeb(audio);
+      stream.pipe(res);
+      return;
+    }
+
+    const pauseMsValue = Number.parseFloat(pauseMs ?? "150");
+    const normalizedPauseMs = Number.isFinite(pauseMsValue)
+      ? pauseMsValue
+      : 150;
+
+    const sponsorBlock = await buildSponsorBlock({
+      voiceId,
+      statements,
+      modelId,
+      outputFormat,
+      pauseMs: normalizedPauseMs,
     });
 
     res.setHeader("Content-Type", "audio/mpeg");
-    const stream = Readable.fromWeb(audio);
+    const stream = fs.createReadStream(sponsorBlock.outputPath);
+    stream.on("error", (streamError) => {
+      if (!res.headersSent) {
+        res.status(500).json({
+          error:
+            streamError instanceof Error
+              ? streamError.message
+              : "Failed to stream TTS audio.",
+        });
+      }
+    });
+    res.on("close", sponsorBlock.cleanup);
+    res.on("finish", sponsorBlock.cleanup);
     stream.pipe(res);
   } catch (error) {
     res.status(500).json({

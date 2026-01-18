@@ -604,8 +604,8 @@ function App() {
       const sponsorEntry =
         sponsors.find((entry) => entry.id === sponsorId) ?? sponsors[0];
       const scriptText = sponsorEntry?.script ?? "";
-      if (!scriptText.trim()) {
-        setError(`Add a sponsor statement for ${slot.id}.`);
+      if (!scriptText.trim() && !sponsorEntry?.name?.trim()) {
+        setError(`Add a sponsor name for ${slot.id}.`);
         return;
       }
     }
@@ -625,16 +625,23 @@ function App() {
         const sponsorEntry =
           sponsors.find((entry) => entry.id === sponsorId) ?? sponsors[0];
         const scriptText = sponsorEntry?.script ?? "";
+        const sponsorName = sponsorEntry?.name ?? "";
+
+        const ttsPayload: Record<string, string | object> = {
+          voiceId,
+          modelId: "eleven_multilingual_v2",
+          outputFormat: "mp3_44100_128",
+        };
+        if (scriptText.trim()) {
+          ttsPayload.text = scriptText;
+        } else {
+          ttsPayload.sponsor = { name: sponsorName };
+        }
 
         const response = await fetch(`${apiBase}/api/tts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            voiceId,
-            text: scriptText,
-            modelId: "eleven_multilingual_v2",
-            outputFormat: "mp3_44100_128",
-          }),
+          body: JSON.stringify(ttsPayload),
         });
 
         if (!response.ok) {
@@ -648,6 +655,10 @@ function App() {
         mergeForm.append("insert", ttsBlob, "insert.mp3");
         mergeForm.append("insertAt", slot.time.toString());
         mergeForm.append("pause", "0.12");
+        if (mode === "preview") {
+          mergeForm.append("preview", "1");
+          mergeForm.append("previewSeconds", "3");
+        }
 
         const mergeResponse = await fetch(`${apiBase}/api/merge`, {
           method: "POST",
@@ -1127,6 +1138,37 @@ function App() {
                 </button>
                 {isRendering && <div className="loader" />}
                 {status && <div className="helper">{status}</div>}
+                
+                {/* Preview and Download section - shown after rendering */}
+                {audioUrl && !isRendering && (
+                  <div style={{ marginTop: "24px", paddingTop: "24px", borderTop: "1px solid #e0e0e0" }}>
+                    <div style={{ marginBottom: "16px" }}>
+                      <h3 style={{ margin: "0 0 12px 0", fontSize: "16px", fontWeight: "600" }}>
+                        Final Audio Preview
+                      </h3>
+                      <audio 
+                        ref={audioRef} 
+                        controls 
+                        src={audioUrl}
+                        style={{ width: "100%", marginBottom: "16px" }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={() => {
+                        const link = document.createElement("a");
+                        link.href = audioUrl;
+                        link.download = `merged-audio-${Date.now()}.mp3`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }}
+                    >
+                      Download Audio
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="export-note">
                 <h3>Export notes</h3>
@@ -1135,6 +1177,11 @@ function App() {
                   brand script. You can re-run the render after editing the
                   script or selecting a new slot.
                 </p>
+                {audioUrl && !isRendering && (
+                  <p style={{ marginTop: "12px", color: "#666" }}>
+                    Preview the full audio above and download when ready.
+                  </p>
+                )}
               </div>
             </div>
           </div>
