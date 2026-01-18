@@ -17,6 +17,7 @@ type UploadDropzoneProps = {
   helper: string;
   accept?: string;
   multiple?: boolean;
+  hasFile?: boolean;
   onFiles: (files: FileList) => void;
 };
 
@@ -62,6 +63,7 @@ function UploadDropzone({
   helper,
   accept,
   multiple = false,
+  hasFile = false,
   onFiles,
 }: UploadDropzoneProps) {
   const [isDragActive, setIsDragActive] = useState(false);
@@ -76,7 +78,9 @@ function UploadDropzone({
 
   return (
     <label
-      className={`upload-card${isDragActive ? " drag-active" : ""}`}
+      className={`upload-card${isDragActive ? " drag-active" : ""}${
+        hasFile ? " has-file" : ""
+      }`}
       htmlFor={id}
       onDragOver={(event) => {
         event.preventDefault();
@@ -97,16 +101,25 @@ function UploadDropzone({
         }}
       />
       <div className="upload-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" role="presentation">
-          <path
-            d="M12 3a1 1 0 0 1 1 1v8.6l2.3-2.3a1 1 0 1 1 1.4 1.4l-4.01 4a1 1 0 0 1-1.38 0l-4.01-4a1 1 0 0 1 1.42-1.4L11 12.6V4a1 1 0 0 1 1-1z"
-            fill="currentColor"
-          />
-          <path
-            d="M5 15a1 1 0 0 1 1 1v2h12v-2a1 1 0 1 1 2 0v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1z"
-            fill="currentColor"
-          />
-        </svg>
+        {hasFile ? (
+          <svg viewBox="0 0 24 24" role="presentation">
+            <path
+              d="M9.4 16.2 5.9 12.7a1 1 0 1 1 1.4-1.4l2.4 2.4 6.3-6.3a1 1 0 1 1 1.4 1.4l-7 7a1 1 0 0 1-1.4 0z"
+              fill="currentColor"
+            />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" role="presentation">
+            <path
+              d="M12 3a1 1 0 0 1 1 1v8.6l2.3-2.3a1 1 0 1 1 1.4 1.4l-4.01 4a1 1 0 0 1-1.38 0l-4.01-4a1 1 0 1 1 1.42-1.4L11 12.6V4a1 1 0 0 1 1-1z"
+              fill="currentColor"
+            />
+            <path
+              d="M5 15a1 1 0 0 1 1 1v2h12v-2a1 1 0 1 1 2 0v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1z"
+              fill="currentColor"
+            />
+          </svg>
+        )}
       </div>
       <div className="upload-title">{title}</div>
       <div className="upload-subtitle">{subtitle}</div>
@@ -797,6 +810,7 @@ function App() {
                 subtitle="Drop your audio file here"
                 helper={`or click to browse • ${baseAudioName}`}
                 accept="audio/*"
+                hasFile={Boolean(baseAudio)}
                 onFiles={(nextFiles) =>
                   setBaseAudio(nextFiles?.[0] ?? null)
                 }
