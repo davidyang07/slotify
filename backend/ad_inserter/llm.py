@@ -44,28 +44,34 @@ def _build_prompt(
         )
     candidate_block = "\n\n".join(candidate_lines) if candidate_lines else "No candidates."
 
-    return (
-        "You are writing a native-sounding, 1-sentence promo that should match the tone "
-        "of the preceding audio. It should be 8-12 seconds when spoken aloud.\n\n"
-        f"Mode: {mode}\n"
-        f"Product name: {product_name}\n"
-        f"Product description: {product_desc}{url_line}\n\n"
-        "Identify insertion points in the following text. An insertion point is valid ONLY if it meets ALL of these criteria:"
-
-"It must be at the end of a complete sentence (after punctuation like . ! ?)"
-"It must be followed by a natural pause in the narrative or dialogue"
-"It should NOT be in the middle of:"
-
-"A continuous action sequence"
-"Back-and-forth dialogue between characters"
-"A single character's uninterrupted speech"
-"A flowing description of a single scene or moment"
-        "Never choose the start or the end of the audio clip unless absolutely necessary "
-        "(e.g., the clip is just one sentence).\n\n"
-        "Candidates:\n"
-        f"{candidate_block}\n\n"
-        "Respond ONLY in JSON with keys: promo_text, chosen_index, rationale."
-    )
+    prompt_lines = [
+        "You are writing a native-sounding, 1-sentence promo that should match the tone of the preceding audio.",
+        "It should be 8-12 seconds when spoken aloud.",
+        "",
+        f"Mode: {mode}",
+        f"Product name: {product_name}",
+        f"Product description: {product_desc}{url_line}",
+        "",
+        "Pick ONLY the insertion point based on the audio context and pauses.",
+        "Do NOT use the product or brand to choose the insertion point.",
+        "",
+        "An insertion point is valid ONLY if it meets ALL of these criteria:",
+        "- It is at the end of a complete sentence (after punctuation like . ! ?).",
+        "- It is followed by a natural pause in the narrative or dialogue.",
+        "- It is NOT in the middle of:",
+        "  - a continuous action sequence",
+        "  - back-and-forth dialogue between characters",
+        "  - a single character's uninterrupted speech",
+        "  - a flowing description of a single scene or moment",
+        "Never choose the start or the end of the audio clip unless absolutely necessary",
+        "(e.g., the clip is just one sentence).",
+        "",
+        "Candidates:",
+        candidate_block,
+        "",
+        "Respond ONLY in JSON with keys: promo_text, chosen_index, rationale.",
+    ]
+    return "\n".join(prompt_lines)
 
 
 def generate_promo_and_choice(

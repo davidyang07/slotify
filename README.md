@@ -1,7 +1,8 @@
-# Seamless Sponsor Insertion (Audio Monetization Dashboard)
+# Seamless Sponsor Insertion - UofTHacks 13
 
-A B2B web application and API that helps platforms (Spotify / YouTube / podcast networks) insert sponsor ads into podcasts seamlessly.  
-Pipeline: Upload a podcast + sponsor script → AI recommends the best insertion point(s) → ElevenLabs generates a human-like ad read → the system stitches it in smoothly and exports the final audio.
+Pipeline: Upload an audio file with speech → AI recommends the best insertion point(s) → ElevenLabs generates a human-like ad read → the system stitches it in smoothly and exports the final audio.
+
+Demo: https://www.youtube.com/watch?v=S4m1lpipni0
 
 ## Core features
 - User input for podcast audio and product name - product details are optional

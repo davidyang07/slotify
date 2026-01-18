@@ -943,6 +943,7 @@ app.post("/api/insert-sections", upload.single("audio"), async (req, res) => {
               if (!endsWithSentenceBoundary(text)) return null;
               const end = Number(segment.end ?? 0);
               if (!Number.isFinite(end)) return null;
+              if (durationSeconds && end > durationSeconds) return null;
               const nextStart = Number(segments[index + 1]?.start ?? end);
               const gapMs = Math.max(0, (nextStart - end) * 1000);
               return {
@@ -1023,18 +1024,42 @@ app.post("/api/insert-sections", upload.single("audio"), async (req, res) => {
       Number.isFinite(count) ? Math.max(3, count) : 3,
     ).slice(0, 3);
 
-    let slots = selected.map((candidate) => {
+    const maxSlotMs =
+      durationSeconds !== null && durationSeconds !== undefined
+        ? Math.max(0, Math.round(durationSeconds * 1000) - 200)
+        : null;
+    const normalizedSelected = selected.map((candidate) => {
+      if (maxSlotMs === null) return candidate;
+      return {
+        ...candidate,
+        ms: Math.min(candidate.ms, maxSlotMs),
+      };
+    });
+    const dedupedSelected = [];
+    const seenMs = new Set();
+    for (const candidate of normalizedSelected) {
+      if (seenMs.has(candidate.ms)) continue;
+      seenMs.add(candidate.ms);
+      dedupedSelected.push(candidate);
+    }
+
+    let slots = dedupedSelected.map((candidate) => {
       const timeSeconds = candidate.ms / 1000;
+      const clampedTimeSeconds =
+        durationSeconds !== null && durationSeconds !== undefined
+          ? Math.min(Math.max(0, timeSeconds), durationSeconds)
+          : Math.max(0, timeSeconds);
+      const clampedMs = Math.round(clampedTimeSeconds * 1000);
       const confidence = Math.round(clamp(70 + candidate.score * 25, 70, 95));
       const fallbackText = buildFallbackProsCons({
         mode,
         silenceMs: candidate.silenceMs,
-        timeSeconds,
+        timeSeconds: clampedTimeSeconds,
         durationSeconds,
       });
       return {
-        insertion_ms: candidate.ms,
-        insertion_time_seconds: Number(timeSeconds.toFixed(3)),
+        insertion_ms: clampedMs,
+        insertion_time_seconds: Number(clampedTimeSeconds.toFixed(3)),
         confidence_percent: confidence,
         pros: fallbackText.pros,
         cons: fallbackText.cons,

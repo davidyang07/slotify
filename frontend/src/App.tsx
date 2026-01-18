@@ -1,6 +1,9 @@
 import type { DragEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
+import LandingHero from "./components/LandingHero";
+import SlotifyLogo from "./SlotifyLogo";
+import SoundwaveIcon from "./SoundwaveIcon";
 
 const timelineSteps = [
   { id: "upload", label: "Upload" },
@@ -165,6 +168,12 @@ function App() {
   const [showRightsModal, setShowRightsModal] = useState(false);
   const [rightsAccepted, setRightsAccepted] = useState(false);
   const [rightsCertified, setRightsCertified] = useState(false);
+  const [selectedTone, setSelectedTone] = useState("professional");
+  const [selectedLanguage, setSelectedLanguage] = useState("en");
+  const [showAddSlot, setShowAddSlot] = useState(false);
+  const [newSlotTime, setNewSlotTime] = useState("");
+  const [newSlotMinutes, setNewSlotMinutes] = useState("0");
+  const [newSlotSeconds, setNewSlotSeconds] = useState("0");
 
   const baseAudioName = useMemo(
     () => baseAudio?.name ?? "No file selected.",
@@ -257,7 +266,11 @@ function App() {
     if (audioDuration && audioDuration > 0) {
       ctx.lineWidth = 2;
       for (const slot of slots) {
-        const x = (slot.time / audioDuration) * width;
+        if (!audioDuration || audioDuration <= 0) continue;
+        const ratio = slot.time / audioDuration;
+        if (!Number.isFinite(ratio)) continue;
+        const clamped = Math.max(0, Math.min(1, ratio));
+        const x = clamped * (width - 1) + 0.5;
         if (Number.isFinite(x)) {
           ctx.strokeStyle = selectedSlotIds.includes(slot.id)
             ? "rgba(79, 181, 120, 0.85)"
@@ -270,8 +283,16 @@ function App() {
       }
 
       const selectedInsert = Number.parseFloat(insertAt);
-      if (Number.isFinite(selectedInsert) && selectedInsert >= 0) {
-        const x = (selectedInsert / audioDuration) * width;
+      if (
+        audioDuration &&
+        audioDuration > 0 &&
+        Number.isFinite(selectedInsert) &&
+        selectedInsert >= 0
+      ) {
+        const ratio = selectedInsert / audioDuration;
+        if (!Number.isFinite(ratio)) return;
+        const clamped = Math.max(0, Math.min(1, ratio));
+        const x = clamped * (width - 1) + 0.5;
         if (Number.isFinite(x)) {
           ctx.strokeStyle = "rgba(245, 157, 0, 0.95)";
           ctx.beginPath();
@@ -367,11 +388,17 @@ function App() {
       insertSuggestions.length >= 3
         ? insertSuggestions.slice(0, 3)
         : fallbackSlots;
-    const nextSlots = suggestions.map((entry, index) => ({
-      id: `slot-${index + 1}`,
-      time: entry.time,
-      confidence: entry.confidence,
-    }));
+    const nextSlots = suggestions.map((entry, index) => {
+      const clampedTime =
+        audioDuration && audioDuration > 0
+          ? Math.min(Math.max(0, entry.time), audioDuration)
+          : Math.max(0, entry.time);
+      return {
+        id: `slot-${index + 1}`,
+        time: clampedTime,
+        confidence: entry.confidence,
+      };
+    });
     setSlots(nextSlots);
     if (!selectedSlotIds.length && nextSlots.length) {
       setSelectedSlotIds([nextSlots[0].id]);
@@ -712,95 +739,67 @@ function App() {
   return (
     <div className={`app page-${activePage}`}>
       <header className="topbar">
-        <a href='/' className="logo ">Slotify</a>
-        <div className="nav-steps">
-          {timelineSteps.map((step) => (
-            <button
-              key={step.id}
-              type="button"
-              className={`nav-button${
-                activePage === step.id ? " active" : ""
-              }`}
-              disabled={
-                step.id !== "upload" &&
-                step.id !== "landing" &&
-                (!isUploadReady || !rightsCertified)
-              }
-              onClick={() => {
-                if (
+        <a href='/' className="logo">
+          <SoundwaveIcon size="md" variant={activePage === "landing" ? "light" : "light"} />
+          <SlotifyLogo size="md" variant={activePage === "landing" ? "light" : "light"} />
+        </a>
+        <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
+          <div className="nav-steps">
+            {timelineSteps.map((step) => (
+              <button
+                key={step.id}
+                type="button"
+                className={`nav-button${
+                  activePage === step.id ? " active" : ""
+                }`}
+                disabled={
                   step.id !== "upload" &&
                   step.id !== "landing" &&
                   (!isUploadReady || !rightsCertified)
-                ) {
-                  return;
                 }
-                setActivePage(step.id as PageId);
-              }}
+                onClick={() => {
+                  if (
+                    step.id !== "upload" &&
+                    step.id !== "landing" &&
+                    (!isUploadReady || !rightsCertified)
+                  ) {
+                    return;
+                  }
+                  setActivePage(step.id as PageId);
+                }}
+              >
+                {step.label}
+              </button>
+            ))}
+          </div>
+          <a
+            href="https://github.com/jweng121/uoft-winners"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="github-link"
+            aria-label="View on GitHub"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              style={{ display: "block" }}
             >
-              {step.label}
-            </button>
-          ))}
+              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+            </svg>
+          </a>
         </div>
       </header>
 
+      
       {activePage === "landing" && (
-        <section className="page landing">
-          <div className="landing-hero">
-            <div className="hero-pill">
-              <span className="hero-dot" />
-              AI-Powered Audio Insertion
-            </div>
-            <a className="hero-title">Slotify</a>
-            <p className="hero-subtitle">
-              Seamless sponsor insertion for audio.
-            </p>
-            <p className="hero-body">
-              Upload an episode, paste an ad read, and Sl|lotify finds the best
-              slot and inserts it naturally — in the creator&apos;s own voice.
-            </p>
-            <div className="hero-actions">
-              <button
-                type="button"
-                className="primary hero-primary"
-                onClick={() => setActivePage("upload")}
-              >
-                Try Slotify
-              </button>
-              <button
-                type="button"
-                className="ghost hero-ghost"
-                onClick={() => setActivePage("analyze")}
-              >
-                How it works
-                <span className="chevron">▾</span>
-              </button>
-            </div>
-            <div className="hero-progress">
-              <div className="progress-bar">
-                <span className="progress-fill" />
-                <span className="progress-spot" />
-              </div>
-              <div className="progress-labels">
-                <span>Main Audio</span>
-                <span>Sponsor Insert</span>
-                <span>Main Audio</span>
-              </div>
-            </div>
-            <div className="hero-bars" aria-hidden="true">
-              {Array.from({ length: 9 }).map((_, index) => (
-                <span key={`bar-${index}`} className="hero-bar" />
-              ))}
-            </div>
-            <button
-              type="button"
-              className="hero-scroll"
-              onClick={() => setActivePage("upload")}
-            >
-              ⌄
-            </button>
-          </div>
-        </section>
+        <LandingHero
+          onPrimaryAction={() => setActivePage("upload")}
+          onSecondaryAction={() => setActivePage("analyze")}
+        />
       )}
+
 
       {activePage === "upload" && (
         <section className="page">
@@ -981,7 +980,10 @@ function App() {
                       }`}
                       style={{
                         left: audioDuration
-                          ? `${(slot.time / audioDuration) * 100}%`
+                          ? `calc(${Math.min(
+                              100,
+                              Math.max(0, (slot.time / audioDuration) * 100),
+                            )}% - 8px)`
                           : "50%",
                       }}
                       onClick={() => toggleSlotSelection(slot.id)}
@@ -998,6 +1000,93 @@ function App() {
             {analysisError && (
               <span className="helper helper-error">{analysisError}</span>
             )}
+
+            {/* Add Slot Section */}
+            <div className="add-slot-section">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setShowAddSlot(!showAddSlot)}
+              >
+                {showAddSlot ? "Cancel" : "+ Add Custom Slot"}
+              </button>
+              {showAddSlot && (
+                <div className="add-slot-form">
+                  <div className="add-slot-inputs">
+                    <div className="field">
+                      <label htmlFor="slot-minutes">Minutes</label>
+                      <input
+                        id="slot-minutes"
+                        type="number"
+                        min="0"
+                        value={newSlotMinutes}
+                        onChange={(e) => setNewSlotMinutes(e.target.value)}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor="slot-seconds">Seconds</label>
+                      <input
+                        id="slot-seconds"
+                        type="number"
+                        min="0"
+                        max="59"
+                        value={newSlotSeconds}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "" || (parseInt(val) >= 0 && parseInt(val) <= 59)) {
+                            setNewSlotSeconds(val);
+                          }
+                        }}
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => {
+                      const minutes = parseInt(newSlotMinutes) || 0;
+                      const seconds = parseInt(newSlotSeconds) || 0;
+                      const totalSeconds = minutes * 60 + seconds;
+                      
+                      if (totalSeconds < 0) {
+                        return;
+                      }
+                      
+                      if (audioDuration && totalSeconds > audioDuration) {
+                        alert(`Time cannot exceed audio duration (${formatTime(audioDuration)})`);
+                        return;
+                      }
+
+                      // Generate unique slot ID
+                      const existingIds = slots.map(s => s.id);
+                      let slotNumber = slots.length + 1;
+                      let newSlotId = `slot-${slotNumber}`;
+                      while (existingIds.includes(newSlotId)) {
+                        slotNumber++;
+                        newSlotId = `slot-${slotNumber}`;
+                      }
+
+                      const newSlot: Slot = {
+                        id: newSlotId,
+                        time: totalSeconds,
+                        confidence: 75, // Default confidence for manually added slots
+                      };
+
+                      setSlots((prev) => [...prev, newSlot].sort((a, b) => a.time - b.time));
+                      setNewSlotMinutes("0");
+                      setNewSlotSeconds("0");
+                      setShowAddSlot(false);
+                    }}
+                    disabled={!newSlotMinutes && !newSlotSeconds}
+                  >
+                    Add Slot
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div className="slot-grid">
               {slots.map((slot, index) => {
                 const notes = slotNotes[index] ?? [];
@@ -1097,6 +1186,61 @@ function App() {
                 );
               })}
             </div>
+
+            {/* Voice Settings Section */}
+            <div className="voice-settings-section">
+              <div className="voice-settings-header">
+                <h3>Voice Settings</h3>
+                <p className="voice-settings-subtitle">
+                  Customize the tone and language of your sponsor reads
+                </p>
+              </div>
+              <div className="voice-settings-grid">
+                <div className="voice-setting-field">
+                  <label htmlFor="tone-select">Tone</label>
+                  <select
+                    id="tone-select"
+                    value={selectedTone}
+                    onChange={(e) => setSelectedTone(e.target.value)}
+                    className="voice-setting-select"
+                  >
+                    <option value="professional">Professional</option>
+                    <option value="friendly-casual">Friendly & Casual</option>
+                    <option value="energetic">Energetic</option>
+                    <option value="serious">Serious</option>
+                    <option value="warm">Warm</option>
+                    <option value="conversational">Conversational</option>
+                    <option value="enthusiastic">Enthusiastic</option>
+                  </select>
+                  <span className="helper">
+                    Choose the tone that best matches your podcast style
+                  </span>
+                </div>
+                <div className="voice-setting-field">
+                  <label htmlFor="language-select">Language</label>
+                  <select
+                    id="language-select"
+                    value={selectedLanguage}
+                    onChange={(e) => setSelectedLanguage(e.target.value)}
+                    className="voice-setting-select"
+                  >
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="it">Italian</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="ja">Japanese</option>
+                    <option value="ko">Korean</option>
+                    <option value="zh">Chinese</option>
+                  </select>
+                  <span className="helper">
+                    Select the language for voice generation
+                  </span>
+                </div>
+              </div>
+            </div>
+
             {audioUrl && (
               <div className="inline-preview">
                 <div className="inline-preview-title">Preview playback</div>
@@ -1245,7 +1389,7 @@ function App() {
               />
               <span>
                 I certify that I own the rights to this audio and voice. I
-                understand that Slotify will generate sponsor audio using
+                understand that <SlotifyLogo size="sm" variant="light" /> will generate sponsor audio using
                 voice cloning technology, and I confirm that no unauthorized
                 voice impersonation is involved.
               </span>
