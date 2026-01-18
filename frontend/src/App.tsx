@@ -672,7 +672,7 @@ function App() {
   return (
     <div className={`app page-${activePage}`}>
       <header className="topbar">
-        <div className="logo">Sl|lotify</div>
+        <a href='/' className="logo">Sl|lotify</a>
         <div className="nav-steps">
           {timelineSteps.map((step) => (
             <button
@@ -710,7 +710,7 @@ function App() {
               <span className="hero-dot" />
               AI-Powered Audio Insertion
             </div>
-            <h1 className="hero-title">Sl|lotify</h1>
+            <a className="hero-title">Sl|lotify</a>
             <p className="hero-subtitle">
               Seamless sponsor insertion for audio.
             </p>

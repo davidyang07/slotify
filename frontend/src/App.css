@@ -123,6 +123,10 @@
   padding-top: 3rem;
 }
 
+a {
+  text-decoration: none;
+}
+
 .landing-hero {
   width: min(820px, 100%);
   text-align: center;
