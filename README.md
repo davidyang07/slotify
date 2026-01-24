@@ -1,6 +1,8 @@
-# Seamless Sponsor Insertion - UofTHacks 13
+# Semantic- and Signal-Aware Audio Ad Insertion Engine
 
-Pipeline: Upload an audio file with speech → AI recommends the best insertion point(s) → ElevenLabs generates a human-like ad read → the system stitches it in smoothly and exports the final audio.
+UofTHacks 13 Winner - MLH Best Use of ElevenLabs.
+
+Pipeline: Upload a product name and audio file with speech → ElevenLabs clones voice(s) and generates a human-like ad read → Call OpenAI API to generate ad text → the system finds the optimal insertion point based on syntactic + semantic context, stitching the ad into the final audio.
 
 Demo: https://www.youtube.com/watch?v=S4m1lpipni0
 
@@ -15,8 +17,27 @@ Demo: https://www.youtube.com/watch?v=S4m1lpipni0
 - Frontend: React + TypeScript + Vite
 - Backend API: Node.js + Express
 - Audio pipeline: Python (pydub, librosa, pyloudnorm)
-- AI services: OpenAI (placement + copy), ElevenLabs (TTS/voice cloning)
+- AI services: OpenAI (ad generation + placement), ElevenLabs (TTS/voice cloning)
 - Media tools: ffmpeg/ffprobe
+
+## Project structure
+```text
+.
+├── README.md
+├── backend/              # Node API + Python ad_inserter pipeline
+│   ├── ad_inserter/
+│   ├── audio_tests/
+│   ├── index.mjs
+│   ├── package.json
+│   └── requirements.txt
+├── frontend/             # React UI
+│   ├── src/
+│   ├── index.html
+│   ├── package.json
+│   └── vite.config.ts
+├── docs/
+└── venv/
+```
 
 ## Local deployment
 ### Prereqs
@@ -56,9 +77,6 @@ The UI runs on `http://localhost:5173` and calls the backend.
 ---
 
 ## Ad Inserter backend module
-This module generates and inserts a product promotion into a main audio track (podcast or rhythmic song). An LLM generates the 1-sentence promo text and choose the best insertion point based on semantic + syntactic context.
-
-### What each file in `backend/ad_inserter/` does
 - `__init__.py` exposes the package modules (analysis, llm, mix) and version
 - `analysis.py` handles audio analysis: ffmpeg check, loading/standardizing audio, silence-based candidate detection for podcasts, beat/RMS analysis for songs, optional Whisper transcription, and building candidate payloads
 - `analyze_cli.py` exposes a CLI helper that runs analysis and returns JSON for the Node API
@@ -67,6 +85,15 @@ This module generates and inserts a product promotion into a main audio track (p
 - `llm.py` builds the prompt and calls OpenAI to generate promo text and choose insertion index; parses JSON response into `LLMResult`
 - `mix.py` does audio mixing utilities: LUFS measurement, loudness matching, looping room tone, ducking, crossfade insertion, and context window extraction
 - `tts.py` builds sponsor reads with ElevenLabs (single or multi-statement blocks)
+
+### How is insertion point chosen?
+Semantic context:
+- Uses Whisper locally (if installed) to transcribe short context windows around candidate insertion points before evaluating topic transitions and sentence boundaries
+- If Whisper is not available, fall back to silence-based insertion
+
+Rhythmic/syntactic context:
+- Uses librosa to estimate tempo and beat times
+- Finds low-energy (RMS) valleys, snaps to the nearest beat, and inserts the promo there
 
 ### Install
 ```bash
@@ -82,7 +109,7 @@ Optional: install Whisper locally for transcripts:
 pip install openai-whisper
 ```
 
-### Usage
+### Test without deploying full app
 Run from the `backend/` directory so `python -m ad_inserter.cli` can find the package.
 
 Podcast example:
@@ -154,16 +181,6 @@ curl -X POST http://localhost:3001/ad/insert \
   -F "adMode=DUO" \
   --output out.mp3
 ```
-
-## How it works
-Semantic context:
-- Uses Whisper locally (if installed) to transcribe short context windows around candidate insertion points
-- The LLM selects the best insertion point based on topic transitions and sentence boundaries, and writes a 1-sentence promo matching the tone
-- If Whisper is not available, it falls back to silence-based insertion
-
-Rhythmic/syntactic context:
-- Uses librosa to estimate tempo and beat times
-- Finds low-energy (RMS) valleys, snaps to the nearest beat, and inserts the promo there
 
 ## LLM configuration
 - `--llm-provider openai` (default `openai`)
