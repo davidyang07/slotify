@@ -4,7 +4,7 @@ UofTHacks 13 Winner - MLH Best Use of ElevenLabs.
 
 Pipeline: Upload a product name and audio file with speech → ElevenLabs clones voice(s) and generates a human-like ad read → Call OpenAI API to generate ad text → the system finds the optimal insertion point based on syntactic + semantic context, stitching the ad into the final audio.
 
-Demo: https://www.youtube.com/watch?v=S4m1lpipni0
+[Video Demo](https://www.youtube.com/watch?v=S4m1lpipni0)
 
 ## Core features
 - User input for podcast audio and product name - product details are optional
@@ -14,7 +14,7 @@ Demo: https://www.youtube.com/watch?v=S4m1lpipni0
 - Export monetized episodes with loudness matching + crossfades
 
 ## Tech stack
-- Frontend: React + TypeScript + Vite
+- Frontend: React + TypeScript + Vite, plain CSS with CSS custom properties (Syne + DM Mono + DM Sans fonts)
 - Backend API: Node.js + Express
 - Audio pipeline: Python (pydub, librosa, pyloudnorm)
 - AI services: OpenAI (ad generation + placement), ElevenLabs (TTS/voice cloning)
@@ -95,21 +95,8 @@ Rhythmic/syntactic context:
 - Uses librosa to estimate tempo and beat times
 - Finds low-energy (RMS) valleys, snaps to the nearest beat, and inserts the promo there
 
-### Install
-```bash
-pip install -r backend/requirements.txt
-```
-
-Install ffmpeg (required by pydub):
-- macOS: `brew install ffmpeg`
-- Ubuntu: `sudo apt-get install ffmpeg`
-
-Optional: install Whisper locally for transcripts:
-```bash
-pip install openai-whisper
-```
-
 ### Test without deploying full app
+
 Run from the `backend/` directory so `python -m ad_inserter.cli` can find the package.
 
 Podcast example:

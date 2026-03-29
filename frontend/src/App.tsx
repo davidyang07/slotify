@@ -1,4 +1,4 @@
-import type { DragEvent } from "react";
+import type { CSSProperties, DragEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import LandingHero from "./components/LandingHero";
@@ -40,6 +40,16 @@ type Sponsor = {
   name: string;
   script: string;
 };
+
+// Pre-computed waveform bar heights using additive sine waves for natural shape
+const WAVEFORM_BARS = Array.from({ length: 52 }, (_, i) => {
+  const h =
+    Math.abs(Math.sin(i / 5.2) * 28) +
+    Math.abs(Math.sin(i / 2.1 + 1.3) * 18) +
+    Math.abs(Math.sin(i / 8.7 + 0.5) * 16) +
+    8;
+  return Math.floor(Math.min(80, h));
+});
 
 const slotNotes = [
   [
@@ -131,6 +141,70 @@ function UploadDropzone({
   );
 }
 
+type FileInfoPanelProps = {
+  file: File;
+  duration: number | null;
+  open: boolean;
+  onToggle: () => void;
+};
+
+function FileInfoPanel({ file, duration, open, onToggle }: FileInfoPanelProps) {
+  const fmtBytes = (b: number) =>
+    b < 1024 * 1024 ? `${(b / 1024).toFixed(0)} KB` : `${(b / (1024 * 1024)).toFixed(1)} MB`;
+  const fmtDur = (s: number) =>
+    `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const ext = (file.name.split(".").pop() ?? "audio").toUpperCase();
+
+  return (
+    <div className={`file-info-panel${open ? " open" : ""}`}>
+      <button type="button" className="file-info-header" onClick={onToggle}>
+        <span className="file-info-name">
+          <span className="file-info-led" />
+          {file.name}
+        </span>
+        <span className="file-info-arrow" aria-hidden="true">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path
+              d={open ? "M2 8L6 4L10 8" : "M2 4L6 8L10 4"}
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      </button>
+      <div className="file-info-body">
+        <div className="file-info-grid">
+          <div className="file-info-item">
+            <span className="file-info-key">Format</span>
+            <span className="file-info-val">
+              <span className="file-info-tag">{ext}</span>
+            </span>
+          </div>
+          <div className="file-info-item">
+            <span className="file-info-key">Size</span>
+            <span className="file-info-val">{fmtBytes(file.size)}</span>
+          </div>
+          <div className="file-info-item">
+            <span className="file-info-key">Duration</span>
+            <span className="file-info-val file-info-mono">
+              {duration != null ? fmtDur(duration) : "—"}
+            </span>
+          </div>
+          <div className="file-info-item">
+            <span className="file-info-key">Status</span>
+            <span className="file-info-val file-info-ready">
+              <span className="file-info-led file-info-led-pulse" />
+              Ready
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const apiBase =
     import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
@@ -174,6 +248,7 @@ function App() {
   const [newSlotTime, setNewSlotTime] = useState("");
   const [newSlotMinutes, setNewSlotMinutes] = useState("0");
   const [newSlotSeconds, setNewSlotSeconds] = useState("0");
+  const [showFileInfo, setShowFileInfo] = useState(true);
 
   const baseAudioName = useMemo(
     () => baseAudio?.name ?? "No file selected.",
@@ -837,10 +912,19 @@ function App() {
                 helper={`or click to browse • ${baseAudioName}`}
                 accept="audio/*"
                 hasFile={Boolean(baseAudio)}
-                onFiles={(nextFiles) =>
-                  setBaseAudio(nextFiles?.[0] ?? null)
-                }
+                onFiles={(nextFiles) => {
+                  setBaseAudio(nextFiles?.[0] ?? null);
+                  setShowFileInfo(true);
+                }}
               />
+              {baseAudio && (
+                <FileInfoPanel
+                  file={baseAudio}
+                  duration={audioDuration}
+                  open={showFileInfo}
+                  onToggle={() => setShowFileInfo((p) => !p)}
+                />
+              )}
               {baseAudioUrl && (
                 <div className="inline-preview">
                   <div className="inline-preview-title">Original audio</div>
@@ -1359,6 +1443,41 @@ function App() {
           {status && <p className="status-ok">{status}</p>}
           {error && <p className="status-error">{error}</p>}
         </section>
+      )}
+
+      {(isCloningVoice || isAnalyzing) && (
+        <div className="processing-screen" aria-live="polite" aria-label="Processing audio">
+          <div className="processing-waveform">
+            {WAVEFORM_BARS.map((h, i) => (
+              <div
+                key={i}
+                className="processing-bar"
+                style={
+                  {
+                    "--peak-h": `${h}px`,
+                    animationDelay: `${(i * 0.038) % 0.95}s`,
+                    animationDuration: `${0.55 + (i % 7) * 0.06}s`,
+                  } as CSSProperties
+                }
+              />
+            ))}
+          </div>
+          <div className="processing-text">
+            <p className="processing-status">
+              {isCloningVoice ? "Cloning voice signature" : "Finding insertion points"}
+            </p>
+            <p className="processing-substatus">
+              {isCloningVoice
+                ? "Analyzing vocal characteristics from your audio"
+                : "Scanning the timeline for optimal placement windows"}
+            </p>
+            <div className="processing-dots">
+              <div className="processing-dot" />
+              <div className="processing-dot" />
+              <div className="processing-dot" />
+            </div>
+          </div>
+        </div>
       )}
 
       {showRightsModal && (
