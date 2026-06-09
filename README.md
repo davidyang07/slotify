@@ -15,7 +15,7 @@ Pipeline: Upload a product name and audio file with speech → ElevenLabs clones
 
 ## Tech stack
 - Frontend: React + TypeScript + Vite, plain CSS with CSS custom properties (Syne + DM Mono + DM Sans fonts)
-- Backend API: Node.js + Express
+- Backend API: Node.js + Express + TypeScript (run with `tsx`)
 - Audio pipeline: Python (pydub, librosa, pyloudnorm)
 - AI services: OpenAI (ad generation + placement), ElevenLabs (TTS/voice cloning)
 - Media tools: ffmpeg/ffprobe
@@ -24,11 +24,13 @@ Pipeline: Upload a product name and audio file with speech → ElevenLabs clones
 ```text
 .
 ├── README.md
-├── backend/              # Node API + Python ad_inserter pipeline
+├── backend/              # Node API (TypeScript) + Python ad_inserter pipeline
+│   ├── src/              # Express API: config, routes/, services/, lib/, middleware/
+│   ├── scripts/          # standalone CLI/test scripts (tsx)
 │   ├── ad_inserter/
 │   ├── audio_tests/
-│   ├── index.mjs
 │   ├── package.json
+│   ├── tsconfig.json
 │   └── requirements.txt
 ├── frontend/             # React UI
 │   ├── src/

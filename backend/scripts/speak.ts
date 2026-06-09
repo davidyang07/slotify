@@ -1,3 +1,10 @@
+/**
+ * CLI helper: synthesize speech for a voice clone and play it locally.
+ *
+ * Usage:
+ *   npx tsx scripts/speak.ts <voiceId>
+ */
+
 import { play } from "@elevenlabs/elevenlabs-js";
 import { Readable } from "node:stream";
 import "dotenv/config";
@@ -20,12 +27,12 @@ const response = await fetch(`${apiBase}/api/clone`, {
     text,
     modelId: "eleven_multilingual_v2",
     outputFormat: "mp3_44100_128",
-     voiceSettings: {
-          stability: 0,
-          similarityBoost: 0,
-          useSpeakerBoost: true,
-          speed: 0.7,
-        },
+    voiceSettings: {
+      stability: 0,
+      similarityBoost: 0,
+      useSpeakerBoost: true,
+      speed: 0.7,
+    },
   }),
 });
 
@@ -38,6 +45,5 @@ if (!response.body) {
   throw new Error("No audio stream returned.");
 }
 
-const stream = Readable.fromWeb(response.body);
+const stream = Readable.fromWeb(response.body as any);
 await play(stream);
-

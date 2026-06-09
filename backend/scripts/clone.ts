@@ -1,3 +1,10 @@
+/**
+ * CLI helper: upload one or more audio samples to create a voice clone.
+ *
+ * Usage:
+ *   npx tsx scripts/clone.ts path/to/sample1.wav [path/to/sample2.wav ...]
+ */
+
 import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
@@ -29,5 +36,5 @@ if (!response.ok) {
   throw new Error(`Clone failed: ${response.status} ${text}`);
 }
 
-const data = await response.json();
+const data = (await response.json()) as any;
 console.log(data.voiceId);
