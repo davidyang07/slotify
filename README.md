@@ -2,7 +2,7 @@
 
 UofTHacks 13 Winner - MLH Best Use of ElevenLabs.
 
-Pipeline: Upload a product name and audio file with speech → ElevenLabs clones voice(s) and generates a human-like ad read → Call OpenAI API to generate ad text → the system finds the optimal insertion point based on syntactic + semantic context, stitching the ad into the final audio.
+Pipeline: Upload a product name and audio file with speech → Call OpenAI API to generate ad text → ElevenLabs clones voice(s) and generates a human-like ad read → the system finds the optimal insertion point based on syntactic + semantic context, stitching the ad into the final audio.
 
 [Video Demo](https://www.youtube.com/watch?v=S4m1lpipni0)
 
@@ -15,7 +15,7 @@ Pipeline: Upload a product name and audio file with speech → ElevenLabs clones
 
 ## Tech stack
 - Frontend: React + TypeScript + Vite, plain CSS with CSS custom properties (Syne + DM Mono + DM Sans fonts)
-- Backend API: Node.js + Express
+- Backend API: Node.js + Express + TypeScript (run with `tsx`)
 - Audio pipeline: Python (pydub, librosa, pyloudnorm)
 - AI services: OpenAI (ad generation + placement), ElevenLabs (TTS/voice cloning)
 - Media tools: ffmpeg/ffprobe
@@ -24,19 +24,20 @@ Pipeline: Upload a product name and audio file with speech → ElevenLabs clones
 ```text
 .
 ├── README.md
-├── backend/              # Node API + Python ad_inserter pipeline
+├── backend/              # Node API (TypeScript) + Python ad_inserter pipeline
+│   ├── src/              # Express API: config, routes/, services/, lib/, middleware/
+│   ├── scripts/          # standalone CLI/test scripts (tsx)
 │   ├── ad_inserter/
 │   ├── audio_tests/
-│   ├── index.mjs
 │   ├── package.json
+│   ├── tsconfig.json
 │   └── requirements.txt
 ├── frontend/             # React UI
 │   ├── src/
 │   ├── index.html
 │   ├── package.json
 │   └── vite.config.ts
-├── docs/
-└── venv/
+└── docs/
 ```
 
 ## Local deployment
@@ -77,7 +78,7 @@ The UI runs on `http://localhost:5173` and calls the backend.
 ---
 
 ## Ad Inserter backend module
-- `__init__.py` exposes the package modules (analysis, llm, mix) and version
+- `__init__.py` exposes the package modules (analysis, llm, mix, tts, insert_ad) and version
 - `analysis.py` handles audio analysis: ffmpeg check, loading/standardizing audio, silence-based candidate detection for podcasts, beat/RMS analysis for songs, optional Whisper transcription, and building candidate payloads
 - `analyze_cli.py` exposes a CLI helper that runs analysis and returns JSON for the Node API
 - `cli.py` provides the single-speaker CLI workflow: parse args, pick candidates, call LLM to write promo/choose insertion, loudness match + room tone + crossfade, and export output (plus debug artifacts)
@@ -103,7 +104,7 @@ Podcast example:
 ```bash
 python -m ad_inserter.cli \
   --main path/to/main.mp3 \
-  --promo-audio path/to/promo.wav \
+  --voice-id <elevenlabs-voice-id> \
   --product-name "Sparrow Notes" \
   --product-desc "A calmer note-taking app for busy teams" \
   --product-url "https://sparrow.example" \
@@ -116,7 +117,7 @@ Song example:
 ```bash
 python -m ad_inserter.cli \
   --main path/to/song.mp3 \
-  --promo-audio path/to/promo.mp3 \
+  --voice-id <elevenlabs-voice-id> \
   --product-name "Pulse Water" \
   --product-desc "Electrolytes without the sugar crash" \
   --mode song \

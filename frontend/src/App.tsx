@@ -2,8 +2,8 @@ import type { CSSProperties, DragEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import LandingHero from "./components/LandingHero";
-import SlotifyLogo from "./SlotifyLogo";
-import SoundwaveIcon from "./SoundwaveIcon";
+import SlotifyLogo from "./components/SlotifyLogo";
+import SoundwaveIcon from "./components/SoundwaveIcon";
 
 const timelineSteps = [
   { id: "upload", label: "Upload" },

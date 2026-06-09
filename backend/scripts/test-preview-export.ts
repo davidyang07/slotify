@@ -8,16 +8,13 @@
  * - No main audio restart (duration sanity checks)
  *
  * Usage:
- *   node test_preview_export.js
+ *   npx tsx scripts/test-preview-export.ts
  */
 
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import os from "node:os";
-import { fileURLToPath } from "node:url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const MAIN_DURATION = 10;
 const STATEMENT_ONE = 1.2;
@@ -26,19 +23,22 @@ const PAUSE_SECONDS = 0.15;
 const INSERT_TIME = 5;
 const PREVIEW_WINDOW = 3;
 
-async function runCommand(command, args) {
+async function runCommand(
+  command: string,
+  args: string[],
+): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const process = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
-    process.stdout.on("data", (chunk) => {
+    child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
     });
-    process.stderr.on("data", (chunk) => {
+    child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
-    process.on("error", reject);
-    process.on("close", (code) => {
+    child.on("error", reject);
+    child.on("close", (code) => {
       if (code === 0) {
         resolve({ stdout, stderr });
       } else {
@@ -48,7 +48,7 @@ async function runCommand(command, args) {
   });
 }
 
-async function getDuration(filePath) {
+async function getDuration(filePath: string): Promise<number | null> {
   const { stdout } = await runCommand("ffprobe", [
     "-v",
     "error",
@@ -62,7 +62,11 @@ async function getDuration(filePath) {
   return Number.isFinite(duration) ? duration : null;
 }
 
-async function createTone(outputPath, duration, frequency) {
+async function createTone(
+  outputPath: string,
+  duration: number,
+  frequency: number,
+): Promise<void> {
   await runCommand("ffmpeg", [
     "-y",
     "-f",
@@ -77,7 +81,7 @@ async function createTone(outputPath, duration, frequency) {
   ]);
 }
 
-async function runTest() {
+async function runTest(): Promise<void> {
   const tempDir = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "preview-export-test-"),
   );
@@ -198,7 +202,9 @@ async function runTest() {
   console.log("Expected export:", expectedExport.toFixed(3));
 
   const previewDiff =
-    previewDuration !== null ? Math.abs(previewDuration - expectedPreview) : null;
+    previewDuration !== null
+      ? Math.abs(previewDuration - expectedPreview)
+      : null;
   const exportDiff =
     exportDuration !== null ? Math.abs(exportDuration - expectedExport) : null;
 
@@ -217,6 +223,6 @@ async function runTest() {
 }
 
 runTest().catch((error) => {
-  console.error("Test failed:", error.message);
+  console.error("Test failed:", error instanceof Error ? error.message : error);
   process.exit(1);
 });
