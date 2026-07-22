@@ -97,6 +97,26 @@ FEATURE_PIPELINE_VERSION = "featurepipeline-v1.0.0"
 FEATURE_MANIFEST_SCHEMA_VERSION = "feature-record-schema-v1.0.0"
 EMBEDDING_STORE_VERSION = "embedding-store-v1.0.0"
 
+# Phase 4 (PyTorch ranking dataset, models and training).
+#: Shape of an assembled training example plus the eligibility rules that decide
+#: which candidates become one. Bumping it invalidates a prepared dataset
+#: artifact; it is recorded in every checkpoint so a model can never be resumed
+#: against examples built under different rules.
+TRAINING_DATASET_VERSION = "training-dataset-v1.0.0"
+#: Fitted scalar-normalization artifact: the statistics *and* the fitting rules
+#: (train-split-only, epsilon floor, constant-feature handling).
+NORMALIZER_VERSION = "normalizer-v1.0.0"
+#: Model input contract: the modality construction (which stored vectors are
+#: concatenated, in what order) plus the shared ranker interface. A checkpoint
+#: whose input schema version differs cannot be loaded, because its weights are
+#: aligned to a different column layout.
+MODEL_INPUT_SCHEMA_VERSION = "model-input-schema-v1.0.0"
+#: Shape of a saved checkpoint payload (:mod:`slotify_rank.training.checkpoint`).
+CHECKPOINT_SCHEMA_VERSION = "checkpoint-schema-v1.0.0"
+#: Deterministic within-episode pair construction
+#: (:mod:`slotify_rank.ranking.pairs`).
+PAIR_GENERATION_VERSION = "pairgen-v1.0.0"
+
 #: Schema versions this build is able to read. Anything else is a hard failure
 #: rather than a best-effort parse, because a silently mis-read manifest would
 #: corrupt every number downstream of it.
@@ -110,6 +130,7 @@ SUPPORTED_FEATURE_MANIFEST_SCHEMA_VERSIONS = frozenset(
     {FEATURE_MANIFEST_SCHEMA_VERSION}
 )
 SUPPORTED_EMBEDDING_STORE_VERSIONS = frozenset({EMBEDDING_STORE_VERSION})
+SUPPORTED_CHECKPOINT_SCHEMA_VERSIONS = frozenset({CHECKPOINT_SCHEMA_VERSION})
 
 __all__ = [
     "PACKAGE_VERSION",
@@ -126,6 +147,12 @@ __all__ = [
     "FEATURE_PIPELINE_VERSION",
     "FEATURE_MANIFEST_SCHEMA_VERSION",
     "EMBEDDING_STORE_VERSION",
+    "TRAINING_DATASET_VERSION",
+    "NORMALIZER_VERSION",
+    "MODEL_INPUT_SCHEMA_VERSION",
+    "CHECKPOINT_SCHEMA_VERSION",
+    "PAIR_GENERATION_VERSION",
+    "SUPPORTED_CHECKPOINT_SCHEMA_VERSIONS",
     "SUPPORTED_EPISODE_SCHEMA_VERSIONS",
     "SUPPORTED_DATASET_CANDIDATE_SCHEMA_VERSIONS",
     "SUPPORTED_SOURCE_MANIFEST_VERSIONS",
