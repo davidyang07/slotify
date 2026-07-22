@@ -41,8 +41,31 @@ rules are:
     The 1-5 naturalness rubric in ``docs/labelling-guide.md``. Stored on every
     label so labels collected under different rubrics are never pooled.
 
+``TRANSCRIPTION_VERSION``
+    Shape of a stored transcript artifact plus the segment-derivation rules in
+    :mod:`slotify_rank.transcription.segments`. The *model* is not part of this
+    constant -- it is part of each transcript's cache identity -- so switching
+    from ``whisper-tiny.en`` to a larger model invalidates the affected
+    transcripts without invalidating the format.
+
 ``FEATURE_SPEC_VERSION``
-    Reserved for Phase 3 (learned features / embeddings).
+    The handcrafted feature *vocabulary*: which named scalar features exist and
+    in what canonical order. Bump on any addition, removal or redefinition; a
+    stored feature matrix whose spec version differs is unreadable rather than
+    silently mis-columned.
+
+``FEATURE_PIPELINE_VERSION``
+    End-to-end behaviour of the Phase 3 pipeline: window construction, pooling,
+    context selection, assembly. Participates in every cache identity, so
+    bumping it invalidates all derived artifacts.
+
+``FEATURE_MANIFEST_SCHEMA_VERSION``
+    Shape of a candidate feature record
+    (:mod:`slotify_rank.features.schema`).
+
+``EMBEDDING_STORE_VERSION``
+    On-disk layout of a ``.npy`` array plus its JSON sidecar
+    (:mod:`slotify_rank.embeddings.store`).
 
 The heuristic configuration version is **not** listed here: it is owned by
 ``config/heuristic_offline_v1.json`` and read at load time, so the constants and
@@ -63,8 +86,12 @@ CANDIDATE_GENERATION_VERSION = "candgen-v1.0.0"
 SPLIT_ALGORITHM_VERSION = "split-grouped-greedy-v1.0.0"
 LABEL_RUBRIC_VERSION = "rubric-v1.0.0"
 
-# Reserved; populated when the corresponding phase lands.
-FEATURE_SPEC_VERSION = "unset-phase3"
+# Phase 3 (multimodal features and embeddings).
+TRANSCRIPTION_VERSION = "transcript-v1.0.0"
+FEATURE_SPEC_VERSION = "featurespec-v1.0.0"
+FEATURE_PIPELINE_VERSION = "featurepipeline-v1.0.0"
+FEATURE_MANIFEST_SCHEMA_VERSION = "feature-record-schema-v1.0.0"
+EMBEDDING_STORE_VERSION = "embedding-store-v1.0.0"
 
 #: Schema versions this build is able to read. Anything else is a hard failure
 #: rather than a best-effort parse, because a silently mis-read manifest would
@@ -74,6 +101,11 @@ SUPPORTED_DATASET_CANDIDATE_SCHEMA_VERSIONS = frozenset(
     {DATASET_CANDIDATE_SCHEMA_VERSION}
 )
 SUPPORTED_SOURCE_MANIFEST_VERSIONS = frozenset({SOURCE_MANIFEST_VERSION})
+SUPPORTED_TRANSCRIPTION_VERSIONS = frozenset({TRANSCRIPTION_VERSION})
+SUPPORTED_FEATURE_MANIFEST_SCHEMA_VERSIONS = frozenset(
+    {FEATURE_MANIFEST_SCHEMA_VERSION}
+)
+SUPPORTED_EMBEDDING_STORE_VERSIONS = frozenset({EMBEDDING_STORE_VERSION})
 
 __all__ = [
     "PACKAGE_VERSION",
@@ -85,8 +117,15 @@ __all__ = [
     "CANDIDATE_GENERATION_VERSION",
     "SPLIT_ALGORITHM_VERSION",
     "LABEL_RUBRIC_VERSION",
+    "TRANSCRIPTION_VERSION",
     "FEATURE_SPEC_VERSION",
+    "FEATURE_PIPELINE_VERSION",
+    "FEATURE_MANIFEST_SCHEMA_VERSION",
+    "EMBEDDING_STORE_VERSION",
     "SUPPORTED_EPISODE_SCHEMA_VERSIONS",
     "SUPPORTED_DATASET_CANDIDATE_SCHEMA_VERSIONS",
     "SUPPORTED_SOURCE_MANIFEST_VERSIONS",
+    "SUPPORTED_TRANSCRIPTION_VERSIONS",
+    "SUPPORTED_FEATURE_MANIFEST_SCHEMA_VERSIONS",
+    "SUPPORTED_EMBEDDING_STORE_VERSIONS",
 ]

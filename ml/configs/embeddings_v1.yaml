@@ -1,0 +1,52 @@
+# Frozen speech and text representations. Neither model is fine-tuned.
+#
+# DIMENSIONS -- stated explicitly because they are easy to misreport:
+#   whisper-tiny.en encoder hidden size : 384   (NOT 768; that is whisper-base)
+#   all-MiniLM-L6-v2 native output      : 384
+#   constructed transcript vector       : 1536  = 384 x 4 blocks
+#
+# 1536 is arithmetic, not a model property. The four blocks are
+# [before | after | |before - after| | before * after].
+#
+# No projection to 128 dimensions happens here. Projection is a learned layer
+# and belongs inside the future PyTorch ranker, where it can be trained.
+
+embedding_version: embeddings_v1
+
+embeddings:
+  audio:
+    model_id: openai/whisper-tiny.en
+    model_revision: main
+    device: auto
+    dtype: float32
+
+    # Fixed at 30 s and validated as such. The encoder's receptive field is
+    # 30 s and it emits a constant frame count for that window regardless of
+    # how much real audio it holds, so any other value would mean pooling over
+    # padding frames without knowing it.
+    chunk_ms: 30000
+    overlap_ms: 5000
+    batch_size: 1
+
+    # Mean is the only pooling that is defined for a one-frame window and
+    # unaffected by how many frames a window happens to contain.
+    pooling: mean
+
+    # Store (after - before) as a fourth vector. Exactly derivable from the
+    # other two and therefore redundant for a model that sees both, but cheap
+    # and it makes the discontinuity directly visible to linear probes.
+    include_difference: true
+
+  text:
+    model_id: sentence-transformers/all-MiniLM-L6-v2
+    model_revision: main
+    device: auto
+    dtype: float32
+
+    # Text encoding is cheap and batches well, unlike the audio encoder.
+    batch_size: 32
+    max_seq_length: 256
+
+    # MiniLM is trained for cosine similarity on normalized vectors, and the
+    # cosine-similarity scalar feature assumes normalized input.
+    normalize_embeddings: true

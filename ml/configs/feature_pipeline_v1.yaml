@@ -1,0 +1,25 @@
+# Orchestration policy for `pipeline features`.
+#
+# Nothing here is part of any cache identity. These settings change how long the
+# work takes, not what it produces -- folding a worker count into a cache key
+# would invalidate an entire corpus because someone passed --workers 2.
+
+pipeline:
+  # 1 by default. The heavy stages are already internally parallel through
+  # BLAS/torch threading, and running several torch processes on a 4-core laptop
+  # makes everything slower while multiplying peak memory.
+  workers: 1
+
+  # Retries per episode within a run, for transient failures (a file briefly
+  # locked by OneDrive sync). A genuinely broken episode fails, is recorded, and
+  # is skipped until `--retry-failed`.
+  max_retries: 1
+
+  # Free each model before the next stage loads its own. On a laptop, Whisper
+  # and MiniLM resident at the same time is the difference between fitting in
+  # RAM and swapping.
+  release_models_between_stages: true
+
+  # Keep going past a failed episode by default and report it at the end. One
+  # unreadable file should not abandon a corpus that took hours to reach.
+  fail_fast: false

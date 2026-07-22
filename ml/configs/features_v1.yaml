@@ -1,0 +1,50 @@
+# Handcrafted candidate features: windows, acoustics, transcript context.
+#
+# These produce RAW values in physical units. No train-set normalization is
+# fitted here -- doing so would leak validation and test statistics into the
+# features themselves. Standardization belongs in the training pipeline,
+# computed on the train split alone.
+#
+# Every value here is part of the feature cache identity.
+
+feature_version: features_v1
+
+features:
+  # A breakpoint is a multi-scale phenomenon, so every acoustic descriptor is
+  # extracted at all three scales:
+  #   short   -- the pause itself
+  #   medium  -- the phrase either side of it
+  #   context -- whether the topic actually changed
+  windows:
+    short_ms: 1000
+    medium_ms: 3000
+    context_ms: 10000
+
+  acoustic:
+    # 25 ms / 10 ms is the standard speech-analysis framing and matches
+    # Whisper's own 10 ms hop, so handcrafted features and encoder frames share
+    # a time base.
+    frame_ms: 25
+    hop_ms: 10
+    n_fft: 512
+
+    # Frames quieter than (episode median + this) count as non-speech. Relative
+    # to the episode's own median so a quietly mastered recording is not
+    # classified as entirely silent.
+    speech_threshold_db: -35.0
+
+    # 6 bands is the most that keeps every spectral-contrast band edge below
+    # Nyquist at 16 kHz.
+    n_spectral_contrast_bands: 6
+    roll_off_percent: 0.85
+
+  transcript_context:
+    max_chars_before: 600
+    max_chars_after: 600
+    max_segments_before: 4
+    max_segments_after: 4
+
+    # A candidate sitting in a 90-second musical interlude has no "sentence
+    # before" in any useful sense. Beyond this gap the context is treated as
+    # absent and masked, rather than pulled in and labelled adjacent.
+    max_gap_ms: 15000

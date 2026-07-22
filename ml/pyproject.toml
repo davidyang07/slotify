@@ -13,7 +13,8 @@ license = { text = "MIT" }
 # Deliberately dependency-light: the baseline, the metrics and the whole dataset
 # pipeline must run with no network access, no model downloads and no paid APIs.
 # Audio decoding reuses the FFmpeg binaries the product already requires rather
-# than adding a decoding library. PyTorch and transformers arrive in Phase 3+.
+# than adding a decoding library. The learned-feature stack (PyTorch,
+# transformers, sentence-transformers, librosa) is the `features` extra below.
 dependencies = [
     "pyyaml>=6.0.1",
     # Millisecond energy envelopes over hours of audio; pure Python cannot do
@@ -33,6 +34,29 @@ dev = [
 label = [
     "fastapi>=0.110",
     "uvicorn>=0.27",
+]
+# Phase 3: local transcription, frozen speech representations and frozen
+# transcript embeddings. Optional and deliberately heavy -- installing it pulls
+# roughly 1 GB of wheels -- so Phase 1 parity checks and the Phase 2 dataset
+# pipeline keep installing in seconds without it.
+#
+# CPU-only by design. On Windows the default PyPI `torch` wheel *is* the CPU
+# build, so no alternate index is configured; the code auto-detects CUDA and
+# falls back to CPU when it is absent (see slotify_rank.embeddings.device).
+features = [
+    "torch>=2.2,<3.0",
+    "transformers>=4.40,<5.0",
+    "sentence-transformers>=2.7,<6.0",
+    # Spectral/onset descriptors. Reimplementing STFT-based centroid, bandwidth,
+    # roll-off, contrast and onset strength by hand would be a large, subtly
+    # wrong dependency of our own.
+    "librosa>=0.10,<0.12",
+    # librosa pulls numba transitively, and the resolver will happily backtrack
+    # to numba 0.53 (Python <3.10 only) to satisfy other pins. 0.60 is the first
+    # release with real 3.12 support; without this floor the install fails.
+    "numba>=0.60",
+    "soundfile>=0.12",
+    "scipy>=1.11",
 ]
 
 [project.scripts]

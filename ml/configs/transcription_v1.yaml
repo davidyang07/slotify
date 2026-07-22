@@ -1,0 +1,52 @@
+# Local timestamped transcription. No paid API, no key, CPU-first.
+#
+# The only network access this implies is the one-time model download into the
+# Hugging Face cache (~150 MB for tiny.en). After that the stage is offline.
+#
+# Every value here is part of the transcript cache identity: change one and the
+# affected transcripts are recomputed rather than silently reused.
+
+transcription:
+  # whisper-tiny.en: English-only, 39M parameters, real-time-ish on CPU.
+  # Larger variants are drop-in (whisper-base.en, whisper-small.en) at roughly
+  # 2x and 6x the runtime; see docs/feature-pipeline.md for measured figures.
+  model_id: openai/whisper-tiny.en
+
+  # "main" means "whatever HuggingFace serves today", which is honest but not
+  # reproducible. Pin a commit SHA before generating a corpus whose transcripts
+  # must be reproducible months from now.
+  model_revision: main
+
+  language: en
+
+  # auto -> CUDA when torch reports a usable device, CPU otherwise. This machine
+  # has Intel Iris Xe integrated graphics and no CUDA, so it resolves to cpu.
+  device: auto
+
+  # float16 has no accelerated CPU kernels and is rejected on CPU rather than
+  # silently emulated.
+  dtype: float32
+
+  # Whisper's receptive field is 30 s. Larger buys nothing (the model pads or
+  # truncates regardless); much smaller costs accuracy through lost context.
+  chunk_ms: 30000
+
+  # ~1 spoken clause. Long enough that a word straddling a chunk boundary is
+  # seen whole by at least one chunk; short enough that the duplicated region
+  # stays a small fraction of the work. Duplicates are resolved by
+  # slotify_rank.transcription.segments.reconcile_overlapping_segments.
+  overlap_ms: 5000
+
+  batch_size: 1
+
+  # tiny.en's word timings are not reliable enough to justify roughly doubling
+  # runtime, and nothing in Phase 3 requires them. The schema stores them when
+  # they are present.
+  word_timestamps: false
+
+  # Greedy, temperature 0. Sampled decoding would make transcripts
+  # non-reproducible, which would make the whole cache-identity scheme
+  # meaningless. A non-zero temperature is rejected at load.
+  num_beams: 1
+  temperature: 0.0
+  max_new_tokens: 440

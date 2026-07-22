@@ -16,6 +16,14 @@ Layout under the (git-ignored) data root::
     data/labels/       labels.sqlite3 and exported JSONL
     data/cache/clips/  context-window clips served by the labelling UI
 
+Phase 3 adds the derived feature artifacts, all git-ignored::
+
+    data/features/handcrafted/  per-episode acoustic + structural scalars
+    data/features/audio/        per-episode Whisper encoder embeddings (.npy)
+    data/features/text/         per-episode MiniLM embeddings (.npy)
+    data/features/state/        per-stage resumability ledgers
+    data/manifests/features.jsonl
+
 ``artifacts/dataset/`` holds the generated statistics, which *are* committed --
 they are the evidence trail for ``docs/resume-claim-matrix.md``.
 """
@@ -126,6 +134,44 @@ class DataPaths:
     def clips_dir(self) -> Path:
         return self.data_root / "cache" / "clips"
 
+    # -- Phase 3 feature artifacts ----------------------------------------
+    @property
+    def features_dir(self) -> Path:
+        return self.data_root / "features"
+
+    @property
+    def handcrafted_dir(self) -> Path:
+        return self.features_dir / "handcrafted"
+
+    @property
+    def audio_embeddings_dir(self) -> Path:
+        return self.features_dir / "audio"
+
+    @property
+    def text_embeddings_dir(self) -> Path:
+        return self.features_dir / "text"
+
+    @property
+    def feature_state_dir(self) -> Path:
+        return self.features_dir / "state"
+
+    @property
+    def features_manifest(self) -> Path:
+        return self.manifests_dir / "features.jsonl"
+
+    def stage_ledger(self, stage: str) -> Path:
+        return self.feature_state_dir / f"{stage}.json"
+
+    @property
+    def feature_artifacts_dir(self) -> Path:
+        """Where the Phase 3 statistics reports are written.
+
+        Sibling of ``artifacts/dataset/`` and derived from the data root for the
+        same reason: a run against a scratch corpus must not overwrite the
+        committed reports that describe the real one.
+        """
+        return self.data_root.parent / "artifacts" / "features"
+
     @property
     def artifacts_dir(self) -> Path:
         # Derived from the data root, not pinned to the repository: statistics
@@ -159,6 +205,11 @@ class DataPaths:
             self.labels_dir,
             self.clips_dir,
             self.artifacts_dir,
+            self.handcrafted_dir,
+            self.audio_embeddings_dir,
+            self.text_embeddings_dir,
+            self.feature_state_dir,
+            self.feature_artifacts_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 
