@@ -270,10 +270,14 @@ def _candidate(**overrides) -> DatasetCandidate:
             window_ms=1_000, mean_dbfs=-40.0, min_dbfs=-60.0, max_dbfs=-20.0
         ),
         raw_component_scores={
-            "silence": 0.8,
-            "position": 0.5,
+            "base": 0.4,
+            "pause": 0.8,
+            "mode": 0.0,
             "sentence": 1.0,
-            "spacing": 0.3,
+            "position": 0.5,
+            "edge": 0.0,
+            "raw_total": 2.7,
+            "clamped": False,
         },
         heuristic_score=0.71,
     )
@@ -308,7 +312,8 @@ def test_absent_heuristic_score_is_masked_not_zeroed():
         _candidate(heuristic_score=None, raw_component_scores={}), 60_000, 5_000
     )
     assert missing["heuristic_total_score"] is True
-    assert missing["heuristic_component_silence"] is True
+    assert missing["heuristic_component_base"] is True
+    assert missing["heuristic_raw_total"] is True
 
 
 def test_unknown_sentence_end_is_masked():

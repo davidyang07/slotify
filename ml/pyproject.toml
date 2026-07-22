@@ -70,8 +70,12 @@ slotify_rank = ["labelling/templates/*.html", "labelling/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# The default run is network-free and downloads no model weights. The
+# model_smoke tests are the deliberate exception and are excluded here; run them
+# explicitly with `-m model_smoke`.
+addopts = "-q -m 'not model_smoke'"
 markers = [
-    "slow: tests that load real model weights (none yet)",
+    "slow: tests that load real model weights",
     "audio: tests that decode the real repository smoke fixtures via FFmpeg",
+    "model_smoke: opt-in tests that download and run the real local models",
 ]

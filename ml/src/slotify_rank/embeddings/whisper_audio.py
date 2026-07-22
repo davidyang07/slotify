@@ -29,6 +29,7 @@ from typing import Any, Sequence
 import numpy as np
 
 from slotify_rank.config.feature_settings import AudioEmbeddingConfig
+from slotify_rank.data.audio_io import samples_duration_ms
 from slotify_rank.embeddings.device import resolve_device, resolve_dtype
 from slotify_rank.embeddings.pooling import (
     FrameGrid,
@@ -125,7 +126,7 @@ class WhisperAudioEncoder:
         if self._model is None or self._extractor is None:
             raise RuntimeError("WhisperAudioEncoder.load() must be called first")
 
-        duration_ms = int(round(audio.size * 1000 / sample_rate))
+        duration_ms = samples_duration_ms(audio.size, sample_rate)
         if duration_ms <= 0:
             raise ValueError(f"{episode_id}: audio has zero duration")
 

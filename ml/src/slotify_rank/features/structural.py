@@ -40,14 +40,20 @@ CANDIDATE_SOURCE_FLAGS: tuple[str, ...] = (
     "fixed_interval",
 )
 
-#: Component scores emitted by the Phase 1 scorer. Named explicitly so a
-#: component appearing or disappearing is a loud failure rather than a silently
-#: shorter feature vector.
+#: Additive components emitted by the Phase 1 scorer, in its accumulation order
+#: (:class:`slotify_rank.candidates.schema.ComponentScores`). Named explicitly
+#: so a component appearing or disappearing is a loud failure rather than a
+#: silently shorter feature vector.
+#:
+#: ``raw_total`` is handled separately below -- it is the pre-clamp sum, not
+#: another additive term, and adding it here would double-count.
 HEURISTIC_COMPONENTS: tuple[str, ...] = (
-    "silence",
-    "position",
+    "base",
+    "pause",
+    "mode",
     "sentence",
-    "spacing",
+    "position",
+    "edge",
 )
 
 
@@ -131,6 +137,25 @@ def extract_structural_features(
         else:
             values[name] = float(raw)
             missing[name] = False
+
+    # The pre-clamp sum and whether the clamp actually bit. A clamped score has
+    # lost information -- two candidates can share a final score while their raw
+    # totals differ -- so both are carried.
+    raw_total = components.get("raw_total")
+    if raw_total is None:
+        values["heuristic_raw_total"] = 0.0
+        missing["heuristic_raw_total"] = True
+    else:
+        values["heuristic_raw_total"] = float(raw_total)
+        missing["heuristic_raw_total"] = False
+
+    clamped = components.get("clamped")
+    if clamped is None:
+        values["heuristic_clamped"] = 0.0
+        missing["heuristic_clamped"] = True
+    else:
+        values["heuristic_clamped"] = 1.0 if clamped else 0.0
+        missing["heuristic_clamped"] = False
 
     if candidate.heuristic_score is None:
         values["heuristic_total_score"] = 0.0

@@ -29,6 +29,7 @@ from typing import Any, Sequence
 import numpy as np
 
 from slotify_rank.config.feature_settings import TranscriptionConfig
+from slotify_rank.data.audio_io import samples_duration_ms
 from slotify_rank.config.versions import (
     FEATURE_PIPELINE_VERSION,
     TRANSCRIPTION_VERSION,
@@ -190,7 +191,7 @@ class WhisperTranscriber:
         on the episode "no text" and quietly shrink the dataset.
         """
         self._require_loaded()
-        duration_ms = int(round(audio.size * 1000 / sample_rate))
+        duration_ms = samples_duration_ms(audio.size, sample_rate)
         if duration_ms <= 0:
             raise TranscriptionFailure(f"{episode_id}: audio has zero duration")
 

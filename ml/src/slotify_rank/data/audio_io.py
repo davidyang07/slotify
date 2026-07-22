@@ -26,8 +26,23 @@ import numpy as np
 __all__ = [
     "AudioEnvelope",
     "load_normalized_wav",
+    "samples_duration_ms",
     "NEGATIVE_INFINITY_DBFS",
 ]
+
+
+def samples_duration_ms(sample_count: int, sample_rate_hz: int) -> int:
+    """Duration of a sample buffer in whole milliseconds.
+
+    The single definition, used by every stage. Rounding and truncation differ
+    by one millisecond on most real files, and when two stages disagree the
+    result is a transcript segment that ends one millisecond after the episode
+    another stage believes exists -- which fails a bounds check with no
+    plausible cause. Rounding is chosen because it is the nearer answer.
+    """
+    if sample_rate_hz <= 0:
+        raise ValueError(f"sample_rate_hz must be positive, got {sample_rate_hz}")
+    return int(round(sample_count * 1000 / sample_rate_hz))
 
 #: Stand-in for ``-inf`` dBFS (digital silence). Kept finite so the value can be
 #: JSON-serialized and compared without special-casing every consumer.

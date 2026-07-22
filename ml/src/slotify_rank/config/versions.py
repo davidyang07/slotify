@@ -88,7 +88,11 @@ LABEL_RUBRIC_VERSION = "rubric-v1.0.0"
 
 # Phase 3 (multimodal features and embeddings).
 TRANSCRIPTION_VERSION = "transcript-v1.0.0"
-FEATURE_SPEC_VERSION = "featurespec-v1.0.0"
+# v1.1.0: the heuristic component names were corrected to the scorer's actual
+# additive terms (base/pause/mode/sentence/position/edge), and raw_total and
+# clamped were added. The previous names were guesses that matched nothing, so
+# every one of those columns was silently 100% missing.
+FEATURE_SPEC_VERSION = "featurespec-v1.1.0"
 FEATURE_PIPELINE_VERSION = "featurepipeline-v1.0.0"
 FEATURE_MANIFEST_SCHEMA_VERSION = "feature-record-schema-v1.0.0"
 EMBEDDING_STORE_VERSION = "embedding-store-v1.0.0"

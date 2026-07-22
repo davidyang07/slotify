@@ -39,6 +39,7 @@ from slotify_rank.config.versions import (
     FEATURE_SPEC_VERSION,
     TRANSCRIPTION_VERSION,
 )
+from slotify_rank.data.audio_io import samples_duration_ms
 from slotify_rank.data.checksum import atomic_write_bytes
 from slotify_rank.data.paths import DataPaths
 from slotify_rank.data.schema import DatasetCandidate, EpisodeRecord
@@ -386,7 +387,7 @@ def run_acoustic(
             audio_path = _normalized_audio(context.paths, episode)
             samples, sample_rate = load_audio_samples(audio_path)
             envelope = load_normalized_wav(audio_path)
-            duration_ms = int(samples.size * 1000 / sample_rate)
+            duration_ms = samples_duration_ms(samples.size, sample_rate)
             frames = compute_frames(samples, sample_rate, context.features.acoustic)
             segments = transcript.segments if transcript else ()
 
@@ -570,7 +571,7 @@ def run_audio_embeddings(
                 samples, sample_rate = load_audio_samples(
                     _normalized_audio(context.paths, episode)
                 )
-                duration_ms = int(samples.size * 1000 / sample_rate)
+                duration_ms = samples_duration_ms(samples.size, sample_rate)
                 states = encoder.encode_episode(
                     episode.episode_id, samples, sample_rate
                 )
