@@ -1,0 +1,19 @@
+# The primary Phase 4 architecture.
+#
+# All three projection widths must be equal: the gate forms a weighted SUM of
+# the projected modality states, so they have to live in the same space. An
+# unavailable modality is masked out of the softmax entirely, giving it exactly
+# zero weight while the remaining gates still sum to one -- so a candidate with
+# no transcript is not systematically scaled down relative to a complete one.
+
+model:
+  variant: gated
+  handcrafted_projection: 128
+  audio_projection: 128
+  text_projection: 128
+  hidden_dimension: 128
+  dropout: 0.1
+  auxiliary_head: true
+  include_missing_mask: true
+  dimension_policy: strict
+  config_version: model-config-v1

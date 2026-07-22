@@ -1,0 +1,12 @@
+# Transcript representation alone (4 x 384 = 1536: before, after, their
+# difference and their elementwise product). Isolates how much of the ranking
+# signal is semantic.
+
+model:
+  variant: text_only
+  text_projection: 128
+  hidden_dimension: 128
+  dropout: 0.1
+  auxiliary_head: true
+  dimension_policy: strict
+  config_version: model-config-v1

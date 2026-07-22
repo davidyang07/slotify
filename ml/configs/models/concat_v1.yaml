@@ -1,0 +1,16 @@
+# Multimodal concatenation: each modality projected to 128, concatenated to a
+# 384-dimensional fused input (plus the two availability flags), then a shared
+# trunk. The projection widths are configurable; 128 keeps the whole model well
+# under a million parameters, which is what makes CPU training practical.
+
+model:
+  variant: concat
+  handcrafted_projection: 128
+  audio_projection: 128
+  text_projection: 128
+  hidden_dimension: 128
+  dropout: 0.1
+  auxiliary_head: true
+  include_missing_mask: true
+  dimension_policy: strict
+  config_version: model-config-v1

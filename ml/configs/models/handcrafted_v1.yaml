@@ -1,0 +1,14 @@
+# The learned non-embedding baseline: the same information the Phase 1
+# heuristic sees, fitted instead of hand-tuned. Any gain a multimodal variant
+# shows over THIS model is attributable to the learned representations rather
+# than to "a neural network was used".
+
+model:
+  variant: handcrafted
+  handcrafted_projection: 128
+  hidden_dimension: 128
+  dropout: 0.1
+  auxiliary_head: true
+  include_missing_mask: true
+  dimension_policy: strict
+  config_version: model-config-v1

@@ -1,0 +1,18 @@
+# Experiment: audio_embedding_only.
+#
+# The cached Whisper encoder representation alone (4 x 384 = 1536: before,
+# after, context, difference). include_handcrafted_features is FALSE here, so
+# this really is the learned speech representation with no hand-computed
+# acoustics. The companion experiment is audio_plus_acoustic_v1.yaml; the two
+# are separate files precisely because "audio-only" is ambiguous about whether
+# hand-computed RMS and spectral descriptors count as audio.
+
+model:
+  variant: audio_only
+  audio_projection: 128
+  hidden_dimension: 128
+  dropout: 0.1
+  auxiliary_head: true
+  include_handcrafted_features: false
+  dimension_policy: strict
+  config_version: model-config-v1

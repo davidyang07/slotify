@@ -1,0 +1,18 @@
+# Experiment: audio_plus_acoustic.
+#
+# Same variant as audio_only_v1.yaml, but the handcrafted acoustic scalars are
+# included alongside the Whisper representation. Reported under its own
+# experiment name so an ablation table can never conflate it with the
+# embedding-only condition.
+
+model:
+  variant: audio_only
+  audio_projection: 128
+  handcrafted_projection: 128
+  hidden_dimension: 128
+  dropout: 0.1
+  auxiliary_head: true
+  include_handcrafted_features: true
+  include_missing_mask: true
+  dimension_policy: strict
+  config_version: model-config-v1
