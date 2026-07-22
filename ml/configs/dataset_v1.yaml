@@ -1,0 +1,68 @@
+# Candidate-generation settings for dataset_v1.
+#
+# These are RECALL controls for building a training pool. They are NOT the
+# baseline. The baseline constants live in config/heuristic_offline_v1.json and
+# are shared with the TypeScript product code; nothing here may restate them.
+#
+# The `silence` generator deliberately leaves its thresholds unset so it inherits
+# the canonical profile's values -- that is what keeps "this candidate came from
+# a silence" meaning the same thing here and in the product.
+#
+# Every value here is recorded in artifacts/dataset/candidate_statistics.json, so
+# a change in candidate counts can always be traced back to a change in this file
+# rather than to unexplained drift.
+
+dataset_version: dataset_v1
+
+candidate_generation:
+  # No candidate within 5 s of either end. Both a quality guard and a practical
+  # one: the labelling UI needs ~10 s of context on each side.
+  edge_guard_ms: 5000
+
+  # Candidates closer together than this collapse into one. Matches the product's
+  # merge.min_gap_ms so a dataset candidate sits where a product candidate would.
+  merge_tolerance_ms: 400
+
+  # Upper bound on post-merge density. When it bites, the lowest-scoring
+  # candidates are dropped and the count is reported -- never trimmed silently.
+  # Raise this to increase pool size; do not "fix" a low candidate count any
+  # other way.
+  max_candidates_per_minute: 12.0
+
+  # Window for local_energy_summary on each candidate.
+  energy_summary_window_ms: 1000
+
+  silence:
+    enabled: true
+    # min_silence_len_ms / threshold_offset_db / fallback_threshold_dbfs are
+    # intentionally omitted: they come from heuristic_offline_v1.silence_detection
+    # (700 ms, dBFS - 16, -40 dBFS). Setting them here forks the definition of a
+    # silence from the product's; do it only deliberately.
+
+  pause:
+    enabled: true
+    # Shorter than the product accepts. These are the informative near-misses a
+    # ranker must learn to reject.
+    min_pause_ms: 250
+    max_pause_ms: 700
+    threshold_offset_db: -16.0
+
+  rms_minimum:
+    enabled: true
+    window_ms: 300
+    hop_ms: 100
+    # Only the quietest 15 % of windows are considered.
+    percentile: 15.0
+    min_spacing_ms: 3000
+
+  fixed_interval:
+    enabled: true
+    # Guarantees negative coverage: most grid points land mid-sentence, and a
+    # dataset without clear negatives flatters every model trained on it.
+    interval_ms: 30000
+
+  transcript:
+    enabled: true
+    # Consumed only if an episode declares transcript_path. Phase 2 never
+    # generates transcripts -- no Whisper, no downloads.
+    context_chars: 240
