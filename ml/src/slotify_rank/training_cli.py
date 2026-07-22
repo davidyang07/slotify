@@ -249,10 +249,9 @@ def _cmd_pairs(args: argparse.Namespace) -> int:
 
 def _run_training(args: argparse.Namespace, resume_from: Path | None) -> int:
     from slotify_rank.datasets.normalizer import write_normalizer
-    from slotify_rank.models.registry import build_model
     from slotify_rank.training.checkpoint import assert_compatible, load_checkpoint
     from slotify_rank.training.config import ResolvedConfig, compute_run_id, git_commit
-    from slotify_rank.training.trainer import Trainer
+    from slotify_rank.training.trainer import Trainer, build_seeded_model
 
     config, overrides, smoke = _resolve_config(args)
     paths, label_export, dataset = _prepare(args, config)
@@ -262,7 +261,9 @@ def _run_training(args: argparse.Namespace, resume_from: Path | None) -> int:
     commit = git_commit(paths.repo_root)
     run_id = compute_run_id(config, model_config, dataset.fingerprint, commit)
 
-    model = build_model(model_config, dataset.schema)
+    # Seeded before construction so the initial weights are reproducible; see
+    # build_seeded_model.
+    model = build_seeded_model(model_config, dataset.schema, config.seed)
     run_directory = Path(args.run_dir) if args.run_dir else (
         paths.data_root.parent / config.report_dir / run_id
     )

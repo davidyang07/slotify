@@ -54,7 +54,13 @@ from slotify_rank.training.config import TrainingConfig, resolve_thread_count
 from slotify_rank.training.early_stopping import EarlyStopping
 from slotify_rank.training.prepare import PreparedDataset
 
-__all__ = ["Trainer", "TrainingResult", "EpochMetrics", "set_global_seed"]
+__all__ = [
+    "Trainer",
+    "TrainingResult",
+    "EpochMetrics",
+    "set_global_seed",
+    "build_seeded_model",
+]
 
 _DEPENDENCIES = ("torch", "numpy", "slotify-rank")
 
@@ -66,6 +72,23 @@ def set_global_seed(seed: int) -> None:
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
+
+def build_seeded_model(model_config: Any, schema: Any, seed: int) -> BaseRanker:
+    """Seed, *then* construct, so the initial weights are reproducible.
+
+    This is not the same seeding :class:`Trainer` does. The trainer seeds batch
+    order and dropout, but by the time it exists the model has already been
+    built and its weights already drawn -- from whatever global RNG state the
+    process happened to be in. Two "identical" runs in one process would then
+    start from different weights and diverge from the first step, which also
+    breaks resume equivalence. Model construction must therefore be seeded by
+    whoever performs it, which is what this helper is for.
+    """
+    from slotify_rank.models.registry import build_model
+
+    set_global_seed(seed)
+    return build_model(model_config, schema)
 
 
 @dataclass
@@ -167,6 +190,15 @@ class Trainer:
         self.loader_generator = torch.Generator()
         self.loader_generator.manual_seed(config.seed)
 
+        # The RNG state `train()` will start from. Captured here rather than
+        # relied upon implicitly: dropout draws from the *global* torch
+        # generator, so anything that consumes it between construction and
+        # train() -- another run in the same process, a stray forward pass --
+        # would otherwise change this run's results. `resume_from` replaces it
+        # with the checkpointed state, which is what makes a resumed run
+        # continue the same stream rather than restart it.
+        self._entry_rng_state = torch.get_rng_state()
+
         self.global_step = 0
         self.start_epoch = 1
         self.epoch_metrics: list[EpochMetrics] = []
@@ -265,6 +297,7 @@ class Trainer:
     # -- the loop -----------------------------------------------------------
 
     def train(self) -> TrainingResult:
+        torch.set_rng_state(self._entry_rng_state)
         started = time.perf_counter()
         interrupted = False
         stop_reason = "completed the configured epoch budget"
@@ -488,7 +521,8 @@ class Trainer:
             # Restoring both generators is what makes a resumed run draw the
             # same batches as an uninterrupted one from this point on.
             if "torch" in rng:
-                torch.set_rng_state(rng["torch"].to(torch.uint8))
+                self._entry_rng_state = rng["torch"].to(torch.uint8)
+                torch.set_rng_state(self._entry_rng_state)
             if "loader" in rng:
                 self.loader_generator.set_state(rng["loader"].to(torch.uint8))
         return payload
