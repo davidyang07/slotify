@@ -21,6 +21,20 @@ Phase 2 -- the dataset foundation. Only ``dataset fetch`` touches the network::
     python -m slotify_rank.cli label serve [--port 8000]
     python -m slotify_rank.cli label export
 
+Phase 3 -- the multimodal feature pipeline. Local models only; the sole network
+access is the one-time Hugging Face model download::
+
+    python -m slotify_rank.cli transcribe run [--episode-id ID]
+    python -m slotify_rank.cli transcribe validate
+    python -m slotify_rank.cli features acoustic
+    python -m slotify_rank.cli embeddings audio
+    python -m slotify_rank.cli embeddings text
+    python -m slotify_rank.cli features assemble
+    python -m slotify_rank.cli features validate [--deep]
+    python -m slotify_rank.cli features stats
+    python -m slotify_rank.cli pipeline features [--stage NAME] [--limit N]
+    python -m slotify_rank.cli pipeline status
+
 The console script ``slotify-rank`` is equivalent to ``python -m slotify_rank.cli``.
 
 Exit codes: ``0`` success, ``1`` runtime failure (message on stderr), ``2``
@@ -314,6 +328,13 @@ def build_parser() -> argparse.ArgumentParser:
     from slotify_rank.dataset_cli import register as register_dataset_commands
 
     register_dataset_commands(subparsers)
+
+    # Phase 3: transcribe / features / embeddings / pipeline. Imported lazily
+    # for the same reason -- and additionally because the heavy ML extras are
+    # optional, so `slotify-rank version` must not require torch to be present.
+    from slotify_rank.features_cli import register as register_feature_commands
+
+    register_feature_commands(subparsers)
 
     return parser
 
