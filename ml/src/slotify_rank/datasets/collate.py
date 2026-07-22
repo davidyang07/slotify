@@ -34,11 +34,12 @@ def collate_pairs(
     items: Sequence[Mapping[str, Any]], features: MaterializedFeatures
 ) -> PairBatch:
     """Gather both sides of each pair plus the batch's unique candidates."""
-    preferred_rows = torch.tensor(
-        [int(item["preferred_row"]) for item in items], dtype=torch.long
+    left_rows = torch.tensor([int(item["left_row"]) for item in items], dtype=torch.long)
+    right_rows = torch.tensor(
+        [int(item["right_row"]) for item in items], dtype=torch.long
     )
-    nonpreferred_rows = torch.tensor(
-        [int(item["nonpreferred_row"]) for item in items], dtype=torch.long
+    targets = torch.tensor(
+        [float(item["target"]) for item in items], dtype=torch.float32
     )
     weights = torch.tensor(
         [float(item["pair_weight"]) for item in items], dtype=torch.float32
@@ -46,25 +47,24 @@ def collate_pairs(
 
     # sorted=True keeps the unique set deterministic, so the auxiliary loss is
     # reproducible for a fixed batch rather than depending on kernel ordering.
-    unique_rows = torch.unique(
-        torch.cat([preferred_rows, nonpreferred_rows]), sorted=True
-    )
+    unique_rows = torch.unique(torch.cat([left_rows, right_rows]), sorted=True)
 
     batch = PairBatch()
-    for side, rows in (("preferred", preferred_rows), ("nonpreferred", nonpreferred_rows)):
+    for side, rows in (("left", left_rows), ("right", right_rows)):
         for key, tensor in features.features_at(rows).items():
             batch[f"{side}_{key}"] = tensor
     for key, tensor in features.features_at(unique_rows).items():
         batch[f"unique_{key}"] = tensor
 
+    batch["target"] = targets
     batch["pair_weight"] = weights
-    batch["preferred_row"] = preferred_rows
-    batch["nonpreferred_row"] = nonpreferred_rows
+    batch["left_row"] = left_rows
+    batch["right_row"] = right_rows
     batch["unique_row"] = unique_rows
     batch["unique_is_acceptable"] = features.is_acceptable[unique_rows]
     batch["unique_quality_score"] = features.quality_score[unique_rows]
-    batch["preferred_quality_score"] = features.quality_score[preferred_rows]
-    batch["nonpreferred_quality_score"] = features.quality_score[nonpreferred_rows]
+    batch["left_quality_score"] = features.quality_score[left_rows]
+    batch["right_quality_score"] = features.quality_score[right_rows]
     return batch
 
 

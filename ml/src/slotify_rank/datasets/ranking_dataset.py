@@ -214,32 +214,41 @@ class PairDataset(Dataset):
     Items carry *row indices*, not tensors: the collate function gathers from
     the shared materialized block, so a candidate appearing in twenty pairs is
     stored once rather than twenty times.
+
+    Slots are ``left``/``right`` with a ``target`` of +1 or -1, matching what the
+    margin ranking loss consumes, because pair generation may have shuffled
+    which slot holds the preferred candidate.
     """
 
     def __init__(self, pairs: Sequence[Mapping[str, Any]], index_of: Mapping[str, int]):
-        self.rows_preferred: list[int] = []
-        self.rows_nonpreferred: list[int] = []
+        self.rows_left: list[int] = []
+        self.rows_right: list[int] = []
+        self.targets: list[int] = []
         self.weights: list[float] = []
         for pair in pairs:
-            preferred = index_of.get(str(pair["preferred_candidate_id"]))
-            nonpreferred = index_of.get(str(pair["nonpreferred_candidate_id"]))
-            if preferred is None or nonpreferred is None:
+            left = index_of.get(str(pair["left_candidate_id"]))
+            right = index_of.get(str(pair["right_candidate_id"]))
+            if left is None or right is None:
                 raise KeyError(
                     f"Pair references a candidate that is not in this split: "
-                    f"{pair['preferred_candidate_id']!r} / "
-                    f"{pair['nonpreferred_candidate_id']!r}. Pairs and examples "
-                    "must be built from the same eligible set."
+                    f"{pair['left_candidate_id']!r} / {pair['right_candidate_id']!r}. "
+                    "Pairs and examples must be built from the same eligible set."
                 )
-            self.rows_preferred.append(preferred)
-            self.rows_nonpreferred.append(nonpreferred)
+            target = int(pair["target"])
+            if target not in (1, -1):
+                raise ValueError(f"Pair target must be +1 or -1, got {target}")
+            self.rows_left.append(left)
+            self.rows_right.append(right)
+            self.targets.append(target)
             self.weights.append(float(pair.get("pair_weight", 1.0)))
 
     def __len__(self) -> int:
-        return len(self.rows_preferred)
+        return len(self.rows_left)
 
     def __getitem__(self, item: int) -> dict[str, Any]:
         return {
-            "preferred_row": self.rows_preferred[item],
-            "nonpreferred_row": self.rows_nonpreferred[item],
+            "left_row": self.rows_left[item],
+            "right_row": self.rows_right[item],
+            "target": self.targets[item],
             "pair_weight": self.weights[item],
         }
