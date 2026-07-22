@@ -6,6 +6,7 @@ No network, no audio, no models.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -255,6 +256,52 @@ def test_atomic_write_leaves_no_temporary_files(tmp_path: Path):
     atomic_write_bytes(destination, b'{"a": 1}')
     assert json.loads(destination.read_text()) == {"a": 1}
     assert [p.name for p in tmp_path.iterdir()] == ["out.json"]
+
+
+def test_atomic_write_retries_a_transient_sharing_violation(tmp_path, monkeypatch):
+    """A OneDrive/Defender handle on the temp file must not fail the write.
+
+    See ``_replace_with_retry``: on Windows a scanner holding a brief handle
+    makes ``os.replace`` raise ``PermissionError`` at random.
+    """
+    from slotify_rank.data import checksum as checksum_module
+
+    monkeypatch.setattr(checksum_module, "_REPLACE_BACKOFF_SECONDS", (0, 0, 0, 0))
+    real_replace = os.replace
+    calls = {"n": 0}
+
+    def flaky_replace(source, destination):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise PermissionError(5, "Access is denied")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(checksum_module.os, "replace", flaky_replace)
+    destination = tmp_path / "out.json"
+    atomic_write_bytes(destination, b'{"a": 1}')
+
+    assert json.loads(destination.read_text()) == {"a": 1}
+    assert calls["n"] == 3
+    assert [p.name for p in tmp_path.iterdir()] == ["out.json"]
+
+
+def test_atomic_write_still_fails_on_a_persistent_permission_error(
+    tmp_path, monkeypatch
+):
+    """The retry is bounded: a real permission problem stays a hard failure."""
+    from slotify_rank.data import checksum as checksum_module
+
+    monkeypatch.setattr(checksum_module, "_REPLACE_BACKOFF_SECONDS", (0, 0, 0, 0))
+
+    def always_denied(source, destination):
+        raise PermissionError(5, "Access is denied")
+
+    monkeypatch.setattr(checksum_module.os, "replace", always_denied)
+    with pytest.raises(PermissionError):
+        atomic_write_bytes(tmp_path / "out.json", b'{"a": 1}')
+
+    # The temporary file is still cleaned up on the failure path.
+    assert list(tmp_path.iterdir()) == []
 
 
 # --------------------------------------------------------------------------

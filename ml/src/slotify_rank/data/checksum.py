@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Iterator
 
@@ -24,6 +25,34 @@ __all__ = [
 ]
 
 _CHUNK_SIZE = 1024 * 1024
+
+#: Backoff schedule, in seconds, for :func:`_replace_with_retry`. Five attempts
+#: over ~1.5s total; long enough to outlast a sync-filter handle, short enough
+#: that a genuine permission error still fails promptly.
+_REPLACE_BACKOFF_SECONDS = (0.05, 0.1, 0.4, 1.0)
+
+
+def _replace_with_retry(source: Path | str, destination: Path | str) -> None:
+    """``os.replace`` with a bounded retry on Windows sharing violations.
+
+    On Windows a rename fails with ``PermissionError`` (``WinError 5``/``32``)
+    while *any* process holds a handle to either file. Under OneDrive-, Dropbox-
+    or Defender-backed directories a scanner routinely opens a newly created
+    file for a few hundred milliseconds, so an otherwise correct atomic write
+    fails at random -- observed here at roughly 1 write in 300 under
+    ``ml/.pytest-tmp``.
+
+    The retry is deliberately bounded and never swallows the error: if the
+    handle does not clear within the backoff schedule the original exception
+    propagates, so a real permission problem is still a hard failure.
+    """
+    for delay in _REPLACE_BACKOFF_SECONDS:
+        try:
+            os.replace(source, destination)
+            return
+        except PermissionError:
+            time.sleep(delay)
+    os.replace(source, destination)
 
 
 class ChecksumMismatch(ValueError):
@@ -87,7 +116,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temp_name, destination)
+        _replace_with_retry(temp_name, destination)
     except BaseException:
         Path(temp_name).unlink(missing_ok=True)
         raise
@@ -96,7 +125,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
 def atomic_replace(temp_path: Path, destination: Path) -> None:
     """Move a fully written temporary file into place."""
     destination.parent.mkdir(parents=True, exist_ok=True)
-    os.replace(temp_path, destination)
+    _replace_with_retry(temp_path, destination)
 
 
 def iter_files(root: Path, suffixes: tuple[str, ...]) -> Iterator[Path]:

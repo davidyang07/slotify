@@ -1279,19 +1279,46 @@ uv pip install --python .\.venv\Scripts\python.exe -e ".[dev]"
 | `npm run typecheck` clean | ✅ |
 | Product behaviour unchanged | ✅ golden output SHA-256 identical pre/post refactor; `analyze_cli` identical on real audio |
 
-### Phase 2 — Dataset and labelling workflow
-```bash
-slotify-rank fetch --sources configs/sources.yaml
-slotify-rank candidates --config configs/candidates_v1.yaml
-slotify-rank clips --split all
-slotify-rank label --port 8010          # browser labelling UI
-slotify-rank split --config configs/candidates_v1.yaml --group-by series
-slotify-rank validate
-slotify-rank dataset-stats && slotify-rank candidate-stats
+### Phase 2 — Dataset and labelling workflow ✅ (workflow complete; corpus not acquired)
+
+Verified 2026-07-22. Final command names differ from the sketch above; these are the real ones.
+
+```powershell
+cd ml
+uv pip install --python .\.venv\Scripts\python.exe -e ".[dev,label]"
+
+python -m slotify_rank.cli dataset import-local --sources configs/sources.yaml
+python -m slotify_rank.cli dataset fetch --sources configs/sources.yaml   # only networked command
+python -m slotify_rank.cli dataset probe
+python -m slotify_rank.cli dataset normalize
+python -m slotify_rank.cli candidates generate --config configs/dataset_v1.yaml
+python -m slotify_rank.cli dataset split --config configs/splits_v1.yaml
+python -m slotify_rank.cli dataset validate --deep
+python -m slotify_rank.cli dataset stats
+python -m slotify_rank.cli label serve --port 8000
+python -m slotify_rank.cli label export
 ```
-**Acceptance:** an episode goes fetch → transcribe → candidates → clips → labelled → validated →
-into a training manifest; `dataset_statistics.json` and `split_statistics.json` exist and distinguish
-human / weak / unlabelled counts; killing the labeller mid-session loses at most one item.
+
+**Acceptance criteria — met:**
+
+| Criterion | Result |
+|---|---|
+| An episode goes import → probe → normalize → candidates → split → validate → stats | ✅ 7 smoke fixtures, end to end, all exit 0 |
+| Statistics distinguish human / weak / unlabelled | ✅ eight quantities tracked separately in `label_statistics.json` |
+| `dataset_statistics.json` and `split_statistics.json` exist | ✅ plus `candidate_statistics.json`, `label_statistics.json`, `dataset_summary.md`, `validation_report.json` |
+| Killing the labeller mid-session loses at most one item | ✅ loses **zero** — every rating is committed on submit; resumption verified across a simulated restart |
+| Splits are leakage-safe | ✅ series-grouped; episode-level and series-level leakage each have a test that makes validation fail |
+| Synthetic product padding excluded | ✅ pinned by the schema constructor, refused by the label DB, failed by `validate`, excluded from every statistic |
+| Tests offline, no GPU, no model downloads, no paid APIs | ✅ 379 tests, ~37 s, 91 % coverage |
+| Product behaviour unchanged | ✅ no frontend, route, service or `ad_inserter` change; `npm run typecheck` clean; golden parity re-verified |
+
+**Deliberately deferred to Phase 3:** transcription (no Whisper download), learned embeddings, and
+any PyTorch dependency. `transcript_segment_end` consumes a supplied timestamped transcript but never
+generates one, and every generation report states when none was available.
+
+**Not achieved, and not claimed:** the 50-hour / 10 000-candidate / 1 500-label targets. The smoke
+dataset is ~4.6 minutes over 7 fixtures yielding 20 candidates and 0 labels. See
+`docs/resume-claim-matrix.md` for what is populated versus merely implemented.
 
 ### Phase 3 — Feature and embedding pipeline
 ```bash

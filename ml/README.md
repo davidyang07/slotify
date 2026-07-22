@@ -5,12 +5,18 @@ Node/Express backend: `backend/` never imports it, and it never imports
 `ad_inserter`. The only thing they share is the canonical baseline configuration
 at `config/heuristic_offline_v1.json`.
 
-**Phase 1 status:** the deterministic offline baseline (`heuristic_offline_v1`)
-and the evaluation metrics are implemented. No PyTorch, no FastAPI, no dataset,
-no pretrained models yet — see `docs/multimodal-ranking-mvp-plan.md`.
+**Status:** Phase 1 (the deterministic `heuristic_offline_v1` baseline and the
+evaluation metrics) and Phase 2 (the dataset foundation: sources, ingestion,
+normalization, candidate generation, splits, labelling, validation, statistics)
+are implemented. No PyTorch, no learned embeddings, no trained model yet — see
+`docs/multimodal-ranking-mvp-plan.md`.
 
-Everything in Phase 1 runs **offline on CPU**: no network access, no paid APIs,
-no model downloads.
+Everything runs **offline on CPU**. The single exception is
+`dataset fetch`, which downloads declared source URLs; no other command touches
+the network, and nothing anywhere downloads a model or calls a paid API.
+
+Audio decoding reuses the `ffmpeg` / `ffprobe` binaries the product already
+requires — set `FFMPEG_BIN` / `FFPROBE_BIN` if they are not on `PATH`.
 
 ## Setup (Windows / PowerShell)
 
@@ -24,7 +30,9 @@ cd ml
 $env:UV_LINK_MODE = "copy"
 
 uv venv --python 3.12.13 .venv
-uv pip install --python .\.venv\Scripts\python.exe -e ".[dev]"
+# [dev] = pytest + coverage + httpx; [label] = FastAPI + uvicorn for the
+# labelling UI. Omit [label] if you only need the dataset pipeline.
+uv pip install --python .\.venv\Scripts\python.exe -e ".[dev,label]"
 
 # Verify
 .\.venv\Scripts\python.exe -m slotify_rank.cli version
@@ -63,7 +71,16 @@ cd ml
 .\.venv\Scripts\python.exe -m pytest --cov=slotify_rank --cov-report=term-missing
 ```
 
-No test reaches the network, downloads a model, or reads real audio.
+No test reaches the network, calls a paid API, downloads a model, requires a
+GPU, or trains anything. The HTTP layer is stubbed in the fetch tests.
+
+Tests that decode audio synthesise their own WAVs; the one test that reads a
+real repository fixture is marked `audio` and skips cleanly without FFmpeg:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -m audio        # only the real-audio test
+.\.venv\Scripts\python.exe -m pytest -m "not audio"  # skip it
+```
 
 ## Commands
 
@@ -139,17 +156,143 @@ cd ..\ml
 If parity fails, the Python port or the TypeScript scorer has drifted. **Diagnose
 the difference — never regenerate the fixture to make a failing test pass.**
 
+## Dataset workflow
+
+The full loop, in order. Every command is resumable: re-running a completed
+stage is a cheap no-op, so an interrupted run costs only the work actually lost.
+
+```powershell
+cd ml
+
+# 1. Declare where audio comes from and under what licence.
+#    Edit configs/sources.yaml first -- see "Adding your own audio" below.
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset import-local --sources configs/sources.yaml
+
+# 2. Download any direct_download sources. The ONLY networked command.
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset fetch --sources configs/sources.yaml
+
+# 3. Measure real duration / sample rate / channels / format with ffprobe.
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset probe
+
+# 4. Render to the ML format: 16 kHz mono PCM WAV, cached, atomic.
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset normalize
+
+# 5. Generate the candidate pool.
+.\.venv\Scripts\python.exe -m slotify_rank.cli candidates generate --config configs/dataset_v1.yaml
+
+# 6. Deterministic, series-grouped, leakage-safe splits.
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset split --config configs/splits_v1.yaml
+
+# 7. Integrity gate. Non-zero exit on any error; --deep re-verifies every SHA-256.
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset validate --deep
+
+# 8. Statistics -> artifacts/dataset/*.json + dataset_summary.md
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset stats
+```
+
+Add `--data-root <path>` to any of them to work against a different corpus
+directory (or set `SLOTIFY_DATA_ROOT`).
+
+### Adding your own audio
+
+Append to `configs/sources.yaml`. **`series_id` is the field that matters most**
+— it is what the splitter groups on, so every episode of one show must share it,
+or the split will leak.
+
+```yaml
+  - id: my-show-ep-001                      # lowercase slug, unique
+    source_type: local_file                 # copied into data/raw/
+    path: C:/Users/you/Audio/ep-001.mp3     # absolute, or repo-relative
+    title: "My Show 001 - guest name"
+    series_id: my-show                      # SAME for every episode of the show
+    source_name: "Private recording"
+    content_type: podcast                   # podcast|interview|conversational|narrated|meeting|music|other
+```
+
+For a remote file use `source_type: direct_download` with a `url`, and declare
+`license_name` **and** `license_url` — both are mandatory and enforced at parse
+time. Add `expected_sha256` when you know it; a mismatch aborts the download and
+deletes the partial file. If you cannot name the licence, download it yourself
+and register it as a `local_file`: private, never redistributed, no licence
+claimed on your behalf.
+
+Then run steps 1, 3, 4, 5 above. Episode IDs are derived from the audio's
+SHA-256, so re-importing the same file is idempotent and two copies of one
+recording collapse into one episode.
+
+### Labelling
+
+```powershell
+.\.venv\Scripts\python.exe -m slotify_rank.cli label serve --port 8000
+# open http://127.0.0.1:8000/ , enter an annotator id (a pseudonym is fine)
+
+.\.venv\Scripts\python.exe -m slotify_rank.cli label export
+```
+
+Rubric and guidance: `docs/labelling-guide.md`. Ratings save immediately,
+sessions resume where you stopped, and the heuristic's score is hidden from the
+annotator by default to avoid biasing the labels.
+
+### What is and is not committed
+
+| Committed | Ignored |
+|---|---|
+| `configs/*.yaml`, code, tests | `data/` — audio, manifests, SQLite, exports |
+| `artifacts/dataset/*.json`, `dataset_summary.md` | normalized renders, clip cache, `.venv`, coverage |
+
+No audio is ever committed. The corpus is reconstructed from
+`configs/sources.yaml` by `dataset import-local` / `dataset fetch`.
+
+### The route from smoke data to the real corpus
+
+The committed statistics currently describe seven repository fixtures totalling
+~4.6 minutes. That is a **pipeline test, not a corpus.** The staged route:
+
+| Stage | Audio | Candidates | Labels |
+|---|---|---|---|
+| now (smoke) | ~0.04 h | ~20 | 0 |
+| pipeline debug | 2–4 h | ~500+ | 200–300 |
+| first model | 8–12 h | ~2 000+ | ~750 |
+| MVP target | 50+ h | 10 000+ | ~1 500 |
+
+At least 6 independent series are needed before a train/validation/test split is
+meaningful; below that the splitter emits a single `development` partition and
+marks the result degraded rather than pretending otherwise.
+
 ## Layout
 
 ```
 src/slotify_rank/
   jsnum.py                  ECMAScript rounding semantics (Math.round, toFixed)
-  cli.py                    argparse entrypoint
+  cli.py                    argparse entrypoint (Phase 1 commands)
+  dataset_cli.py            dataset / candidates / label commands
   config/settings.py        loader for config/heuristic_offline_v1.json
   config/versions.py        version stamps embedded in artifacts
-  candidates/schema.py      canonical candidate/episode schema
+  candidates/schema.py      canonical ranking candidate/episode schema
   candidates/heuristic.py   the heuristic_offline_v1 port
+  candidates/config.py      candidate-generation settings (dataset_v1.yaml)
+  candidates/audio_candidates.py    silence / pause / RMS-minimum / fixed-interval
+  candidates/transcript_candidates.py   optional timestamped-transcript input
+  candidates/merge.py       provenance-preserving merge + product-parity guard
+  candidates/generate.py    per-episode generation orchestration
+  data/schema.py            episode + dataset-candidate records
+  data/sources.py           sources.yaml parsing, licence and secret enforcement
+  data/fetch.py             the only networked module
+  data/import_local.py      local files and repository fixtures
+  data/probe.py             ffprobe metadata
+  data/normalize.py         16 kHz mono PCM WAV rendering + cache
+  data/audio_io.py          millisecond energy envelopes
+  data/manifests.py         deterministic JSONL manifests
+  data/splits.py            series-grouped deterministic splitting
+  data/validate.py          the integrity gate
+  data/stats.py             the eight tracked quantities
+  labelling/database.py     SQLite label store
+  labelling/service.py      local FastAPI labelling UI
+  labelling/export.py       versioned JSONL export
   evaluation/metrics.py     NDCG@k, P@k, R@k, F1, MRR, pairwise accuracy
 configs/heuristic_v1.yaml   run settings (never baseline constants)
-tests/                      unit + parity + CLI tests
+configs/sources.yaml        source registry
+configs/dataset_v1.yaml     candidate-generation recall settings
+configs/splits_v1.yaml      split ratios, seed, grouping
+tests/                      unit + parity + dataset + CLI + service tests
 ```

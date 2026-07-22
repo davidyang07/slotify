@@ -19,6 +19,24 @@ Phase references point at `docs/multimodal-ranking-mvp-plan.md` §36–37.
 | A deterministic, reproducible signal-based baseline exists and is the comparison denominator | TypeScript↔Python parity on golden fixtures covering 11 scenarios; every score component serialized; config version stamped into every record | `cd backend; npx tsx scripts/dump-heuristic-golden.ts --out ..\ml\tests\fixtures\heuristic_golden.json` then `cd ml; .\.venv\Scripts\python.exe -m pytest` | `ml/tests/fixtures/heuristic_golden.json`, `config/heuristic_offline_v1.json`, 169 passing tests | **verified** (2026-07-22) |
 | The refactor did not change product behaviour | SHA-256 of the golden output identical before and after hoisting constants; `analyze_cli` output identical on real audio; `npm run typecheck` clean | see above | verification log in this session | **verified** (2026-07-22) |
 
+## Phase 2 — dataset foundation (workflow complete, corpus not acquired)
+
+The commands, schemas, splits, labelling loop, validation and statistics all exist and are tested.
+**No dataset target has been reached.** The pipeline has been exercised only on the repository's
+~4.6-minute smoke fixtures, and every measured number below is that smoke run.
+
+| Intended claim | Required evidence | Generating command | Artifact | Status |
+|---|---|---|---|---|
+| A reproducible dataset pipeline exists | Import → probe → normalize → generate → split → validate → stats runs end to end with non-zero exit codes on failure; 379 passing tests | see `ml/README.md` § Dataset workflow | `artifacts/dataset/*.json`, `artifacts/dataset/dataset_summary.md` | **verified** (2026-07-22) |
+| Dataset integrity is checked, not assumed | 26 named checks including duplicate IDs, checksum mismatch, out-of-bounds candidates, split leakage by episode **and** by series, synthetic-eligibility violations, and a test partition with no target-domain audio — each with a test that makes it fail | `dataset validate --deep` | `artifacts/dataset/validation_report.json` | **verified** (2026-07-22) |
+| Human labels are collected and exportable | Local FastAPI UI, SQLite persistence, resumable per-annotator sessions, update-in-place, versioned JSONL export with rubric and threshold metadata | `label serve` then `label export` | `data/labels/labels_v1.jsonl` (+ `.meta.json`) | **implemented, not yet populated** |
+
+Status vocabulary for the dataset rows below:
+`implemented but not yet populated` → `partially populated using smoke data` → `fully supported by
+real measured data`.
+
+---
+
 Baseline naming, used consistently in every later report:
 
 | Name | What it is | Needs credentials? |
@@ -76,14 +94,19 @@ artifacts and its own row below.
 | `human_labelled_candidate_count` | reviewed by a person against the 1–5 rubric | ≈ 1 500 |
 | `human_labelled_audio_hours` | audio duration of the episodes containing those labels | ≈ 8–12 |
 | `held_out_evaluation_candidate_count` | human-labelled **and** in the test split — the only source of final test metrics | reported as measured |
+| `weakly_labelled_candidate_count` | derived labels; never counted as human | reported as measured |
+| `unlabelled_candidate_count` | generated but never rated | reported as measured |
+| `processed_episode_count` | episodes at status `normalized` | reported as measured |
 
 | Intended claim | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
-| **`processed_audio_hours`** (target 50+) | Measured total duration; episode count; breakdown by source, licence and content type; per-split duration | `slotify-rank dataset-stats` | `artifacts/dataset/dataset_statistics.json` | not started |
-| **`generated_candidate_count`** (target 10 000+) | Measured candidate count; counts by generator source; **separate** totals for human / weak / unlabelled | `slotify-rank candidate-stats` | `artifacts/dataset/candidate_statistics.json` | not started |
-| **`human_labelled_candidate_count`** (target ≈1 500) and **`human_labelled_audio_hours`** (≈8–12) | Label ledger by `label_source` and annotator hash; staged at 200–300 → 750 → 1 500 | `slotify-rank dataset-stats` | `artifacts/dataset/dataset_statistics.json` | not started |
-| **`held_out_evaluation_candidate_count`** | Human-labelled candidates in the test split; test split restricted to podcast-like content (no AMI) | `slotify-rank validate` + `slotify-rank dataset-stats` | `artifacts/dataset/split_statistics.json` | not started |
-| Splits are leak-free | Episode-level (series-aware) splits; assertions that no candidate, episode, or series spans splits; no non-human label used as test ground truth | `slotify-rank split --group-by series` then `slotify-rank validate` | `artifacts/dataset/split_statistics.json` | not started |
+| **`processed_audio_hours`** (target 50+) | Measured total duration; episode count; breakdown by source, licence and content type; per-split duration | `dataset import-local` / `fetch` → `dataset probe` → `dataset normalize` → `dataset stats` | `artifacts/dataset/dataset_statistics.json` → `processed_audio_hours` | **implemented, smoke-populated** (0.0365 h / 7 episodes) |
+| **`generated_candidate_count`** (target 10 000+) | Measured candidate count; counts by generator source; before/after merge; % from fixed intervals; **separate** totals for human / weak / unlabelled | `candidates generate --config ml/configs/dataset_v1.yaml` then `dataset stats` | `artifacts/dataset/candidate_statistics.json` → `generated_candidate_count` | **implemented, smoke-populated** (20) |
+| **`human_labelled_candidate_count`** (target ≈1 500) and **`human_labelled_audio_hours`** (≈8–12) | Label ledger by annotator pseudonym and rubric version; staged at 200–300 → 750 → 1 500 | `label serve` → `label export` → `dataset stats` | `artifacts/dataset/label_statistics.json`, `data/labels/labels_v1.jsonl.meta.json` | **implemented, not yet populated** (0; round-trip verified on smoke data) |
+| **`weakly_labelled_candidate_count`** / **`unlabelled_candidate_count`** | Tracked as their own fields; never summed into the human count | `dataset stats` | `artifacts/dataset/label_statistics.json` | **implemented, smoke-populated** (0 weak / 20 unlabelled) |
+| **`held_out_evaluation_candidate_count`** | Human-labelled candidates in the test split; test split restricted to podcast-like content (no AMI, no music) | `dataset split` + `dataset validate` + `dataset stats` | `artifacts/dataset/label_statistics.json`, `artifacts/dataset/split_statistics.json` | **implemented, not yet populated** (0 — the smoke corpus has too few series to split) |
+| Splits are leak-free | Series-aware grouped splits; validation fails on episode-level or series-level leakage; out-of-domain audio excluded from test | `dataset split --config ml/configs/splits_v1.yaml` then `dataset validate` | `data/manifests/splits_v1.json`, `artifacts/dataset/split_statistics.json`, `artifacts/dataset/validation_report.json` | **implemented, leakage checks verified by failing tests** |
+| Synthetic product fallbacks never enter the data | `is_synthetic` candidates pinned to both eligibility flags false by the schema constructor; validation fails otherwise; excluded from every statistic | `candidates generate --include-product-padding` then `dataset validate` + `dataset stats` | `artifacts/dataset/candidate_statistics.json` → `synthetic_product_padding_count` | **verified** (2026-07-22) |
 | **Y % human agreement** | Blind, randomized-order evaluation on held-out test episodes; **≥1 non-author evaluator required, 2 preferred**; A1 (primary), A2, A3 with `n`, tie rate, `n_evaluators` and inter-rater κ | `slotify-rank human-eval --split test --mode blind-pairwise` then `slotify-rank human-eval-report` | `artifacts/evaluation/human_preference_results.json` | not started |
 | **Z % editing-time reduction** | Counterbalanced within-subject timed study, manual vs assisted, **≥3 participants (5 targeted)**, raw per-session rows + median/mean with bootstrap CI. Reported as measured — the ~80 % figure is a prior expectation, not a target to engineer toward. | `slotify-rank benchmark-run` then `slotify-rank benchmark-report` | `artifacts/benchmarks/editing_time_raw.csv`, `artifacts/benchmarks/editing_time_results.csv` | not started |
 | FastAPI integration works end to end | Upload → rank → preview → export in the real product; legacy fallback path still matches the Phase-1 golden | `slotify-rank serve` + `pytest ml/tests/integration -m e2e` | integration test report, `docs/architecture.md` | not started |
