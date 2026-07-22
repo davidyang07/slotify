@@ -36,8 +36,10 @@ htmlcov/
 *.egg-info/
 
 # Datasets and caches: audio is never committed. Episodes are reconstructed
-# from configs/sources.yaml by the fetch step (see docs/multimodal-ranking-mvp-plan.md §8).
-data/
+# from ml/configs/sources.yaml by the import/fetch steps (see docs/dataset-card.md).
+# Anchored to the repository root -- an unanchored `data/` would also swallow the
+# ml/src/slotify_rank/data/ source package.
+/data/
 *.parquet
 *.npy
 
