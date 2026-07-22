@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Slotify — breakpoint labelling</title>
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <h1>Breakpoint labelling</h1>
+      <div class="who">
+        <label for="annotator">Annotator</label>
+        <input id="annotator" type="text" placeholder="e.g. annotator-a" autocomplete="off" />
+        <button id="start" type="button">Start / resume</button>
+      </div>
+    </header>
+
+    <main id="workspace" hidden>
+      <section class="progress">
+        <div class="track"><div id="progress-fill"></div></div>
+        <p id="progress-text">—</p>
+      </section>
+
+      <section class="candidate">
+        <p class="meta">
+          <span id="episode-title">—</span>
+          <span class="dot">·</span>
+          <span>break at <strong id="timestamp">—</strong></span>
+        </p>
+
+        <div class="player">
+          <audio id="audio" preload="auto" controls></audio>
+          <div class="player-actions">
+            <button id="replay-all" type="button">Replay full window <kbd>R</kbd></button>
+            <button id="replay-boundary" type="button">Replay around the break <kbd>B</kbd></button>
+          </div>
+          <p class="hint">The proposed break is at <strong id="boundary-label">—</strong> in this clip.</p>
+        </div>
+
+        <div class="transcript" id="transcript-block">
+          <div>
+            <h2>Before</h2>
+            <p id="transcript-before">—</p>
+          </div>
+          <div>
+            <h2>After</h2>
+            <p id="transcript-after">—</p>
+          </div>
+        </div>
+        <p class="transcript-missing" id="transcript-missing" hidden>
+          No transcript for this episode — rate from the audio alone.
+        </p>
+
+        <div class="rating">
+          <h2>How natural is a break here?</h2>
+          <div class="scores" id="scores">
+            <button type="button" data-score="1"><b>1</b><span>disruptive / inside speech</span><kbd>1</kbd></button>
+            <button type="button" data-score="2"><b>2</b><span>possible but unnatural</span><kbd>2</kbd></button>
+            <button type="button" data-score="3"><b>3</b><span>acceptable</span><kbd>3</kbd></button>
+            <button type="button" data-score="4"><b>4</b><span>strong natural break</span><kbd>4</kbd></button>
+            <button type="button" data-score="5"><b>5</b><span>highly natural transition</span><kbd>5</kbd></button>
+          </div>
+          <div class="extras">
+            <label><input type="checkbox" id="unusable" /> Unusable (corrupt audio, no context) <kbd>U</kbd></label>
+            <input type="text" id="notes" placeholder="Optional note" autocomplete="off" />
+          </div>
+        </div>
+
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <p class="empty" id="empty" hidden>Nothing left to label. Export with <code>label export</code>.</p>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
