@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slotify-rank"
+version = "0.1.0"
+description = "Multimodal audio-text ranking engine for podcast ad-break placement"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+
+# Phase 1 is deliberately dependency-light: the canonical baseline and the
+# evaluation metrics must run with no network access, no model downloads and no
+# paid APIs. PyTorch, transformers and FastAPI arrive in Phases 3-7.
+dependencies = [
+    "pyyaml>=6.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[project.scripts]
+slotify-rank = "slotify_rank.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "slow: tests that load real model weights or real audio (none in Phase 1)",
+]

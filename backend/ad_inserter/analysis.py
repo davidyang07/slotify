@@ -44,9 +44,23 @@ def standardize_audio(audio: AudioSegment) -> AudioSegment:
 
 
 def detect_podcast_candidates(audio: AudioSegment) -> List[int]:
-    silence_thresh = audio.dBFS - 16 if audio.dBFS != float("-inf") else -40
+    """Silence candidates for the legacy LLM-driven CLI path.
+
+    NOTE: this uses the `legacy_cli_v1` profile (500 ms minimum silence), which
+    deliberately differs from the canonical `heuristic_offline_v1` baseline used
+    by /api/insert-sections (700 ms). The divergence is pre-existing and is
+    recorded rather than reconciled; see docs/multimodal-ranking-mvp-plan.md §3.2.
+    """
+    from ad_inserter import heuristic_config
+
+    min_silence_len, threshold_offset, fallback_dbfs = heuristic_config.silence_params(
+        heuristic_config.LEGACY_CLI_PROFILE
+    )
+    silence_thresh = (
+        audio.dBFS + threshold_offset if audio.dBFS != float("-inf") else fallback_dbfs
+    )
     silence_ranges = detect_silence(
-        audio, min_silence_len=500, silence_thresh=silence_thresh
+        audio, min_silence_len=min_silence_len, silence_thresh=silence_thresh
     )
     candidates = [(start + end) // 2 for start, end in silence_ranges]
     return sorted(set(candidates))

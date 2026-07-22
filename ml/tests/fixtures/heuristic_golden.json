@@ -1,0 +1,1315 @@
+{
+  "_comment": "GENERATED FILE - do not edit by hand. Produced from the TypeScript product scorer by backend/scripts/dump-heuristic-golden.ts. Regenerate with: npx tsx scripts/dump-heuristic-golden.ts --out ../ml/tests/fixtures/heuristic_golden.json",
+  "baseline_version": "heuristic_offline_v1",
+  "generator": "backend/scripts/dump-heuristic-golden.ts",
+  "source_of_truth": [
+    "backend/src/lib/candidates.ts::mergeCandidates",
+    "backend/src/lib/candidates.ts::scoreCandidate",
+    "backend/src/lib/candidates.ts::selectTopSlots",
+    "backend/src/routes/insert-sections.ts:136-260 (mirrored in this script)"
+  ],
+  "episodes": [
+    {
+      "episode_id": "ep-01-mixed-signals",
+      "description": "Long silence at a sentence boundary, silence without a boundary, boundary without silence, unavailable transcript, and two near-duplicate pairs that must merge in opposite directions.",
+      "covers": [
+        "long_silence_at_sentence_boundary",
+        "silence_without_sentence_boundary",
+        "sentence_boundary_without_long_silence",
+        "incomplete_sentence",
+        "near_duplicate_merge_keeps_incumbent",
+        "near_duplicate_merge_replaces_incumbent",
+        "transcript_unavailable_snippet",
+        "more_than_three_valid_candidates"
+      ],
+      "input": {
+        "mode": "podcast",
+        "duration_seconds": 600,
+        "count": 3,
+        "silence_candidates": [
+          {
+            "ms": 60000,
+            "silenceMs": 1800,
+            "snippet": "So that was the whole story."
+          },
+          {
+            "ms": 120000,
+            "silenceMs": 1500,
+            "snippet": "and then we were going to"
+          },
+          {
+            "ms": 180000,
+            "silenceMs": 300,
+            "snippet": "That's exactly right."
+          },
+          {
+            "ms": 240000,
+            "silenceMs": 0,
+            "snippet": "TRANSCRIPT_UNAVAILABLE"
+          },
+          {
+            "ms": 300000,
+            "silenceMs": 2400,
+            "snippet": "We'll come back to that later."
+          }
+        ],
+        "transcript_candidates": [
+          {
+            "ms": 60300,
+            "silenceMs": 900,
+            "snippet": "So that was the whole story."
+          },
+          {
+            "ms": 120200,
+            "silenceMs": 2500,
+            "snippet": "and then we were going to the store."
+          },
+          {
+            "ms": 420000,
+            "silenceMs": 700,
+            "snippet": "That is a fair point."
+          }
+        ]
+      },
+      "merged_candidates": [
+        {
+          "ms": 60000,
+          "silenceMs": 1800,
+          "snippet": "So that was the whole story."
+        },
+        {
+          "ms": 120200,
+          "silenceMs": 2500,
+          "snippet": "and then we were going to the store."
+        },
+        {
+          "ms": 180000,
+          "silenceMs": 300,
+          "snippet": "That's exactly right."
+        },
+        {
+          "ms": 240000,
+          "silenceMs": 0,
+          "snippet": "TRANSCRIPT_UNAVAILABLE"
+        },
+        {
+          "ms": 300000,
+          "silenceMs": 2400,
+          "snippet": "We'll come back to that later."
+        },
+        {
+          "ms": 420000,
+          "silenceMs": 700,
+          "snippet": "That is a fair point."
+        }
+      ],
+      "scored_candidates": [
+        {
+          "ms": 60000,
+          "silenceMs": 1800,
+          "snippet": "So that was the whole story.",
+          "score": 1
+        },
+        {
+          "ms": 120200,
+          "silenceMs": 2500,
+          "snippet": "and then we were going to the store.",
+          "score": 1
+        },
+        {
+          "ms": 180000,
+          "silenceMs": 300,
+          "snippet": "That's exactly right.",
+          "score": 0.86
+        },
+        {
+          "ms": 240000,
+          "silenceMs": 0,
+          "snippet": "TRANSCRIPT_UNAVAILABLE",
+          "score": 0.5
+        },
+        {
+          "ms": 300000,
+          "silenceMs": 2400,
+          "snippet": "We'll come back to that later.",
+          "score": 1
+        },
+        {
+          "ms": 420000,
+          "silenceMs": 700,
+          "snippet": "That is a fair point.",
+          "score": 0.9400000000000001
+        }
+      ],
+      "used_route_fallback_candidates": false,
+      "selected_candidates": [
+        {
+          "ms": 60000,
+          "silenceMs": 1800,
+          "snippet": "So that was the whole story.",
+          "score": 1
+        },
+        {
+          "ms": 120200,
+          "silenceMs": 2500,
+          "snippet": "and then we were going to the store.",
+          "score": 1
+        },
+        {
+          "ms": 300000,
+          "silenceMs": 2400,
+          "snippet": "We'll come back to that later.",
+          "score": 1
+        }
+      ],
+      "slots": [
+        {
+          "insertion_ms": 60000,
+          "insertion_time_seconds": 60,
+          "confidence_percent": 95,
+          "silence_ms": 1800,
+          "snippet": "So that was the whole story.",
+          "score": 1
+        },
+        {
+          "insertion_ms": 120200,
+          "insertion_time_seconds": 120.2,
+          "confidence_percent": 95,
+          "silence_ms": 2500,
+          "snippet": "and then we were going to the store.",
+          "score": 1
+        },
+        {
+          "insertion_ms": 300000,
+          "insertion_time_seconds": 300,
+          "confidence_percent": 95,
+          "silence_ms": 2400,
+          "snippet": "We'll come back to that later.",
+          "score": 1
+        }
+      ],
+      "points": [
+        60,
+        120.2,
+        300
+      ],
+      "confidences": [
+        95,
+        95,
+        95
+      ]
+    },
+    {
+      "episode_id": "ep-02-edges",
+      "description": "Early and late candidates that trigger the edge penalty, plus a mid-episode candidate that earns the position reward.",
+      "covers": [
+        "early_episode_candidate",
+        "late_episode_candidate",
+        "mid_episode_position_reward",
+        "edge_penalty"
+      ],
+      "input": {
+        "mode": "podcast",
+        "duration_seconds": 60,
+        "count": 3,
+        "silence_candidates": [
+          {
+            "ms": 2000,
+            "silenceMs": 1200,
+            "snippet": "Welcome back."
+          },
+          {
+            "ms": 4000,
+            "silenceMs": 800,
+            "snippet": "Let's get into it."
+          },
+          {
+            "ms": 30000,
+            "silenceMs": 1000,
+            "snippet": "That makes sense."
+          },
+          {
+            "ms": 57000,
+            "silenceMs": 1400,
+            "snippet": "Thanks for listening."
+          }
+        ],
+        "transcript_candidates": []
+      },
+      "merged_candidates": [
+        {
+          "ms": 2000,
+          "silenceMs": 1200,
+          "snippet": "Welcome back."
+        },
+        {
+          "ms": 4000,
+          "silenceMs": 800,
+          "snippet": "Let's get into it."
+        },
+        {
+          "ms": 30000,
+          "silenceMs": 1000,
+          "snippet": "That makes sense."
+        },
+        {
+          "ms": 57000,
+          "silenceMs": 1400,
+          "snippet": "Thanks for listening."
+        }
+      ],
+      "scored_candidates": [
+        {
+          "ms": 2000,
+          "silenceMs": 1200,
+          "snippet": "Welcome back.",
+          "score": 0.6399999999999999
+        },
+        {
+          "ms": 4000,
+          "silenceMs": 800,
+          "snippet": "Let's get into it.",
+          "score": 0.56
+        },
+        {
+          "ms": 30000,
+          "silenceMs": 1000,
+          "snippet": "That makes sense.",
+          "score": 1
+        },
+        {
+          "ms": 57000,
+          "silenceMs": 1400,
+          "snippet": "Thanks for listening.",
+          "score": 0.6799999999999999
+        }
+      ],
+      "used_route_fallback_candidates": false,
+      "selected_candidates": [
+        {
+          "ms": 30000,
+          "silenceMs": 1000,
+          "snippet": "That makes sense.",
+          "score": 1
+        },
+        {
+          "ms": 57000,
+          "silenceMs": 1400,
+          "snippet": "Thanks for listening.",
+          "score": 0.6799999999999999
+        },
+        {
+          "ms": 2000,
+          "silenceMs": 1200,
+          "snippet": "Welcome back.",
+          "score": 0.6399999999999999
+        }
+      ],
+      "slots": [
+        {
+          "insertion_ms": 30000,
+          "insertion_time_seconds": 30,
+          "confidence_percent": 95,
+          "silence_ms": 1000,
+          "snippet": "That makes sense.",
+          "score": 1
+        },
+        {
+          "insertion_ms": 57000,
+          "insertion_time_seconds": 57,
+          "confidence_percent": 87,
+          "silence_ms": 1400,
+          "snippet": "Thanks for listening.",
+          "score": 0.6799999999999999
+        },
+        {
+          "insertion_ms": 2000,
+          "insertion_time_seconds": 2,
+          "confidence_percent": 86,
+          "silence_ms": 1200,
+          "snippet": "Welcome back.",
+          "score": 0.6399999999999999
+        }
+      ],
+      "points": [
+        30,
+        57,
+        2
+      ],
+      "confidences": [
+        95,
+        87,
+        86
+      ]
+    },
+    {
+      "episode_id": "ep-03-spacing",
+      "description": "High-scoring candidates packed closer than the 6 s minimum separation, forcing the spacing constraint to reject neighbours.",
+      "covers": [
+        "candidates_closer_than_minimum_spacing"
+      ],
+      "input": {
+        "mode": "podcast",
+        "duration_seconds": 300,
+        "count": 3,
+        "silence_candidates": [
+          {
+            "ms": 100000,
+            "silenceMs": 2000,
+            "snippet": "Right, exactly."
+          },
+          {
+            "ms": 101000,
+            "silenceMs": 2000,
+            "snippet": "Right, exactly."
+          },
+          {
+            "ms": 103000,
+            "silenceMs": 2000,
+            "snippet": "Right, exactly."
+          },
+          {
+            "ms": 105500,
+            "silenceMs": 2000,
+            "snippet": "Right, exactly."
+          },
+          {
+            "ms": 150000,
+            "silenceMs": 2000,
+            "snippet": "Sure thing."
+          },
+          {
+            "ms": 200000,
+            "silenceMs": 2000,
+            "snippet": "Of course."
+          }
+        ],
+        "transcript_candidates": []
+      },
+      "merged_candidates": [
+        {
+          "ms": 100000,
+          "silenceMs": 2000,
+          "snippet": "Right, exactly."
+        },
+        {
+          "ms": 101000,
+          "silenceMs": 2000,
+          "snippet": "Right, exactly."
+        },
+        {
+          "ms": 103000,
+          "silenceMs": 2000,
+          "snippet": "Right, exactly."
+        },
+        {
+          "ms": 105500,
+          "silenceMs": 2000,
+          "snippet": "Right, exactly."
+        },
+        {
+          "ms": 150000,
+          "silenceMs": 2000,
+          "snippet": "Sure thing."
+        },
+        {
+          "ms": 200000,
+          "silenceMs": 2000,
+          "snippet": "Of course."
+        }
+      ],
+      "scored_candidates": [
+        {
+          "ms": 100000,
+          "silenceMs": 2000,
+          "snippet": "Right, exactly.",
+          "score": 1
+        },
+        {
+          "ms": 101000,
+          "silenceMs": 2000,
+          "snippet": "Right, exactly.",
+          "score": 1
+        },
+        {
+          "ms": 103000,
+          "silenceMs": 2000,
+          "snippet": "Right, exactly.",
+          "score": 1
+        },
+        {
+          "ms": 105500,
+          "silenceMs": 2000,
+          "snippet": "Right, exactly.",
+          "score": 1
+        },
+        {
+          "ms": 150000,
+          "silenceMs": 2000,
+          "snippet": "Sure thing.",
+          "score": 1
+        },
+        {
+          "ms": 200000,
+          "silenceMs": 2000,
+          "snippet": "Of course.",
+          "score": 1
+        }
+      ],
+      "used_route_fallback_candidates": false,
+      "selected_candidates": [
+        {
+          "ms": 100000,
+          "silenceMs": 2000,
+          "snippet": "Right, exactly.",
+          "score": 1
+        },
+        {
+          "ms": 150000,
+          "silenceMs": 2000,
+          "snippet": "Sure thing.",
+          "score": 1
+        },
+        {
+          "ms": 200000,
+          "silenceMs": 2000,
+          "snippet": "Of course.",
+          "score": 1
+        }
+      ],
+      "slots": [
+        {
+          "insertion_ms": 100000,
+          "insertion_time_seconds": 100,
+          "confidence_percent": 95,
+          "silence_ms": 2000,
+          "snippet": "Right, exactly.",
+          "score": 1
+        },
+        {
+          "insertion_ms": 150000,
+          "insertion_time_seconds": 150,
+          "confidence_percent": 95,
+          "silence_ms": 2000,
+          "snippet": "Sure thing.",
+          "score": 1
+        },
+        {
+          "insertion_ms": 200000,
+          "insertion_time_seconds": 200,
+          "confidence_percent": 95,
+          "silence_ms": 2000,
+          "snippet": "Of course.",
+          "score": 1
+        }
+      ],
+      "points": [
+        100,
+        150,
+        200
+      ],
+      "confidences": [
+        95,
+        95,
+        95
+      ]
+    },
+    {
+      "episode_id": "ep-04-ties",
+      "description": "Candidates with byte-identical scoring inputs at different timestamps; selection must break ties by earlier timestamp.",
+      "covers": [
+        "tied_scores",
+        "deterministic_tie_breaking"
+      ],
+      "input": {
+        "mode": "podcast",
+        "duration_seconds": 400,
+        "count": 3,
+        "silence_candidates": [
+          {
+            "ms": 90000,
+            "silenceMs": 1000,
+            "snippet": "Understood."
+          },
+          {
+            "ms": 120000,
+            "silenceMs": 1000,
+            "snippet": "Understood."
+          },
+          {
+            "ms": 150000,
+            "silenceMs": 1000,
+            "snippet": "Understood."
+          },
+          {
+            "ms": 180000,
+            "silenceMs": 1000,
+            "snippet": "Understood."
+          }
+        ],
+        "transcript_candidates": []
+      },
+      "merged_candidates": [
+        {
+          "ms": 90000,
+          "silenceMs": 1000,
+          "snippet": "Understood."
+        },
+        {
+          "ms": 120000,
+          "silenceMs": 1000,
+          "snippet": "Understood."
+        },
+        {
+          "ms": 150000,
+          "silenceMs": 1000,
+          "snippet": "Understood."
+        },
+        {
+          "ms": 180000,
+          "silenceMs": 1000,
+          "snippet": "Understood."
+        }
+      ],
+      "scored_candidates": [
+        {
+          "ms": 90000,
+          "silenceMs": 1000,
+          "snippet": "Understood.",
+          "score": 1
+        },
+        {
+          "ms": 120000,
+          "silenceMs": 1000,
+          "snippet": "Understood.",
+          "score": 1
+        },
+        {
+          "ms": 150000,
+          "silenceMs": 1000,
+          "snippet": "Understood.",
+          "score": 1
+        },
+        {
+          "ms": 180000,
+          "silenceMs": 1000,
+          "snippet": "Understood.",
+          "score": 1
+        }
+      ],
+      "used_route_fallback_candidates": false,
+      "selected_candidates": [
+        {
+          "ms": 90000,
+          "silenceMs": 1000,
+          "snippet": "Understood.",
+          "score": 1
+        },
+        {
+          "ms": 120000,
+          "silenceMs": 1000,
+          "snippet": "Understood.",
+          "score": 1
+        },
+        {
+          "ms": 150000,
+          "silenceMs": 1000,
+          "snippet": "Understood.",
+          "score": 1
+        }
+      ],
+      "slots": [
+        {
+          "insertion_ms": 90000,
+          "insertion_time_seconds": 90,
+          "confidence_percent": 95,
+          "silence_ms": 1000,
+          "snippet": "Understood.",
+          "score": 1
+        },
+        {
+          "insertion_ms": 120000,
+          "insertion_time_seconds": 120,
+          "confidence_percent": 95,
+          "silence_ms": 1000,
+          "snippet": "Understood.",
+          "score": 1
+        },
+        {
+          "insertion_ms": 150000,
+          "insertion_time_seconds": 150,
+          "confidence_percent": 95,
+          "silence_ms": 1000,
+          "snippet": "Understood.",
+          "score": 1
+        }
+      ],
+      "points": [
+        90,
+        120,
+        150
+      ],
+      "confidences": [
+        95,
+        95,
+        95
+      ]
+    },
+    {
+      "episode_id": "ep-05-insufficient",
+      "description": "A single valid candidate, so selection pads with the 0.22/0.50/0.78 ratio fallbacks.",
+      "covers": [
+        "fewer_than_three_valid_candidates",
+        "ratio_fallback_padding"
+      ],
+      "input": {
+        "mode": "podcast",
+        "duration_seconds": 200,
+        "count": 3,
+        "silence_candidates": [
+          {
+            "ms": 88000,
+            "silenceMs": 1600,
+            "snippet": "Let's pause there."
+          }
+        ],
+        "transcript_candidates": []
+      },
+      "merged_candidates": [
+        {
+          "ms": 88000,
+          "silenceMs": 1600,
+          "snippet": "Let's pause there."
+        }
+      ],
+      "scored_candidates": [
+        {
+          "ms": 88000,
+          "silenceMs": 1600,
+          "snippet": "Let's pause there.",
+          "score": 1
+        }
+      ],
+      "used_route_fallback_candidates": false,
+      "selected_candidates": [
+        {
+          "ms": 88000,
+          "silenceMs": 1600,
+          "snippet": "Let's pause there.",
+          "score": 1
+        },
+        {
+          "ms": 44000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.5
+        },
+        {
+          "ms": 100000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.5
+        }
+      ],
+      "slots": [
+        {
+          "insertion_ms": 88000,
+          "insertion_time_seconds": 88,
+          "confidence_percent": 95,
+          "silence_ms": 1600,
+          "snippet": "Let's pause there.",
+          "score": 1
+        },
+        {
+          "insertion_ms": 44000,
+          "insertion_time_seconds": 44,
+          "confidence_percent": 83,
+          "silence_ms": 0,
+          "snippet": "",
+          "score": 0.5
+        },
+        {
+          "insertion_ms": 100000,
+          "insertion_time_seconds": 100,
+          "confidence_percent": 83,
+          "silence_ms": 0,
+          "snippet": "",
+          "score": 0.5
+        }
+      ],
+      "points": [
+        88,
+        44,
+        100
+      ],
+      "confidences": [
+        95,
+        83,
+        83
+      ]
+    },
+    {
+      "episode_id": "ep-06-no-duration",
+      "description": "Unknown duration: no position term, no ratio fallback, and padding falls through to the minimum-separation loop.",
+      "covers": [
+        "unknown_duration",
+        "spacing_fallback_padding",
+        "fewer_than_three_valid_candidates"
+      ],
+      "input": {
+        "mode": "podcast",
+        "duration_seconds": null,
+        "count": 3,
+        "silence_candidates": [
+          {
+            "ms": 45000,
+            "silenceMs": 900,
+            "snippet": "Okay."
+          },
+          {
+            "ms": 46000,
+            "silenceMs": 1900,
+            "snippet": "Okay."
+          }
+        ],
+        "transcript_candidates": []
+      },
+      "merged_candidates": [
+        {
+          "ms": 45000,
+          "silenceMs": 900,
+          "snippet": "Okay."
+        },
+        {
+          "ms": 46000,
+          "silenceMs": 1900,
+          "snippet": "Okay."
+        }
+      ],
+      "scored_candidates": [
+        {
+          "ms": 45000,
+          "silenceMs": 900,
+          "snippet": "Okay.",
+          "score": 0.8800000000000001
+        },
+        {
+          "ms": 46000,
+          "silenceMs": 1900,
+          "snippet": "Okay.",
+          "score": 1
+        }
+      ],
+      "used_route_fallback_candidates": false,
+      "selected_candidates": [
+        {
+          "ms": 46000,
+          "silenceMs": 1900,
+          "snippet": "Okay.",
+          "score": 1
+        },
+        {
+          "ms": 52000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.4
+        },
+        {
+          "ms": 58000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.4
+        }
+      ],
+      "slots": [
+        {
+          "insertion_ms": 46000,
+          "insertion_time_seconds": 46,
+          "confidence_percent": 95,
+          "silence_ms": 1900,
+          "snippet": "Okay.",
+          "score": 1
+        },
+        {
+          "insertion_ms": 52000,
+          "insertion_time_seconds": 52,
+          "confidence_percent": 80,
+          "silence_ms": 0,
+          "snippet": "",
+          "score": 0.4
+        },
+        {
+          "insertion_ms": 58000,
+          "insertion_time_seconds": 58,
+          "confidence_percent": 80,
+          "silence_ms": 0,
+          "snippet": "",
+          "score": 0.4
+        }
+      ],
+      "points": [
+        46,
+        52,
+        58
+      ],
+      "confidences": [
+        95,
+        80,
+        80
+      ]
+    },
+    {
+      "episode_id": "ep-07-song-mode",
+      "description": "Song mode, which adds a flat mode bonus to every candidate.",
+      "covers": [
+        "song_mode_bonus"
+      ],
+      "input": {
+        "mode": "song",
+        "duration_seconds": 200,
+        "count": 3,
+        "silence_candidates": [
+          {
+            "ms": 50000,
+            "silenceMs": 0,
+            "snippet": ""
+          },
+          {
+            "ms": 100000,
+            "silenceMs": 0,
+            "snippet": ""
+          },
+          {
+            "ms": 150000,
+            "silenceMs": 0,
+            "snippet": ""
+          }
+        ],
+        "transcript_candidates": []
+      },
+      "merged_candidates": [
+        {
+          "ms": 50000,
+          "silenceMs": 0,
+          "snippet": ""
+        },
+        {
+          "ms": 100000,
+          "silenceMs": 0,
+          "snippet": ""
+        },
+        {
+          "ms": 150000,
+          "silenceMs": 0,
+          "snippet": ""
+        }
+      ],
+      "scored_candidates": [
+        {
+          "ms": 50000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.6
+        },
+        {
+          "ms": 100000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.6
+        },
+        {
+          "ms": 150000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.6
+        }
+      ],
+      "used_route_fallback_candidates": false,
+      "selected_candidates": [
+        {
+          "ms": 50000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.6
+        },
+        {
+          "ms": 100000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.6
+        },
+        {
+          "ms": 150000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.6
+        }
+      ],
+      "slots": [
+        {
+          "insertion_ms": 50000,
+          "insertion_time_seconds": 50,
+          "confidence_percent": 85,
+          "silence_ms": 0,
+          "snippet": "",
+          "score": 0.6
+        },
+        {
+          "insertion_ms": 100000,
+          "insertion_time_seconds": 100,
+          "confidence_percent": 85,
+          "silence_ms": 0,
+          "snippet": "",
+          "score": 0.6
+        },
+        {
+          "insertion_ms": 150000,
+          "insertion_time_seconds": 150,
+          "confidence_percent": 85,
+          "silence_ms": 0,
+          "snippet": "",
+          "score": 0.6
+        }
+      ],
+      "points": [
+        50,
+        100,
+        150
+      ],
+      "confidences": [
+        85,
+        85,
+        85
+      ]
+    },
+    {
+      "episode_id": "ep-08-empty",
+      "description": "No candidates at all, so the route substitutes 0.25/0.50/0.75 duration fallbacks before scoring.",
+      "covers": [
+        "no_candidates",
+        "route_level_fallback_candidates"
+      ],
+      "input": {
+        "mode": "podcast",
+        "duration_seconds": 120,
+        "count": 3,
+        "silence_candidates": [],
+        "transcript_candidates": []
+      },
+      "merged_candidates": [],
+      "scored_candidates": [
+        {
+          "ms": 30000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.5
+        },
+        {
+          "ms": 60000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.5
+        },
+        {
+          "ms": 90000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.5
+        }
+      ],
+      "used_route_fallback_candidates": true,
+      "selected_candidates": [
+        {
+          "ms": 30000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.5
+        },
+        {
+          "ms": 60000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.5
+        },
+        {
+          "ms": 90000,
+          "silenceMs": 0,
+          "snippet": "",
+          "score": 0.5
+        }
+      ],
+      "slots": [
+        {
+          "insertion_ms": 30000,
+          "insertion_time_seconds": 30,
+          "confidence_percent": 83,
+          "silence_ms": 0,
+          "snippet": "",
+          "score": 0.5
+        },
+        {
+          "insertion_ms": 60000,
+          "insertion_time_seconds": 60,
+          "confidence_percent": 83,
+          "silence_ms": 0,
+          "snippet": "",
+          "score": 0.5
+        },
+        {
+          "insertion_ms": 90000,
+          "insertion_time_seconds": 90,
+          "confidence_percent": 83,
+          "silence_ms": 0,
+          "snippet": "",
+          "score": 0.5
+        }
+      ],
+      "points": [
+        30,
+        60,
+        90
+      ],
+      "confidences": [
+        83,
+        83,
+        83
+      ]
+    },
+    {
+      "episode_id": "ep-09-many",
+      "description": "A long episode with many well-separated candidates; more than three are valid and only the top three survive.",
+      "covers": [
+        "more_than_three_valid_candidates"
+      ],
+      "input": {
+        "mode": "podcast",
+        "duration_seconds": 1200,
+        "count": 3,
+        "silence_candidates": [
+          {
+            "ms": 60000,
+            "silenceMs": 700,
+            "snippet": "Sure."
+          },
+          {
+            "ms": 180000,
+            "silenceMs": 1100,
+            "snippet": "That tracks."
+          },
+          {
+            "ms": 300000,
+            "silenceMs": 2600,
+            "snippet": "Good point."
+          },
+          {
+            "ms": 420000,
+            "silenceMs": 400,
+            "snippet": "and so the thing is"
+          },
+          {
+            "ms": 540000,
+            "silenceMs": 1900,
+            "snippet": "Absolutely."
+          },
+          {
+            "ms": 660000,
+            "silenceMs": 2200,
+            "snippet": "No question."
+          },
+          {
+            "ms": 780000,
+            "silenceMs": 500,
+            "snippet": "Right?"
+          },
+          {
+            "ms": 900000,
+            "silenceMs": 1300,
+            "snippet": "I agree."
+          },
+          {
+            "ms": 1020000,
+            "silenceMs": 3000,
+            "snippet": "Let's move on."
+          },
+          {
+            "ms": 1140000,
+            "silenceMs": 800,
+            "snippet": "Fair enough."
+          }
+        ],
+        "transcript_candidates": []
+      },
+      "merged_candidates": [
+        {
+          "ms": 60000,
+          "silenceMs": 700,
+          "snippet": "Sure."
+        },
+        {
+          "ms": 180000,
+          "silenceMs": 1100,
+          "snippet": "That tracks."
+        },
+        {
+          "ms": 300000,
+          "silenceMs": 2600,
+          "snippet": "Good point."
+        },
+        {
+          "ms": 420000,
+          "silenceMs": 400,
+          "snippet": "and so the thing is"
+        },
+        {
+          "ms": 540000,
+          "silenceMs": 1900,
+          "snippet": "Absolutely."
+        },
+        {
+          "ms": 660000,
+          "silenceMs": 2200,
+          "snippet": "No question."
+        },
+        {
+          "ms": 780000,
+          "silenceMs": 500,
+          "snippet": "Right?"
+        },
+        {
+          "ms": 900000,
+          "silenceMs": 1300,
+          "snippet": "I agree."
+        },
+        {
+          "ms": 1020000,
+          "silenceMs": 3000,
+          "snippet": "Let's move on."
+        },
+        {
+          "ms": 1140000,
+          "silenceMs": 800,
+          "snippet": "Fair enough."
+        }
+      ],
+      "scored_candidates": [
+        {
+          "ms": 60000,
+          "silenceMs": 700,
+          "snippet": "Sure.",
+          "score": 0.8400000000000001
+        },
+        {
+          "ms": 180000,
+          "silenceMs": 1100,
+          "snippet": "That tracks.",
+          "score": 0.9200000000000002
+        },
+        {
+          "ms": 300000,
+          "silenceMs": 2600,
+          "snippet": "Good point.",
+          "score": 1
+        },
+        {
+          "ms": 420000,
+          "silenceMs": 400,
+          "snippet": "and so the thing is",
+          "score": 0.38
+        },
+        {
+          "ms": 540000,
+          "silenceMs": 1900,
+          "snippet": "Absolutely.",
+          "score": 1
+        },
+        {
+          "ms": 660000,
+          "silenceMs": 2200,
+          "snippet": "No question.",
+          "score": 1
+        },
+        {
+          "ms": 780000,
+          "silenceMs": 500,
+          "snippet": "Right?",
+          "score": 0.9
+        },
+        {
+          "ms": 900000,
+          "silenceMs": 1300,
+          "snippet": "I agree.",
+          "score": 1
+        },
+        {
+          "ms": 1020000,
+          "silenceMs": 3000,
+          "snippet": "Let's move on.",
+          "score": 1
+        },
+        {
+          "ms": 1140000,
+          "silenceMs": 800,
+          "snippet": "Fair enough.",
+          "score": 0.8600000000000001
+        }
+      ],
+      "used_route_fallback_candidates": false,
+      "selected_candidates": [
+        {
+          "ms": 300000,
+          "silenceMs": 2600,
+          "snippet": "Good point.",
+          "score": 1
+        },
+        {
+          "ms": 540000,
+          "silenceMs": 1900,
+          "snippet": "Absolutely.",
+          "score": 1
+        },
+        {
+          "ms": 660000,
+          "silenceMs": 2200,
+          "snippet": "No question.",
+          "score": 1
+        }
+      ],
+      "slots": [
+        {
+          "insertion_ms": 300000,
+          "insertion_time_seconds": 300,
+          "confidence_percent": 95,
+          "silence_ms": 2600,
+          "snippet": "Good point.",
+          "score": 1
+        },
+        {
+          "insertion_ms": 540000,
+          "insertion_time_seconds": 540,
+          "confidence_percent": 95,
+          "silence_ms": 1900,
+          "snippet": "Absolutely.",
+          "score": 1
+        },
+        {
+          "insertion_ms": 660000,
+          "insertion_time_seconds": 660,
+          "confidence_percent": 95,
+          "silence_ms": 2200,
+          "snippet": "No question.",
+          "score": 1
+        }
+      ],
+      "points": [
+        300,
+        540,
+        660
+      ],
+      "confidences": [
+        95,
+        95,
+        95
+      ]
+    }
+  ]
+}

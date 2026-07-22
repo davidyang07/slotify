@@ -27,5 +27,28 @@ venv/
 __pycache__/
 .env
 
+# ML package (ml/)
+ml/.venv/
+ml/.pytest-tmp/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Datasets and caches: audio is never committed. Episodes are reconstructed
+# from configs/sources.yaml by the fetch step (see docs/multimodal-ranking-mvp-plan.md §8).
+data/
+*.parquet
+*.npy
+
+# Experiment artifacts. Generated reports ARE committed -- they are the
+# evidence trail for the claim matrix -- so only the bulky binaries are ignored.
+artifacts/**
+!artifacts/
+!artifacts/**/
+!artifacts/**/*.md
+!artifacts/**/*.json
+!artifacts/**/*.csv
+
 # Claude Code
 CLAUDE.md

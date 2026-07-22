@@ -1,0 +1,32 @@
+# Run configuration for the canonical offline baseline.
+#
+# IMPORTANT: this file holds *run* settings only. The baseline constants
+# (silence thresholds, score weights, spacing, confidence mapping) live in
+# config/heuristic_offline_v1.json at the repository root and are shared with
+# the TypeScript product code. Never restate them here -- a second copy is a
+# second baseline.
+
+run_name: heuristic_offline_v1_smoke
+seed: 42
+
+baseline:
+  # Profile name inside config/heuristic_offline_v1.json.
+  profile: heuristic_offline_v1
+
+evaluation:
+  # Cutoff for the headline metric (NDCG@3).
+  k: 3
+  # Rubric score at or above which a candidate counts as relevant for
+  # Precision@k, Recall@k, F1 and MRR. 4 = "strong natural break" or better.
+  relevance_threshold: 4.0
+  # Graded-gain offset: gain = 2 ** max(0, relevance - gain_offset) - 1.
+  gain_offset: 1.0
+  # Minimum label gap for a pair to count toward pairwise ranking accuracy.
+  min_pair_gap: 1.0
+  # Recall@k divides by min(n_relevant, k) when true, n_relevant when false.
+  normalize_recall: true
+
+paths:
+  # Relative to the repository root.
+  rankings: artifacts/evaluation/baseline_rankings.json
+  report: artifacts/evaluation/baseline_results.json

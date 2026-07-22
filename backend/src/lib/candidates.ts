@@ -1,4 +1,5 @@
 import { clamp, endsWithSentenceBoundary } from "./text";
+import { HEURISTIC_V1 } from "./heuristic-config";
 import type {
   Candidate,
   InsertionMode,
@@ -6,10 +7,16 @@ import type {
   ScoredCandidate,
 } from "../types";
 
+// Baseline constants live in config/heuristic_offline_v1.json and are shared
+// with the Python port in ml/src/slotify_rank/candidates/heuristic.py. Editing
+// them changes the `heuristic_offline_v1` baseline; see
+// docs/multimodal-ranking-mvp-plan.md §5.
+const { merge: MERGE, scoring: SCORING, selection: SELECTION } = HEURISTIC_V1;
+
 export const mergeCandidates = (
   base: Candidate[],
   extra: Candidate[],
-  minGapMs = 400,
+  minGapMs = MERGE.min_gap_ms,
 ): Candidate[] => {
   const combined = [...base, ...extra].filter(Boolean);
   combined.sort((a, b) => a.ms - b.ms);
@@ -37,30 +44,43 @@ export const scoreCandidate = (
   mode: InsertionMode,
 ): number => {
   const timeSeconds = candidate.ms / 1000;
-  let score = 0.4;
+  let score = SCORING.base_score;
   if (candidate.silenceMs) {
-    score += Math.min(0.4, (candidate.silenceMs / 2000) * 0.4);
+    score += Math.min(
+      SCORING.pause_reward_max,
+      (candidate.silenceMs / SCORING.pause_reward_saturation_ms) *
+        SCORING.pause_reward_max,
+    );
   }
   if (mode === "song") {
-    score += 0.1;
+    score += SCORING.song_mode_bonus;
   }
-  if (candidate.snippet && candidate.snippet !== "TRANSCRIPT_UNAVAILABLE") {
+  if (
+    candidate.snippet &&
+    candidate.snippet !== SCORING.unavailable_snippet_sentinel
+  ) {
     if (endsWithSentenceBoundary(candidate.snippet)) {
-      score += 0.3;
+      score += SCORING.sentence_end_reward;
     } else {
-      score -= 0.2;
+      score -= SCORING.no_sentence_end_penalty;
     }
   }
   if (durationSeconds) {
     const ratio = timeSeconds / durationSeconds;
-    if (ratio >= 0.2 && ratio <= 0.8) {
-      score += 0.1;
+    if (
+      ratio >= SCORING.mid_episode_min_ratio &&
+      ratio <= SCORING.mid_episode_max_ratio
+    ) {
+      score += SCORING.mid_episode_reward;
     }
-    if (timeSeconds < 5 || timeSeconds > durationSeconds - 5) {
-      score -= 0.3;
+    if (
+      timeSeconds < SCORING.edge_guard_seconds ||
+      timeSeconds > durationSeconds - SCORING.edge_guard_seconds
+    ) {
+      score -= SCORING.edge_penalty;
     }
   }
-  return clamp(score, 0, 1);
+  return clamp(score, SCORING.score_min, SCORING.score_max);
 };
 
 export const buildFallbackProsCons = ({
@@ -136,7 +156,7 @@ export const selectTopSlots = (
   }
 
   if (durationSeconds) {
-    const fallbackTimes = [0.22, 0.5, 0.78].map(
+    const fallbackTimes = SELECTION.ratio_fallback_positions.map(
       (ratio) => ratio * durationSeconds * 1000,
     );
     for (const fallback of fallbackTimes) {
@@ -149,7 +169,7 @@ export const selectTopSlots = (
           ms: Math.round(fallback),
           silenceMs: 0,
           snippet: "",
-          score: 0.5,
+          score: SELECTION.ratio_fallback_score,
         });
       }
     }
@@ -169,7 +189,7 @@ export const selectTopSlots = (
       ms: Math.round(candidateMs),
       silenceMs: 0,
       snippet: "",
-      score: 0.4,
+      score: SELECTION.spacing_fallback_score,
     });
   }
 

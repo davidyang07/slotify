@@ -8,13 +8,21 @@ from typing import Dict, List, Optional
 from pydub import AudioSegment
 from pydub.silence import detect_silence
 
-from ad_inserter import analysis
+from ad_inserter import analysis, heuristic_config
 
 
 def _detect_podcast_silences(audio: AudioSegment) -> List[Dict[str, int]]:
-    silence_thresh = audio.dBFS - 16 if audio.dBFS != float("-inf") else -40
+    # Constants come from the canonical `heuristic_offline_v1` profile in
+    # config/heuristic_offline_v1.json, shared with the TypeScript scorer and
+    # the ML baseline port. Values are unchanged (700 ms, dBFS - 16, -40).
+    min_silence_len, threshold_offset, fallback_dbfs = heuristic_config.silence_params(
+        heuristic_config.PRODUCT_PROFILE
+    )
+    silence_thresh = (
+        audio.dBFS + threshold_offset if audio.dBFS != float("-inf") else fallback_dbfs
+    )
     silence_ranges = detect_silence(
-        audio, min_silence_len=700, silence_thresh=silence_thresh
+        audio, min_silence_len=min_silence_len, silence_thresh=silence_thresh
     )
     silences: List[Dict[str, int]] = []
     for start, end in silence_ranges:

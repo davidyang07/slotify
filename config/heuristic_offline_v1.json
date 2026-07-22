@@ -1,0 +1,82 @@
+{
+  "$comment": "Canonical, language-neutral configuration for the Slotify heuristic baselines. Loaded by thin loaders in TypeScript (backend/src/lib/heuristic-config.ts), the backend Python pipeline (backend/ad_inserter/heuristic_config.py), and the ML package (ml/src/slotify_rank/config/settings.py). This file is the single source of truth: do not duplicate these numbers in code. Changing any value changes the baseline and REQUIRES bumping config_version and regenerating ml/tests/fixtures/heuristic_golden.json.",
+  "config_version": "heuristic-config-v1.0.0",
+  "canonical_profile": "heuristic_offline_v1",
+  "profiles": {
+    "heuristic_offline_v1": {
+      "description": "The canonical, deterministic, offline product-path baseline. Reproduces the ranking behaviour of backend/src/lib/candidates.ts plus the deterministic slot finalisation in backend/src/routes/insert-sections.ts:136-260. Requires no network access, no API credentials, and no model downloads.",
+      "is_canonical_baseline": true,
+      "silence_detection": {
+        "$source": "backend/ad_inserter/analyze_cli.py::_detect_podcast_silences",
+        "min_silence_len_ms": 700,
+        "silence_threshold_offset_db": -16,
+        "fallback_silence_threshold_dbfs": -40,
+        "max_candidates": 30,
+        "snippet_count": 5
+      },
+      "merge": {
+        "$source": "backend/src/lib/candidates.ts::mergeCandidates",
+        "min_gap_ms": 400
+      },
+      "scoring": {
+        "$source": "backend/src/lib/candidates.ts::scoreCandidate",
+        "base_score": 0.4,
+        "pause_reward_max": 0.4,
+        "pause_reward_saturation_ms": 2000,
+        "song_mode_bonus": 0.1,
+        "sentence_end_reward": 0.3,
+        "no_sentence_end_penalty": 0.2,
+        "unavailable_snippet_sentinel": "TRANSCRIPT_UNAVAILABLE",
+        "mid_episode_reward": 0.1,
+        "mid_episode_min_ratio": 0.2,
+        "mid_episode_max_ratio": 0.8,
+        "edge_penalty": 0.3,
+        "edge_guard_seconds": 5,
+        "score_min": 0,
+        "score_max": 1
+      },
+      "selection": {
+        "$source": "backend/src/lib/candidates.ts::selectTopSlots",
+        "min_separation_seconds": 6,
+        "requested_count": 3,
+        "max_returned": 3,
+        "ratio_fallback_positions": [0.22, 0.5, 0.78],
+        "ratio_fallback_score": 0.5,
+        "spacing_fallback_score": 0.4
+      },
+      "route_fallback_candidates": {
+        "$source": "backend/src/routes/insert-sections.ts:146-161",
+        "ratio_positions": [0.25, 0.5, 0.75],
+        "fixed_positions_ms": [12000, 24000, 36000]
+      },
+      "slot_finalisation": {
+        "$source": "backend/src/routes/insert-sections.ts:181-260",
+        "end_guard_ms": 200,
+        "confidence_base": 70,
+        "confidence_scale": 25,
+        "confidence_min": 70,
+        "confidence_max": 95,
+        "time_seconds_decimals": 3
+      },
+      "sentence_boundary_pattern": {
+        "$source": "backend/src/lib/text.ts::endsWithSentenceBoundary",
+        "regex": "[.!?][\"')\\]]?\\s*$"
+      }
+    },
+    "legacy_cli_v1": {
+      "description": "NOT the canonical baseline. Records the divergent constants of the standalone CLI insertion path (backend/ad_inserter/cli.py), where the final insertion point is chosen by an LLM rather than by a score. Preserved verbatim for behaviour compatibility and documented so its behaviour is never silently merged into heuristic_offline_v1.",
+      "is_canonical_baseline": false,
+      "silence_detection": {
+        "$source": "backend/ad_inserter/analysis.py::detect_podcast_candidates",
+        "min_silence_len_ms": 500,
+        "silence_threshold_offset_db": -16,
+        "fallback_silence_threshold_dbfs": -40
+      },
+      "insertion_guards": {
+        "$source": "backend/ad_inserter/cli.py:164-165",
+        "min_insert_ms": 30000,
+        "end_buffer_ms": 15000
+      }
+    }
+  }
+}
