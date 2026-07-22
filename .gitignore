@@ -40,6 +40,11 @@ htmlcov/
 # Anchored to the repository root -- an unanchored `data/` would also swallow the
 # ml/src/slotify_rank/data/ source package.
 /data/
+# Phase 4 synthetic training fixtures. Generated on demand by
+# `slotify-rank training synthesize`; regenerable from a seed, so never
+# committed. Kept inside the checkout because manifest paths are, by design,
+# repository-relative (see ml/src/slotify_rank/data/paths.py).
+/data-synthetic/
 *.parquet
 *.npy
 

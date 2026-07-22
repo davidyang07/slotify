@@ -336,6 +336,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     register_feature_commands(subparsers)
 
+    # Phase 4: training / models. Lazy for the same reason -- `version` and the
+    # Phase 1 parity checks must not require torch to be installed.
+    from slotify_rank.training_cli import register as register_training_commands
+
+    register_training_commands(subparsers)
+
     return parser
 
 
