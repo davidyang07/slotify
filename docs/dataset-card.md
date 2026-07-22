@@ -95,8 +95,19 @@ Audio is **never committed to Git.** `data/` is ignored in its entirety.
    atomic. The cache is keyed on `(source sha256, preprocessing_version)`, so an unchanged file is
    never re-rendered and a version bump invalidates every render at once.
 
+4. **Transcribe** (Phase 3) — local `openai/whisper-tiny.en` produces a timestamped transcript in
+   `data/transcripts/`, in integer milliseconds. No paid API and no key; the only network access is
+   the one-time model download. Long audio is decoded in overlapping 30 s chunks and the overlap is
+   reconciled. An empty transcript is recorded as a **failure**, never stored as an empty success.
+5. **Features** (Phase 3) — 110 handcrafted scalars per candidate plus frozen Whisper speech
+   representations (384-d) and frozen MiniLM transcript-context embeddings (384-d native, 1536-d
+   constructed). Every artifact is keyed on a cache identity covering its audio checksum, model id
+   and revision, config digests and library versions. See `docs/feature-pipeline.md`.
+
 The original stays outside Git and is untouched. **The product's own upload, preview and export
 paths are unaffected** — they still operate on the user's original file at its own sample rate.
+Phase 3 is likewise offline only: nothing in it touches the Node API, the React app, or the
+production ranking path.
 
 ---
 

@@ -1,0 +1,12 @@
+{
+  "audio_embedding_model": "openai/whisper-tiny.en",
+  "audio_embedding_dimensions": [
+    384
+  ],
+  "text_embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "text_embedding_native_dimensions": [
+    384
+  ],
+  "constructed_text_vector_dimension": 1536,
+  "constructed_text_vector_note": "4 blocks of the native dimension: [before | after | |before-after| | before*after]"
+}

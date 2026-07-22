@@ -35,6 +35,44 @@ Status vocabulary for the dataset rows below:
 `implemented but not yet populated` → `partially populated using smoke data` → `fully supported by
 real measured data`.
 
+## Phase 3 — multimodal feature pipeline (workflow complete, corpus not acquired)
+
+The pipeline exists, is tested, and has been run end to end with the **real local
+models**. As with Phase 2, it has been exercised only on the repository's
+~2.2-minute smoke fixtures. Every number below is that smoke run and is labelled
+**partially populated using smoke data** — none of it supports a claim about
+model quality, and Phase 3 trains nothing.
+
+| Intended claim | Required evidence | Generating command | Artifact | Status |
+|---|---|---|---|---|
+| A reproducible, resumable, CPU-first feature pipeline exists | Transcribe → acoustic → audio embed → text embed → assemble → validate → stats, non-zero exit on integrity failure; 607 passing tests, 89% coverage | `pipeline features --deep` | `artifacts/features/*.json`, `feature_summary.md` | **verified** (2026-07-22) |
+| Expensive outputs are cached and interrupted work resumes | Second identical run: 0 recomputed, 4/4 model stages cache-hit, 102 s → 1.2 s; `partial` ledger entries force reprocessing | `pipeline features` twice | `data/features/state/*.json` | **verified** (2026-07-22) |
+| Stale artifacts are detected, not silently reused | Bumping `FEATURE_SPEC_VERSION` recomputed the acoustic and text stages and correctly left transcription and audio embeddings cached | see `docs/feature-pipeline.md` §7 | ledger digests | **verified** (2026-07-22) |
+| Dimensions are what the models actually produce | Opt-in `model_smoke` tests assert 384 (not 768) tiny.en, 20 ms/frame derived and cross-checked, 384 native MiniLM, 1536 constructed | `pytest -m model_smoke` | 8 passing model-smoke tests | **verified** (2026-07-22) |
+
+### Phase 3 measured quantities
+
+Read from `artifacts/features/feature_statistics.json`. **Smoke data only.**
+
+| Field | Value | Note |
+|---|---|---|
+| `implemented_feature_family` | acoustic, structural, transcript-scalar, Whisper speech representation, MiniLM transcript embedding | 5 families |
+| `processed_candidate_count` | 20 | eligible, non-synthetic |
+| `successfully_embedded_candidate_count` | 18 | `feature_status = complete` |
+| `missing_feature_candidate_count` | 2 | `audio_only`; no usable transcript context |
+| `transcribed_audio_hours` | 0.0351 | speech covered by segments, **not** episode duration |
+| `audio_embedding_model` | `openai/whisper-tiny.en` | frozen encoder, 384-d |
+| `text_embedding_model` | `sentence-transformers/all-MiniLM-L6-v2` | frozen, 384-d native |
+| `feature_pipeline_version` | `featurepipeline-v1.0.0` | feature spec `featurespec-v1.1.0` |
+| handcrafted feature count | 110 | raw, unnormalized, each with a missing mask |
+| constructed text vector | 1536 | 384 × 4 blocks — arithmetic, not a model width |
+
+**Evidence classification: `partially populated using smoke data`.**
+
+What this does *not* yet support: any statement about ranking quality, any
+comparison against `heuristic_offline_v1`, and any claim resting on corpus size.
+7 episodes totalling ~2.2 minutes is a plumbing test, not a dataset.
+
 ---
 
 Baseline naming, used consistently in every later report:

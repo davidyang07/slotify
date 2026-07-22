@@ -30,9 +30,13 @@ cd ml
 $env:UV_LINK_MODE = "copy"
 
 uv venv --python 3.12.13 .venv
-# [dev] = pytest + coverage + httpx; [label] = FastAPI + uvicorn for the
-# labelling UI. Omit [label] if you only need the dataset pipeline.
-uv pip install --python .\.venv\Scripts\python.exe -e ".[dev,label]"
+# [dev]      pytest + coverage + httpx
+# [label]    FastAPI + uvicorn for the labelling UI
+# [features] torch, transformers, sentence-transformers, librosa (Phase 3)
+#
+# [features] is ~1 GB of wheels. Omit it and the Phase 1 baseline and the whole
+# Phase 2 dataset pipeline still install in seconds.
+uv pip install --python .\.venv\Scripts\python.exe -e ".[dev,label,features]"
 
 # Verify
 .\.venv\Scripts\python.exe -m slotify_rank.cli version
@@ -71,8 +75,23 @@ cd ml
 .\.venv\Scripts\python.exe -m pytest --cov=slotify_rank --cov-report=term-missing
 ```
 
-No test reaches the network, calls a paid API, downloads a model, requires a
-GPU, or trains anything. The HTTP layer is stubbed in the fetch tests.
+No test in the default run reaches the network, calls a paid API, downloads a
+model, requires a GPU, or trains anything. The HTTP layer is stubbed in the fetch
+tests, and the two Phase 3 models are stubbed at the stage boundary so the whole
+pipeline -- caching, resumability, assembly -- runs offline.
+
+The one deliberate exception is the `model_smoke` marker, which downloads and
+runs the real `whisper-tiny.en` and `all-MiniLM-L6-v2` weights on one short
+fixture. It is **deselected by default**:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -m model_smoke   # opt in (~1 min, CPU)
+```
+
+Its job is to turn the mocked dimension claims into evidence: that tiny.en's
+encoder really is 384-dimensional and not 768, that its temporal resolution
+really is 20 ms per frame, and that the constructed transcript vector really is
+1536.
 
 Tests that decode audio synthesise their own WAVs; the one test that reads a
 real repository fixture is marked `audio` and skips cleanly without FFmpeg:
@@ -294,5 +313,74 @@ configs/heuristic_v1.yaml   run settings (never baseline constants)
 configs/sources.yaml        source registry
 configs/dataset_v1.yaml     candidate-generation recall settings
 configs/splits_v1.yaml      split ratios, seed, grouping
-tests/                      unit + parity + dataset + CLI + service tests
+  transcription/schema.py   versioned transcript records (integer ms)
+  transcription/segments.py chunk planning, overlap reconciliation, sentence ends
+  transcription/local_whisper.py  local whisper-tiny.en via Transformers
+  transcription/cache.py    transcript read/write + identity enforcement
+  features/windows.py       candidate-centred windows, clipped at episode edges
+  features/acoustic.py      RMS / spectral / onset descriptors
+  features/structural.py    position, provenance, heuristic component scores
+  features/transcript.py    deterministic context selection + text scalars
+  features/schema.py        feature spec and candidate feature record
+  features/assemble.py      the identity-based joins and the feature manifest
+  features/validate.py      the Phase 3 integrity gate
+  features/stats.py         feature / transcription / embedding / cache reports
+  embeddings/whisper_audio.py  frozen encoder, pooled per candidate (384-d)
+  embeddings/minilm_text.py    frozen MiniLM (384-d native, 1536 constructed)
+  embeddings/pooling.py     frame-to-time mapping and window pooling
+  embeddings/store.py       .npy + JSON sidecar, never pickle
+  embeddings/device.py      CUDA autodetect, CPU default
+  pipeline/identity.py      deterministic cache identities
+  pipeline/state.py         missing/partial/complete/failed/stale ledgers
+  pipeline/stages.py        the five resumable stages
+  pipeline/feature_pipeline.py  end-to-end orchestration
+configs/transcription_v1.yaml   local Whisper settings
+configs/features_v1.yaml        windows, acoustics, transcript context
+configs/embeddings_v1.yaml      model ids, devices, pooling
+configs/feature_pipeline_v1.yaml  orchestration policy (not cache-identity)
+tests/                      unit + parity + dataset + CLI + service + feature tests
 ```
+
+## Feature pipeline (Phase 3)
+
+Full detail in [`docs/feature-pipeline.md`](../docs/feature-pipeline.md). The
+short version -- local models, CPU, resumable, cached:
+
+```powershell
+cd ml
+$py = ".\.venv\Scripts\python.exe"
+
+# Everything, then validate and report.
+& $py -m slotify_rank.cli pipeline features `
+    --transcription-config configs/transcription_v1.yaml `
+    --features-config configs/features_v1.yaml `
+    --embeddings-config configs/embeddings_v1.yaml `
+    --deep
+
+# Progress, without loading a model.
+& $py -m slotify_rank.cli pipeline status
+```
+
+One episode, or one split:
+
+```powershell
+& $py -m slotify_rank.cli pipeline features --episode-id <EPISODE_ID> --deep
+& $py -m slotify_rank.cli pipeline features --split train --deep
+```
+
+Individual stages (`transcribe run`, `features acoustic`, `embeddings audio`,
+`embeddings text`, `features assemble`, `features validate`, `features stats`)
+run the same work and share the same caches.
+
+Dimensions, stated because they are easy to misreport:
+
+| Quantity | Value |
+|---|---|
+| whisper-tiny.en encoder hidden size | **384** (not 768 -- that is whisper-base) |
+| all-MiniLM-L6-v2 native output | **384** |
+| constructed transcript vector | **1536** = 384 x 4 blocks |
+| handcrafted scalar features | **110**, raw and unnormalized, each with a mask |
+
+Re-running is cheap: a second identical run is entirely cache hits and skips
+every model. Artifacts are invalidated by their *inputs* -- audio checksum, model
+id and revision, config digests, library versions -- never by timestamps.

@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "error_count": 0,
+  "warning_count": 0,
+  "errors": [],
+  "warnings": [],
+  "checked": {
+    "records": 20,
+    "episodes": 7,
+    "handcrafted_feature_count": 110,
+    "deep": true
+  }
+}

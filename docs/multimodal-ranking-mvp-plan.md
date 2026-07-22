@@ -1320,16 +1320,35 @@ generates one, and every generation report states when none was available.
 dataset is ~4.6 minutes over 7 fixtures yielding 20 candidates and 0 labels. See
 `docs/resume-claim-matrix.md` for what is populated versus merely implemented.
 
-### Phase 3 — Feature and embedding pipeline
-```bash
-slotify-rank prepare-models
-slotify-rank transcribe --all
-slotify-rank features --all                  # acoustic + transcript + text-embed + audio-embed
-slotify-rank features --all                  # second run must be a no-op
+### Phase 3 — Feature and embedding pipeline (complete)
+
+Shipped commands differ from the sketch above: stages are named subcommands under the
+existing parser rather than one `features --all` flag, so each can be run, retried and
+cached independently.
+
+```powershell
+cd ml; $py = ".\.venv\Scripts\python.exe"
+& $py -m slotify_rank.cli pipeline features --deep    # transcribe -> ... -> validate -> stats
+& $py -m slotify_rank.cli pipeline features --deep    # second run: all cache hits
+& $py -m slotify_rank.cli pipeline status
 ```
-**Acceptance:** one command builds every feature; a repeat run recomputes nothing (verified by log +
-mtime assertions); interrupting and resuming produces byte-identical caches; `preprocessing_version`
-bump forces recompute.
+
+**Acceptance — met.** One command builds every feature; the second identical run recomputed
+nothing (4/4 model stages cache-hit, 102 s → 1.2 s); an interrupted stage is detected via a
+`partial` ledger entry and reprocessed; a `FEATURE_SPEC_VERSION` bump forced recompute of
+exactly the affected stages (acoustic + text embeddings) and correctly left transcription and
+audio embeddings cached.
+
+**One correction to the sketch.** Cache validity is *not* verified by mtime assertions. Timestamps
+are never part of a cache decision: a newer file is not a correct file, and mtimes survive neither
+a OneDrive sync nor a fresh clone. Validity is a SHA-256 over every input that determines the
+artifact's bytes — audio checksum, model id and revision, config digests, library versions. See
+`docs/feature-pipeline.md` §7.
+
+Dimensions recorded: whisper-tiny.en encoder **384** (not 768), MiniLM native **384**, constructed
+transcript vector **1536** = 384 × 4. 110 handcrafted scalars, each with a missing mask.
+
+**No model was trained.** Phase 3 produces features only.
 
 ### Phase 4 — Training
 ```bash
