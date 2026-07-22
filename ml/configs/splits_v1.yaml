@@ -1,0 +1,31 @@
+# Split configuration v1.
+#
+# A split manifest is IMMUTABLE for a given version. Models are trained against
+# it and results are reported against it, so changing these values requires
+# bumping `version` -- otherwise `dataset split` refuses to overwrite.
+#
+# Grouping is by series, never by episode: two episodes of one show share hosts,
+# room, mic chain and vocabulary, so training on one and testing on the other
+# measures memorisation as much as generalisation.
+
+split:
+  version: v1
+  seed: 42
+
+  # 'series' (preferred) or 'episode'. Episodes with no real series are their own
+  # series, so 'series' degrades safely to per-episode grouping for one-offs.
+  group_by: series
+
+  ratios:
+    train: 0.70
+    validation: 0.15
+    test: 0.15
+
+  # Keep music and supplemental meeting corpora (AMI and similar) out of the test
+  # partition. Headline numbers must be measured on the product's actual domain.
+  require_target_domain_test: true
+
+  # Below this many independent groups a three-way split is a fiction. The
+  # splitter emits a single 'development' partition instead and marks the result
+  # degraded, so nobody reports a "held-out" metric from a smoke dataset.
+  min_groups_for_split: 6
