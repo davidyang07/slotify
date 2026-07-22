@@ -1,0 +1,115 @@
+# Source registry -- WHERE audio comes from and under WHAT TERMS.
+#
+# This file is committed. It must never contain a credential, a signed URL, or a
+# token query parameter; `load_sources` rejects all three.
+#
+# Licensing rules, enforced in code (ml/src/slotify_rank/data/sources.py):
+#   * direct_download REQUIRES license_name and license_url. If you cannot name
+#     the licence, do not put the URL here -- download it yourself and register
+#     it as a local_file, which stays private and is never redistributed.
+#   * local_file and existing_repository_fixture carry NO assumed licence. They
+#     are usable locally; nothing in this repository redistributes them.
+#
+# Add a local episode:
+#   - id: my-show-ep-001
+#     source_type: local_file
+#     path: C:/Users/you/Audio/my-show-001.mp3     # absolute, or repo-relative
+#     title: "My Show 001 - guest name"
+#     series_id: my-show                            # GROUPS THE SPLIT. Same show
+#     source_name: "Private recording"              # => same series_id, always.
+#     content_type: podcast
+#
+# Then:  slotify-rank dataset import-local && dataset probe && dataset normalize
+
+source_manifest_version: source-manifest-v1.0.0
+
+defaults:
+  language: en
+  source_name: "Slotify repository fixture"
+
+# ---------------------------------------------------------------------------
+# Smoke dataset only.
+#
+# These are the product's existing test clips (~20-30 s each, ~4.6 min total).
+# They exist to exercise import -> probe -> normalize -> generate -> label ->
+# export -> validate -> stats end to end. They are NOT a training corpus, and
+# `dataset stats` reports them as what they are.
+#
+# `drake.mp3`, `ryan-rap.mp3` and `james-rap.mp3` are music: marked
+# content_type: music, which puts them outside TARGET_DOMAIN_CONTENT_TYPES and
+# therefore out of every headline statistic and out of the test partition.
+# ---------------------------------------------------------------------------
+sources:
+  - id: fixture-convo
+    source_type: existing_repository_fixture
+    path: backend/audio_tests/convo.mp3
+    title: "Fixture - two-speaker conversation"
+    series_id: fixture-conversations
+    content_type: conversational
+    notes: "Smoke fixture. Not part of the portfolio corpus."
+
+  - id: fixture-catsvdogs
+    source_type: existing_repository_fixture
+    path: backend/audio_tests/catsvdogs.mp3
+    title: "Fixture - cats versus dogs debate"
+    series_id: fixture-conversations
+    content_type: conversational
+    notes: "Smoke fixture. Not part of the portfolio corpus."
+
+  - id: fixture-rogan-test1
+    source_type: existing_repository_fixture
+    path: backend/audio_tests/rogan-test1.mp3
+    title: "Fixture - podcast-style monologue"
+    series_id: fixture-podcastlike
+    content_type: podcast
+    notes: "Smoke fixture. Not part of the portfolio corpus."
+
+  - id: fixture-ryan-test1
+    source_type: existing_repository_fixture
+    path: backend/audio_tests/ryan-test1.mp3
+    title: "Fixture - narrated speech ryan"
+    series_id: fixture-narrated
+    content_type: narrated
+    notes: "Smoke fixture. Not part of the portfolio corpus."
+
+  - id: fixture-david-test1
+    source_type: existing_repository_fixture
+    path: backend/audio_tests/final/david-test1.mp3
+    title: "Fixture - narrated speech david"
+    series_id: fixture-narrated
+    content_type: narrated
+    notes: "Smoke fixture. Not part of the portfolio corpus."
+
+  - id: fixture-drake
+    source_type: existing_repository_fixture
+    path: backend/audio_tests/drake.mp3
+    title: "Fixture - music clip drake"
+    series_id: fixture-music
+    content_type: music
+    notes: >-
+      OUT OF DOMAIN. Music, kept only to prove the pipeline handles the product's
+      song mode inputs. Excluded from headline hours and from the test partition.
+
+  - id: fixture-ryan-rap
+    source_type: existing_repository_fixture
+    path: backend/audio_tests/ryan-rap.mp3
+    title: "Fixture - music clip ryan rap"
+    series_id: fixture-music
+    content_type: music
+    notes: "OUT OF DOMAIN. Music; excluded from headline statistics."
+
+# ---------------------------------------------------------------------------
+# Real corpus. Add entries here as you acquire licensed audio.
+#
+#  - id: example-openly-licensed-episode
+#    source_type: direct_download
+#    url: https://example.org/audio/episode-001.mp3
+#    title: "Example Show 001"
+#    series_id: example-show
+#    source_name: "Example Show"
+#    content_type: podcast
+#    license_name: "CC BY 4.0"
+#    license_url: https://creativecommons.org/licenses/by/4.0/
+#    attribution: "Example Show, CC BY 4.0"
+#    expected_sha256: "<64 hex characters; a mismatch aborts the fetch>"
+# ---------------------------------------------------------------------------
