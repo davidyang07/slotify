@@ -1,0 +1,72 @@
+# Phase 4 training configuration.
+#
+# Every value here is recorded in a run's resolved_config.json and participates
+# in its content-addressed run_id, so two runs with the same numbers are
+# recognizable as the same experiment.
+#
+# CPU-first by design: the development machine has no NVIDIA GPU. device: auto
+# picks CUDA only if torch actually reports one, and mixed precision is off.
+
+training:
+  # -- optimization ---------------------------------------------------------
+  optimizer: adamw
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  batch_size: 32
+  epochs: 30
+  gradient_clip_norm: 1.0
+  # Patience is in epochs without an improvement in validation NDCG@3.
+  early_stopping_patience: 8
+  early_stopping_min_delta: 0.0001
+
+  # -- objective ------------------------------------------------------------
+  # margin 0.2 asks for a visible score separation; 0 is satisfied by an
+  # infinitesimal difference and lets the scores collapse together.
+  margin: 0.2
+  auxiliary_weight: 0.25
+  auxiliary_head: true
+  # Off by default: on a roughly balanced split, class weighting only adds
+  # variance. It is derived from the train split alone when enabled.
+  use_class_weights: false
+
+  # -- within-episode pairs -------------------------------------------------
+  minimum_score_difference: 1.0
+  # Without a cap a 60-candidate episode contributes ~1770 pairs and a
+  # 6-candidate one contributes 15, so the objective becomes "rank the longest
+  # episode well".
+  max_pairs_per_episode: 64
+  pair_sampling_strategy: balanced
+  pair_weight_scheme: uniform
+  hard_pair_emphasis: 0.0
+  shuffle_pair_direction: true
+
+  # -- data -----------------------------------------------------------------
+  # false lets partial-modality candidates train with their availability masks.
+  # Set true to restrict training to complete multimodal records.
+  require_complete_multimodal: false
+  required_feature_pipeline_version: ""
+  required_feature_spec_version: ""
+  train_split: train
+  validation_split: validation
+  max_episodes: null
+  max_candidates: null
+  max_pairs: null
+
+  # -- runtime --------------------------------------------------------------
+  seed: 42
+  device: auto
+  dtype: float32
+  # 0 workers: the whole feature block is already in memory, so worker
+  # processes would only add Windows spawn overhead.
+  num_workers: 0
+  num_threads: 0
+  small_memory_mode: false
+  mixed_precision: false
+
+  # -- artifacts ------------------------------------------------------------
+  checkpoint_dir: artifacts/training
+  report_dir: artifacts/training
+  metric_k: 3
+  relevance_threshold: 4.0
+
+  config_version: training-config-v1
