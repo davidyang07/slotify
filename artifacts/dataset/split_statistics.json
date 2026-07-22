@@ -1,0 +1,35 @@
+{
+  "generated_at": "2026-07-22T10:25:01+00:00",
+  "package_version": "0.2.0",
+  "split_manifest_present": true,
+  "split_version": "v1",
+  "algorithm_version": "split-grouped-greedy-v1.0.0",
+  "seed": 42,
+  "group_by": "series",
+  "degraded": true,
+  "reason": "only 4 independent group(s) under group_by='series'; a train/validation/test split needs at least 6 to be meaningful. Everything is assigned to 'development' -- do not report held-out metrics from it.",
+  "group_count": 4,
+  "episodes_by_split": {
+    "development": 7
+  },
+  "series_by_split": {
+    "development": 4
+  },
+  "duration_hours_by_split": {
+    "development": 0.0365
+  },
+  "duration_share_by_split": {
+    "development": 1.0
+  },
+  "candidates_by_split": {
+    "development": 20
+  },
+  "target_domain_episodes_by_split": {
+    "development": 5
+  },
+  "target_ratios": {
+    "train": 0.7,
+    "validation": 0.15,
+    "test": 0.15
+  }
+}

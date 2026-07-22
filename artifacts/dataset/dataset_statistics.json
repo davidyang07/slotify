@@ -1,0 +1,46 @@
+{
+  "generated_at": "2026-07-22T10:25:01+00:00",
+  "package_version": "0.2.0",
+  "preprocessing_version": "preprocess-v1.0.0",
+  "processed_episode_count": 7,
+  "processed_audio_hours": 0.0365,
+  "target_domain_episode_count": 5,
+  "target_domain_audio_hours": 0.0267,
+  "out_of_domain_audio_hours": 0.0099,
+  "registered_episode_count": 7,
+  "unprocessed_episode_count": 0,
+  "series_count": 4,
+  "duration_hours_by_content_type": {
+    "conversational": 0.0095,
+    "music": 0.0099,
+    "narrated": 0.0119,
+    "podcast": 0.0053
+  },
+  "duration_hours_by_source": {
+    "Slotify repository fixture": 0.0365
+  },
+  "duration_hours_by_license": {
+    "undeclared (private)": 0.0365
+  },
+  "duration_hours_by_split": {
+    "development": 0.0365
+  },
+  "episodes_by_split": {
+    "development": 7
+  },
+  "episodes_by_status": {
+    "normalized": 7
+  },
+  "target_domain_content_types": [
+    "conversational",
+    "interview",
+    "narrated",
+    "podcast"
+  ],
+  "targets": {
+    "processed_audio_hours": 50,
+    "generated_candidate_count": 10000,
+    "human_labelled_candidate_count": 1500
+  },
+  "targets_note": "Targets are design goals, not results. Compare them against the measured values above; do not quote a target as an achievement."
+}

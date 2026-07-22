@@ -1,11 +1,25 @@
 """Command-line interface for the Slotify ranking project.
 
-Phase 1 commands (all offline, CPU-only, no model downloads, no paid APIs)::
+Phase 1 -- the baseline and its metrics (offline, CPU-only, no model downloads,
+no paid APIs)::
 
     python -m slotify_rank.cli version
     python -m slotify_rank.cli config show [--profile NAME] [--output PATH]
     python -m slotify_rank.cli heuristic rank --input EPISODES.json --output RANKINGS.json
     python -m slotify_rank.cli evaluate --predictions RANKINGS.json --labels LABELS.json [--output REPORT.json]
+
+Phase 2 -- the dataset foundation. Only ``dataset fetch`` touches the network::
+
+    python -m slotify_rank.cli dataset import-local --sources ml/configs/sources.yaml
+    python -m slotify_rank.cli dataset fetch --sources ml/configs/sources.yaml
+    python -m slotify_rank.cli dataset probe
+    python -m slotify_rank.cli dataset normalize
+    python -m slotify_rank.cli candidates generate --config ml/configs/dataset_v1.yaml
+    python -m slotify_rank.cli dataset split --config ml/configs/splits_v1.yaml
+    python -m slotify_rank.cli dataset validate [--deep]
+    python -m slotify_rank.cli dataset stats
+    python -m slotify_rank.cli label serve [--port 8000]
+    python -m slotify_rank.cli label export
 
 The console script ``slotify-rank`` is equivalent to ``python -m slotify_rank.cli``.
 
@@ -295,6 +309,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     evaluate_parser.set_defaults(func=_cmd_evaluate)
 
+    # Phase 2: dataset / candidates / label. Registered from a separate module so
+    # this file stays about the baseline and the metrics.
+    from slotify_rank.dataset_cli import register as register_dataset_commands
+
+    register_dataset_commands(subparsers)
+
     return parser
 
 
@@ -305,9 +325,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return int(args.func(args))
     except (
         FileNotFoundError,
+        FileExistsError,
         ValueError,
         KeyError,
         TypeError,
+        OSError,
+        RuntimeError,
         json.JSONDecodeError,
     ) as error:
         print(f"error: {error}", file=sys.stderr)

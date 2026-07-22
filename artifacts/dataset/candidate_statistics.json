@@ -1,0 +1,173 @@
+{
+  "generated_at": "2026-07-22T10:25:01+00:00",
+  "package_version": "0.2.0",
+  "candidate_generation_version": "candgen-v1.0.0",
+  "generated_candidate_count": 20,
+  "eligible_for_evaluation_count": 20,
+  "synthetic_product_padding_count": 11,
+  "synthetic_excluded_from_all_counts": true,
+  "episodes_with_candidates": 7,
+  "candidates_per_minute": 9.1202,
+  "count_before_merge": 88,
+  "count_after_merge": 28,
+  "merge_reduction_count": 60,
+  "merge_reduction_pct": 68.18,
+  "dropped_by_edge_guard": 42,
+  "dropped_by_density_cap": 8,
+  "candidates_by_source_flag": {
+    "pause": 12,
+    "rms_minimum": 12,
+    "silence": 10
+  },
+  "candidates_by_primary_source": {
+    "pause": 10,
+    "rms_minimum": 5,
+    "silence": 5
+  },
+  "fixed_interval_only_count": 0,
+  "fixed_interval_only_pct": 0.0,
+  "synthetic_or_invalid_pct": 35.48,
+  "per_episode_generation": [
+    {
+      "episode_id": "fixture-cats-versus-dogs-debate_52a83dd90eca",
+      "duration_ms": 18261,
+      "count_by_source_before_merge": {
+        "pause": 10,
+        "rms_minimum": 5,
+        "silence": 4
+      },
+      "count_before_merge": 19,
+      "count_after_merge": 4,
+      "count_after_density_cap": 3,
+      "dropped_edge_guard": 11,
+      "dropped_density_cap": 1,
+      "synthetic_recorded": 2,
+      "transcript_available": false,
+      "candidates_per_minute": 9.8571,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 3 of 4 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "fixture-two-speaker-conversation_c2c631e09775",
+      "duration_ms": 15786,
+      "count_by_source_before_merge": {
+        "pause": 5,
+        "rms_minimum": 3,
+        "silence": 2
+      },
+      "count_before_merge": 10,
+      "count_after_merge": 4,
+      "count_after_density_cap": 3,
+      "dropped_edge_guard": 5,
+      "dropped_density_cap": 1,
+      "synthetic_recorded": 2,
+      "transcript_available": false,
+      "candidates_per_minute": 11.4025,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 3 of 4 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "fixture-music-clip-drake_985dc58a5ee3",
+      "duration_ms": 15872,
+      "count_by_source_before_merge": {
+        "rms_minimum": 2
+      },
+      "count_before_merge": 2,
+      "count_after_merge": 1,
+      "count_after_density_cap": 1,
+      "dropped_edge_guard": 1,
+      "dropped_density_cap": 0,
+      "synthetic_recorded": 2,
+      "transcript_available": false,
+      "candidates_per_minute": 3.7802,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)"
+      ]
+    },
+    {
+      "episode_id": "fixture-music-clip-ryan-rap_2dd097f42519",
+      "duration_ms": 19626,
+      "count_by_source_before_merge": {
+        "pause": 12,
+        "rms_minimum": 4
+      },
+      "count_before_merge": 16,
+      "count_after_merge": 6,
+      "count_after_density_cap": 3,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 3,
+      "synthetic_recorded": 2,
+      "transcript_available": false,
+      "candidates_per_minute": 9.1715,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 3 of 6 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "fixture-narrated-speech-david_4ae18ba65aeb",
+      "duration_ms": 20073,
+      "count_by_source_before_merge": {
+        "pause": 4,
+        "rms_minimum": 4,
+        "silence": 5
+      },
+      "count_before_merge": 13,
+      "count_after_merge": 3,
+      "count_after_density_cap": 3,
+      "dropped_edge_guard": 6,
+      "dropped_density_cap": 0,
+      "synthetic_recorded": 1,
+      "transcript_available": false,
+      "candidates_per_minute": 8.9673,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)"
+      ]
+    },
+    {
+      "episode_id": "fixture-narrated-speech-ryan_af62f43d417f",
+      "duration_ms": 22869,
+      "count_by_source_before_merge": {
+        "pause": 3,
+        "rms_minimum": 6,
+        "silence": 5
+      },
+      "count_before_merge": 14,
+      "count_after_merge": 4,
+      "count_after_density_cap": 4,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 0,
+      "synthetic_recorded": 1,
+      "transcript_available": false,
+      "candidates_per_minute": 10.4946,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)"
+      ]
+    },
+    {
+      "episode_id": "fixture-podcast-style-monologue_eefa0528f230",
+      "duration_ms": 19086,
+      "count_by_source_before_merge": {
+        "pause": 6,
+        "rms_minimum": 3,
+        "silence": 5
+      },
+      "count_before_merge": 14,
+      "count_after_merge": 6,
+      "count_after_density_cap": 3,
+      "dropped_edge_guard": 5,
+      "dropped_density_cap": 3,
+      "synthetic_recorded": 1,
+      "transcript_available": false,
+      "candidates_per_minute": 9.431,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 3 of 6 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    }
+  ]
+}
