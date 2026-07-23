@@ -1,0 +1,155 @@
+{
+  "dataset_fingerprint": "cff491ebf6817320166ae774f44c4d1d0652ffa657169046d98e4a76bdfe9380",
+  "training_episode_count": 6,
+  "training_candidate_count": 48,
+  "validation_episode_count": 2,
+  "validation_candidate_count": 16,
+  "training_pair_count": 133,
+  "validation_pair_count": 42,
+  "episode_overlap_between_splits": [],
+  "limits_applied": {},
+  "eligibility": {
+    "candidate_count": 80,
+    "episode_count": 10,
+    "candidates_by_split": {
+      "test": 16,
+      "train": 48,
+      "validation": 16
+    },
+    "episodes_by_split": {
+      "test": 2,
+      "train": 6,
+      "validation": 2
+    },
+    "modality_coverage": {
+      "complete": 80
+    },
+    "exclusion_counts": {
+      "eligible": 80
+    },
+    "exclusion_details": {},
+    "schema": {
+      "handcrafted_feature_names": [
+        "candidate_energy_mean_dbfs",
+        "constant_probe",
+        "context_cosine_similarity",
+        "heuristic_total_score",
+        "normalized_episode_position",
+        "pause_duration_ms",
+        "rms_delta_across_short",
+        "rms_mean_before_short",
+        "semantic_change_score",
+        "sentence_end",
+        "source_pause",
+        "source_silence"
+      ],
+      "handcrafted_dimension": 12,
+      "audio_dimension": 1536,
+      "text_dimension": 1536,
+      "native_embedding_dimension": 384,
+      "audio_parts": [
+        "before",
+        "after",
+        "context",
+        "difference"
+      ],
+      "text_parts": [
+        "before",
+        "after",
+        "difference",
+        "product"
+      ],
+      "feature_spec_version": "featurespec-v1.1.0",
+      "feature_pipeline_version": "featurepipeline-v1.0.0",
+      "input_schema_version": "model-input-schema-v1.0.0",
+      "dataset_version": "training-dataset-v1.0.0"
+    },
+    "labels": {
+      "source": "..\\data-synthetic\\labels\\labels_synthetic.jsonl",
+      "label_source": "human",
+      "labelled_candidate_count": 80,
+      "rubric_versions": [
+        "rubric-v1.0.0"
+      ],
+      "acceptable_threshold": 3.0,
+      "unusable_candidate_count": 0
+    }
+  },
+  "train_pairs": {
+    "split": "train",
+    "pair_count": 133,
+    "eligible_pair_count_before_capping": 133,
+    "contributing_episode_count": 6,
+    "episodes_without_pairs": [],
+    "episodes_without_pairs_count": 0,
+    "pairs_per_episode": {
+      "synthetic-episode-000": 23,
+      "synthetic-episode-001": 21,
+      "synthetic-episode-003": 23,
+      "synthetic-episode-005": 20,
+      "synthetic-episode-006": 23,
+      "synthetic-episode-008": 23
+    },
+    "pairs_per_episode_min": 20,
+    "pairs_per_episode_max": 23,
+    "pairs_per_episode_mean": 22.166666666666668,
+    "score_difference_histogram": {
+      "1.0": 51,
+      "2.0": 38,
+      "3.0": 35,
+      "4.0": 9
+    },
+    "config": {
+      "minimum_score_difference": 1.0,
+      "max_pairs_per_episode": 64,
+      "sampling_strategy": "balanced",
+      "weight_scheme": "uniform",
+      "hard_pair_emphasis": 0.0,
+      "shuffle_direction": true,
+      "seed": 42,
+      "version": "pairgen-v1.0.0"
+    }
+  },
+  "validation_pairs": {
+    "split": "validation",
+    "pair_count": 42,
+    "eligible_pair_count_before_capping": 42,
+    "contributing_episode_count": 2,
+    "episodes_without_pairs": [],
+    "episodes_without_pairs_count": 0,
+    "pairs_per_episode": {
+      "synthetic-episode-002": 23,
+      "synthetic-episode-007": 19
+    },
+    "pairs_per_episode_min": 19,
+    "pairs_per_episode_max": 23,
+    "pairs_per_episode_mean": 21.0,
+    "score_difference_histogram": {
+      "1.0": 30,
+      "2.0": 10,
+      "3.0": 2
+    },
+    "config": {
+      "minimum_score_difference": 1.0,
+      "max_pairs_per_episode": 64,
+      "sampling_strategy": "balanced",
+      "weight_scheme": "uniform",
+      "hard_pair_emphasis": 0.0,
+      "shuffle_direction": true,
+      "seed": 42,
+      "version": "pairgen-v1.0.0"
+    }
+  },
+  "normalizer": {
+    "normalizer_version": "normalizer-v1.0.0",
+    "fit_episode_count": 6,
+    "fit_candidate_count": 48,
+    "training_split_hash": "ee70f7a8ccdce9fe4d3efbc3c228f4aa",
+    "feature_pipeline_version": "featurepipeline-v1.0.0",
+    "feature_spec_version": "featurespec-v1.1.0",
+    "epsilon": 1e-06,
+    "fitted_on": "train split only"
+  },
+  "synthetic_data": true,
+  "class_weights": {}
+}

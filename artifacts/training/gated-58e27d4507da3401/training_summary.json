@@ -1,0 +1,76 @@
+{
+  "evidence_class": "synthetic smoke run - not a model-quality result",
+  "data_provenance": "synthetic_fixture",
+  "label_source": "synthetic",
+  "synthetic_data": true,
+  "smoke": false,
+  "run_id": "gated-58e27d4507da3401",
+  "generated_at": "2026-07-22T23:44:26+00:00",
+  "package_version": "0.2.0",
+  "training_dataset_version": "training-dataset-v1.0.0",
+  "model_variant": "gated",
+  "experiment_name": "gated",
+  "model_parameter_count": 464389,
+  "training_episode_count": 6,
+  "training_candidate_count": 48,
+  "training_pair_count": 133,
+  "validation_episode_count": 2,
+  "validation_candidate_count": 16,
+  "epochs_run": 9,
+  "best_epoch": 1,
+  "best_validation_ndcg_at_3": 1.0,
+  "best_validation_pairwise_accuracy": 0.8695652173913043,
+  "best_validation_classification_f1": 0.9285714285714286,
+  "best_validation_metrics": {
+    "ndcg_at_3": 1.0,
+    "pairwise_accuracy": 0.8695652173913043,
+    "precision_at_3": 1.0,
+    "recall_at_3": 1.0,
+    "mrr": 1.0,
+    "episode_count": 2,
+    "candidate_count": 16,
+    "episodes_scored": 2,
+    "episodes_excluded_from_ndcg": 0,
+    "ndcg_exclusion_reasons": {},
+    "classification_f1": 0.9285714285714286,
+    "classification_accuracy": 0.875,
+    "k": 3
+  },
+  "runtime_seconds": 9.919,
+  "device": "cpu",
+  "resolved_dtype": "float32",
+  "stop_reason": "validation metric did not improve by more than 0.0001 for 8 epoch(s); best was 1.0 at epoch 1",
+  "interrupted": false,
+  "overrides": {
+    "epochs": {
+      "from": 30,
+      "to": 10
+    }
+  },
+  "artifacts": {
+    "directory": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\gated-58e27d4507da3401",
+    "best_checkpoint": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\gated-58e27d4507da3401\\best_checkpoint.pt",
+    "last_checkpoint": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\gated-58e27d4507da3401\\last_checkpoint.pt",
+    "epoch_metrics": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\gated-58e27d4507da3401\\epoch_metrics.jsonl",
+    "dataset_summary": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\gated-58e27d4507da3401\\dataset_summary.json",
+    "normalizer": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\gated-58e27d4507da3401\\normalizer.json",
+    "resolved_config": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\gated-58e27d4507da3401\\resolved_config.json"
+  },
+  "environment": {
+    "device": "cpu",
+    "torch_version": "2.13.0+cpu",
+    "cuda_available": false,
+    "threads": 10,
+    "resolved_dtype": "float32",
+    "mixed_precision": false,
+    "num_workers": 0,
+    "small_memory_mode": false,
+    "dependency_versions": {
+      "torch": "2.13.0",
+      "numpy": "2.4.6",
+      "slotify-rank": "0.2.0"
+    },
+    "seed": 42
+  },
+  "warning": "SYNTHETIC SMOKE RUN. This model was trained on generated fixtures, not on real audio or human labels. The metrics below demonstrate that the training system works end to end. They are NOT evidence of model quality and must never be quoted as a result."
+}

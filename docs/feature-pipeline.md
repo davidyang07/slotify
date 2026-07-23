@@ -491,24 +491,31 @@ fine and is quietly wrong.
 
 ---
 
-## 11. How this feeds the PyTorch dataset
+## 11. How this feeds the PyTorch dataset (Phase 4, built)
 
-A future `Dataset.__getitem__` will:
+This is what the Phase 4 loader (`slotify_rank.datasets.loader`) actually does,
+per candidate — full detail in [`docs/model-training.md`](model-training.md):
 
 1. Read one line of `data/manifests/features.jsonl`.
 2. Take `handcrafted_feature_values` (110 floats) and
    `handcrafted_missing_mask`, positional against the header's
    `handcrafted_feature_names`.
-3. Resolve `audio_embedding_reference[kind]` → mmap the `.npy`, look the
-   `row_id` up in the sidecar's `row_ids`, gather a 384-vector.
+3. Resolve `audio_embedding_reference[kind]` → read the `.npy`, look the
+   `row_id` up in the sidecar's `row_ids`, gather each 384-vector, and
+   concatenate `before`, `after`, `context`, `difference` → 1536.
 4. Resolve `text_embedding_reference[before|after]` the same way and build the
-   1536-vector, or emit zeros **with the mask set**.
+   1536-vector (`before`, `after`, and their `difference` and elementwise
+   `product` — arithmetic on cached MiniLM output, **not** a model re-run), or
+   emit zeros **with the availability flag set false**.
 5. Standardize the handcrafted block using statistics fitted on the **train
-   split only**.
-6. Project 384 → whatever the ranker wants, as a *learned* layer.
+   split only** (`slotify_rank.datasets.normalizer`).
+6. A *learned* per-modality projection (128-wide) sits in each model variant, so
+   the 384-native vectors are projected inside the ranker, never here.
 
 `dataset_split` is on every record and validated against the split manifest, so
-pair generation can group without re-deriving it.
+pair generation groups without re-deriving it. Nothing in this path imports
+Whisper or MiniLM — the embeddings are read from the cached arrays this pipeline
+already wrote.
 
 ---
 

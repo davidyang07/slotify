@@ -1,6 +1,12 @@
 # Multimodal Audio–Text Ranking Engine — MVP Plan
 
-Status: **Phase 0 complete. Phase 1 (reproducible heuristic baseline) implemented and verified.**
+Status: **Phases 0–4 implemented and verified.** Phase 1 (reproducible heuristic
+baseline), Phase 2 (dataset foundation), Phase 3 (multimodal feature pipeline)
+and Phase 4 (PyTorch ranking training system) exist and are tested. Phases 2–4
+have been exercised on smoke/synthetic data only — no real corpus is acquired
+and no model-quality claim is made. Phase 5 (baseline-vs-model comparison,
+ablations, human evaluation) is not started. See §19–24 for the training design
+and [`docs/model-training.md`](model-training.md) for the built system.
 Author: repository audit performed against commit `ef614ba` on branch `main`.
 Date: 2026-07-21 (Phase 0), updated 2026-07-22 (locked decisions + Phase 1).
 

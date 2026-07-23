@@ -1,0 +1,16 @@
+{
+  "device": "cpu",
+  "torch_version": "2.13.0+cpu",
+  "cuda_available": false,
+  "threads": 10,
+  "resolved_dtype": "float32",
+  "mixed_precision": false,
+  "num_workers": 0,
+  "small_memory_mode": false,
+  "dependency_versions": {
+    "torch": "2.13.0",
+    "numpy": "2.4.6",
+    "slotify-rank": "0.2.0"
+  },
+  "seed": 42
+}

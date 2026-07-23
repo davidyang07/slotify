@@ -384,3 +384,53 @@ Dimensions, stated because they are easy to misreport:
 Re-running is cheap: a second identical run is entirely cache hits and skips
 every model. Artifacts are invalidated by their *inputs* -- audio checksum, model
 id and revision, config digests, library versions -- never by timestamps.
+
+## Training (Phase 4)
+
+Full detail in [`docs/model-training.md`](../docs/model-training.md). The
+CPU-first PyTorch learning-to-rank system that consumes the Phase 3 feature
+artifacts -- **without recomputing any transcript or embedding** -- and trains
+ranking models over candidates grouped by episode. Five variants
+(`handcrafted`, `text_only`, `audio_only`, `concat`, `gated`) behind one
+interface; a pairwise margin ranking objective plus an auxiliary acceptability
+head; validation NDCG@3 grouped per episode; resumable checkpoints.
+
+```powershell
+cd ml
+$py = ".\.venv\Scripts\python.exe"
+
+# The model registry.
+& $py -m slotify_rank.cli models list
+& $py -m slotify_rank.cli models describe --model gated
+
+# Prepare a dataset (eligibility accounting) and generate within-episode pairs.
+& $py -m slotify_rank.cli training prepare --labels data\labels\labels_v1.jsonl
+& $py -m slotify_rank.cli training pairs   --labels data\labels\labels_v1.jsonl
+
+# Train the gated multimodal ranker on CPU, then validate / inspect / resume.
+& $py -m slotify_rank.cli training run `
+    --labels data\labels\labels_v1.jsonl `
+    --model-config configs\models\gated_v1.yaml
+& $py -m slotify_rank.cli training validate --labels data\labels\labels_v1.jsonl --checkpoint artifacts\training\<run_id>\best_checkpoint.pt
+& $py -m slotify_rank.cli training inspect  --checkpoint artifacts\training\<run_id>\best_checkpoint.pt
+```
+
+**Smoke training on synthetic fixtures** (until real labels exist -- generated
+numbers, never reported as data):
+
+```powershell
+& $py -m slotify_rank.cli training synthesize --data-root ..\data-synthetic --episodes 10 --candidates-per-episode 8
+& $py -m slotify_rank.cli training run `
+    --data-root ..\data-synthetic `
+    --labels ..\data-synthetic\labels\labels_synthetic.jsonl `
+    --model-config configs\models\gated_v1.yaml --smoke
+```
+
+Every run writes `artifacts/training/<run_id>/` with `resolved_config.json`,
+`environment.json`, `dataset_summary.json`, `normalizer.json`,
+`epoch_metrics.jsonl`, `training_summary.{json,md}` and the git-ignored
+`best_checkpoint.pt` / `last_checkpoint.pt`. Model hyperparameters live in
+`configs/models/*.yaml` and `configs/training_v1.yaml`, never in source.
+
+Phase 4 metrics on synthetic data are **not** model-quality evidence -- see
+`docs/model-training.md` § "How Phase 4 differs from Phase 5".

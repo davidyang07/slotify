@@ -75,6 +75,54 @@ comparison against `heuristic_offline_v1`, and any claim resting on corpus size.
 
 ---
 
+## Phase 4 — PyTorch ranking training system (machinery complete, real corpus not acquired)
+
+The training system exists, is tested, and has been run end to end on CPU. It
+loads Phase 3 features **without recomputing any transcript or embedding**,
+validates training eligibility, fits train-only scalar normalization, generates
+within-episode ranking pairs, trains five model variants through one shared
+interface, selects checkpoints on validation NDCG@3, and resumes interrupted
+runs. **It has been exercised only on deterministic synthetic fixtures** (see
+below); every training metric here is a synthetic smoke result and supports no
+claim about model quality.
+
+| Intended claim | Required evidence | Generating command | Artifact | Status |
+|---|---|---|---|---|
+| A genuinely trainable multimodal PyTorch ranker exists | Five variants behind one interface; each forward pass runs on the real Phase 3 records; parameter counts reported; all under 1M params | `slotify-rank models describe --model gated` | `artifacts/training/<run_id>/training_summary.json` | **verified** (2026-07-22, synthetic smoke) |
+| Training is reproducible and CPU-first | Deterministic seeds; content-addressed run id; device/dtype recorded; resume equivalent to uninterrupted within 1e-4; runs on CPU with no GPU | `slotify-rank training run --model-config ml/configs/models/gated_v1.yaml` | `artifacts/training/<run_id>/resolved_config.json`, `environment.json` | **verified** (2026-07-22, synthetic smoke) |
+| Phase 3 features load without recomputation | Loader reads cached `.npy` arrays; a run imports neither Whisper nor MiniLM; eligibility accounts for every candidate | `slotify-rank training prepare` | `artifacts/training/<run_id>/dataset_summary.json` | **verified** (2026-07-22) |
+| Normalization does not leak | Statistics fitted on the train split only; refit refuses validation/test rows; artifact records the fit provenance | (fitted during `training run`) | `artifacts/training/<run_id>/normalizer.json` | **verified** (2026-07-22) |
+| No cross-episode or cross-split pairs | Pairs formed only within one episode of one split; generator refuses a mixed split | `slotify-rank training pairs` | `artifacts/training/<run_id>/pairs.jsonl` | **verified** (2026-07-22) |
+| Checkpoints are safe and resumable | `state_dict` only, `weights_only=True` load, incompatible/corrupt rejected, OneDrive-safe atomic write | `slotify-rank training inspect --checkpoint …` | ignored `.pt` + `training_summary.json` | **verified** (2026-07-22) |
+
+### Phase 4 evidence fields (synthetic smoke run)
+
+Read from `artifacts/training/gated-58e27d4507da3401/training_summary.json`.
+**Synthetic fixture data — not a model-quality result.**
+
+| Field | Value | Note |
+|---|---|---|
+| `data_provenance` | `synthetic_fixture` | generated numbers, not real audio or human labels |
+| `training_dataset_version` | `training-dataset-v1.0.0` | |
+| `training_episode_count` | 6 | synthetic |
+| `training_candidate_count` | 48 | synthetic |
+| `training_pair_count` | 133 | within-episode, deterministic |
+| `validation_episode_count` | 2 | synthetic |
+| `model_variant` | `gated` | primary architecture |
+| `model_parameter_count` | 464,389 | on the synthetic 12-feature schema; ~490k on the real 110-feature layout (`models describe`) |
+| `best_validation_ndcg_at_3` | 1.0 | **synthetic** — the latent target is learnable by construction |
+| `checkpoint_path` | `artifacts/training/gated-58e27d4507da3401/best_checkpoint.pt` | git-ignored |
+| `training_config_hash` | in `resolved_config.json` | content-addressed |
+| `training_run_id` | `gated-58e27d4507da3401` | derived from config + data + code |
+
+**Evidence classification: `partially populated using smoke data` (synthetic).**
+The system is proven to train, checkpoint, evaluate and resume. It is **not**
+proven to rank real ad breaks well — that requires the 200–300+ human labels
+Phase 5 depends on. No comparison against `heuristic_offline_v1` is made or
+implied in Phase 4.
+
+---
+
 Baseline naming, used consistently in every later report:
 
 | Name | What it is | Needs credentials? |
@@ -92,7 +140,7 @@ Baseline naming, used consistently in every later report:
 
 | Intended claim | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
-| Multimodal PyTorch ranker exists and is trained | Architecture definition, trained checkpoint, parameter count, per-modality gate values | `slotify-rank train --config configs/train_gated_v1.yaml` | `artifacts/models/{run_id}/best.pt`, `artifacts/models/model_card.md` | not started |
+| Multimodal PyTorch ranker exists and is trained | Architecture definition, trained checkpoint, parameter count, per-modality gate values | `slotify-rank training run --model-config ml/configs/models/gated_v1.yaml` | `artifacts/training/{run_id}/best_checkpoint.pt`, `training_summary.md` | **machinery verified on synthetic smoke data (2026-07-22); awaiting real labels** |
 | Three modalities genuinely contribute | 6-model comparison + 6 required ablations × 3 seeds, mean ± std | `slotify-rank ablate --config configs/ablations.yaml --seeds 3` | `artifacts/evaluation/ablation_results.csv` | not started |
 | Signal-based baseline is the real production heuristic | Byte-exact parity between the Python port and `backend/src/lib/candidates.ts` | `pytest ml/tests/unit/test_heuristic_parity.py` | `ml/tests/fixtures/heuristic_golden.json` | not started |
 | **X % NDCG@3 improvement** | Baseline + model NDCG@3 on held-out **human-labelled** test episodes, with bootstrap 95 % CI over episodes | `slotify-rank evaluate --config configs/eval_v1.yaml` then `slotify-rank report` | `artifacts/evaluation/baseline_results.json`, `artifacts/evaluation/model_results.json`, `artifacts/reports/final_results.md` | not started |
