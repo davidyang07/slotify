@@ -195,3 +195,26 @@ def test_read_rejects_wrong_schema_version(tmp_path):
     path.write_text(json.dumps({"schema_version": "labelling-queue-v0.0.0"}), encoding="utf-8")
     with pytest.raises(QueueError):
         read_queue(path)
+
+
+def test_stage_candidate_ids_restricts_a_serve_session():
+    """`label serve --stage pilot` must expose exactly the pilot candidates."""
+    from slotify_rank.dataset_cli import stage_candidate_ids
+
+    episodes, candidates = _corpus()
+    queue = build_queue(candidates, episodes, _config(), candidate_manifest_hash="h")
+
+    pilot = stage_candidate_ids(queue, "pilot")
+    primary = stage_candidate_ids(queue, "primary")
+    every = stage_candidate_ids(queue, "all")
+
+    assert pilot == set(queue.pilot_candidate_ids)
+    assert primary == set(queue.primary_candidate_ids)
+    assert every == set(queue.unique_candidate_ids)
+    # A controlled pilot is exactly the pilot stage: disjoint from primary,
+    # smaller than the whole queue, and never a consistency re-check.
+    assert pilot.isdisjoint(primary)
+    assert pilot | primary == every
+    assert len(pilot) < len(every)
+    with pytest.raises(ValueError):
+        stage_candidate_ids(queue, "bogus")

@@ -39,11 +39,19 @@ cd ml
 .\.venv\Scripts\python.exe -m slotify_rank.cli label serve --port 8000
 ```
 
+To run against a labelling queue, add `--queue ..\data\labels\queue_v1.json`; to
+run just the controlled pilot pass, add `--stage pilot` as well. The
+step-by-step pilot session is documented in
+[`pilot-labelling.md`](pilot-labelling.md).
+
 Open <http://127.0.0.1:8000/>, enter an annotator id, and start. Notes:
 
 - **Your annotator id may be a pseudonym.** `annotator-a` is fine. No personal information is
   requested or stored anywhere in the schema.
 - **Every rating saves immediately.** Closing the tab loses nothing.
+- **Transcript context is shown when available.** The text just before and just after the break is
+  the same context the model reads; when the episode has no transcript the UI says so and you rate
+  from the audio alone.
 - **Sessions resume.** Your candidate order is a stable shuffle keyed on your annotator id, so you
   return to exactly where you stopped. Two annotators get different orders, which is what removes
   position effects from inter-rater agreement.

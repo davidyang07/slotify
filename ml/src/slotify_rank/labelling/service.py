@@ -17,6 +17,13 @@ Bias control is the reason several obvious features are absent by default:
 Audio is served as a context window cut with FFmpeg: ~10 s before and ~10 s
 after the candidate, with the boundary at a known offset the client marks. Clips
 are cached under ``data/cache/clips/``.
+
+Transcript context is resolved the same way the feature pipeline does it -- the
+text either side of the candidate is selected by :func:`build_transcript_context`
+from the cached episode transcript under ``data/transcripts/``, so the annotator
+reads exactly what the model consumes. Candidates carry no inline transcript
+(they are generated before transcription runs), so without this the UI would
+always claim "no transcript" even for a fully transcribed episode.
 """
 
 from __future__ import annotations
@@ -26,15 +33,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
 
+from slotify_rank.config.feature_settings import TranscriptContextConfig
 from slotify_rank.config.versions import LABEL_RUBRIC_VERSION, PACKAGE_VERSION
 from slotify_rank.data.ffmpeg import ffmpeg_path, run_tool
 from slotify_rank.data.paths import DataPaths
 from slotify_rank.data.schema import DatasetCandidate, EpisodeRecord
+from slotify_rank.features.transcript import build_transcript_context
 from slotify_rank.labelling.database import (
     MAX_QUALITY_SCORE,
     MIN_QUALITY_SCORE,
     LabelDatabase,
 )
+from slotify_rank.transcription.cache import read_transcript, transcript_path
 
 __all__ = ["LabellingSettings", "create_app", "annotator_order_key", "extract_clip"]
 
@@ -110,6 +120,8 @@ def _candidate_payload(
     existing_score: int | None,
     existing_notes: str | None,
     existing_unusable: bool,
+    transcript_before: str | None,
+    transcript_after: str | None,
 ) -> dict[str, Any]:
     start_ms = max(0, candidate.timestamp_ms - settings.context_before_ms)
     end_ms = candidate.timestamp_ms + settings.context_after_ms
@@ -124,11 +136,9 @@ def _candidate_payload(
         "clip_start_ms": start_ms,
         "clip_duration_ms": max(0, end_ms - start_ms),
         "boundary_offset_ms": candidate.timestamp_ms - start_ms,
-        "transcript_before": candidate.transcript_before,
-        "transcript_after": candidate.transcript_after,
-        "has_transcript": bool(
-            candidate.transcript_before or candidate.transcript_after
-        ),
+        "transcript_before": transcript_before,
+        "transcript_after": transcript_after,
+        "has_transcript": bool(transcript_before or transcript_after),
         "existing_quality_score": existing_score,
         "existing_notes": existing_notes,
         "existing_is_unusable": existing_unusable,
@@ -179,6 +189,42 @@ def create_app(
     by_id = {candidate.candidate_id: candidate for candidate in eligible}
     episodes_by_id = {episode.episode_id: episode for episode in episodes}
     database.register_candidates(eligible)
+
+    # Transcript context is resolved from the cached episode transcript with the
+    # same selection the feature pipeline uses, so the annotator reads what the
+    # model reads. Transcripts are loaded once per episode and cached; an episode
+    # with no transcript file resolves to ``None`` and the UI shows its clean
+    # "rate from the audio alone" message.
+    transcript_context_config = TranscriptContextConfig()
+    _transcript_cache: dict[str, Any] = {}
+
+    def _episode_segments(episode_id: str):
+        if episode_id not in _transcript_cache:
+            path = transcript_path(paths, episode_id)
+            try:
+                _transcript_cache[episode_id] = (
+                    read_transcript(path).segments if path.is_file() else None
+                )
+            except (ValueError, OSError):
+                # A corrupt transcript must not take the whole session down;
+                # fall back to audio-only labelling for that episode.
+                _transcript_cache[episode_id] = None
+        return _transcript_cache[episode_id]
+
+    def _resolve_transcript(
+        candidate: DatasetCandidate,
+    ) -> tuple[str | None, str | None]:
+        # An inline transcript on the candidate wins (future-proofing for
+        # transcript-aware candidate generation); otherwise resolve from cache.
+        if candidate.transcript_before or candidate.transcript_after:
+            return candidate.transcript_before, candidate.transcript_after
+        segments = _episode_segments(candidate.episode_id)
+        if not segments:
+            return None, None
+        context = build_transcript_context(
+            segments, candidate.timestamp_ms, transcript_context_config
+        )
+        return (context.before_text or None, context.after_text or None)
 
     app = FastAPI(title="Slotify labelling", version=PACKAGE_VERSION)
     if _STATIC_DIR.is_dir():
@@ -234,6 +280,7 @@ def create_app(
             if episode is None:
                 continue
             existing = database.get_label(candidate.candidate_id, annotator_id)
+            transcript_before, transcript_after = _resolve_transcript(candidate)
             return {
                 "candidate": _candidate_payload(
                     candidate,
@@ -242,6 +289,8 @@ def create_app(
                     existing.quality_score if existing else None,
                     existing.notes if existing else None,
                     bool(existing.is_unusable) if existing else False,
+                    transcript_before,
+                    transcript_after,
                 ),
                 "progress": database.progress(annotator_id) | {
                     "total_candidates": len(eligible),

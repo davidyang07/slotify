@@ -116,18 +116,23 @@ The queue is immutable once labels are collected against it: to change it, bump
 Start the local UI, restricted to the queue. The interface hides the heuristic
 score, candidate source, split and repeat status by default, so the annotator is
 never primed by the systems under test. Sessions are resumable: killing the
-process loses at most the in-flight item.
+process loses at most the in-flight item. Transcript context either side of the
+break is resolved from the cached episode transcript with the same selection the
+feature pipeline uses, so the annotator reads what the model reads.
 
 ```powershell
+# The controlled pilot: only the ~24 pilot-stage candidates.
 .\.venv\Scripts\python.exe -m slotify_rank.cli label serve `
-    --queue data\labels\queue_v1.json --port 8000
+    --queue data\labels\queue_v1.json --stage pilot --port 8000
 # Open http://127.0.0.1:8000/ and enter an annotator pseudonym.
 ```
 
 Score each candidate 1–5 on the naturalness rubric (`docs/labelling-guide.md`),
-mark acceptable / unusable, optionally add a note. Start with the ~24 pilot
-candidates, confirm the rubric and context feel right, then continue into the
-primary set. Target **250–300 unique labels** for the first genuine experiment.
+mark acceptable / unusable, optionally add a note. Run the pilot first with
+`--stage pilot`, confirm the rubric and context feel right, then drop the flag
+(or use `--stage primary`) to continue into the rest of the queue. Target
+**250–300 unique labels** for the first genuine experiment. The full pilot
+walkthrough is in [`pilot-labelling.md`](pilot-labelling.md).
 
 Check quality and export as you go (both are safe to re-run):
 

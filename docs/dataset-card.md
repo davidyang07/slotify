@@ -165,8 +165,10 @@ mic chain and vocabulary; training on one and testing on the other measures memo
 
 SQLite at `data/labels/labels.sqlite3`, exported to versioned JSONL. One active label per
 (annotator, candidate), enforced by a unique index; re-rating updates in place. Annotator ids are
-pseudonymous and no personal information is stored. See [`labelling-guide.md`](labelling-guide.md)
-for the rubric.
+pseudonymous and no personal information is stored. The local UI plays a ~10 s-each-side audio
+window and shows the transcript context either side of the break when one exists. See
+[`labelling-guide.md`](labelling-guide.md) for the rubric and
+[`pilot-labelling.md`](pilot-labelling.md) for the controlled pilot session.
 
 ---
 

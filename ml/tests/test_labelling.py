@@ -375,3 +375,96 @@ def test_clip_endpoint_returns_audio(client):
 def test_clip_endpoint_404s_for_an_unknown_candidate(client):
     http, _, _ = client
     assert http.get("/api/clip/nope:000000001").status_code == 404
+
+
+# --------------------------------------------------------------------------
+# Transcript context surfacing (resolved from the cache, as the model reads it)
+# --------------------------------------------------------------------------
+
+
+def _transcript_app(tmp_path: Path, *, write_transcript_file: bool):
+    """Build a service over one episode + candidate with no inline transcript.
+
+    Candidates are generated before transcription, so their inline transcript
+    fields are null; the service must resolve context from the cached episode
+    transcript instead. This helper writes (or omits) that cache file.
+    """
+    from fastapi.testclient import TestClient
+
+    from slotify_rank.data.paths import DataPaths
+    from slotify_rank.labelling.service import LabellingSettings, create_app
+    from slotify_rank.transcription.cache import transcript_path, write_transcript
+    from slotify_rank.transcription.schema import (
+        EpisodeTranscript,
+        TranscriptSegment,
+        make_segment_id,
+    )
+
+    paths = DataPaths(repo_root=tmp_path, data_root=tmp_path / "data")
+    paths.mkdirs()
+    episode = make_episode(title="Transcript episode", duration_ms=60_000)
+    candidate = make_candidate(episode.episode_id, timestamp_ms=20_000)
+    assert candidate.transcript_before is None  # the whole point
+
+    if write_transcript_file:
+        segments = (
+            TranscriptSegment(
+                segment_id=make_segment_id(episode.episode_id, 0, 15_000),
+                start_ms=15_000,
+                end_ms=19_000,
+                text="So that wraps up the first topic.",
+                normalized_text="so that wraps up the first topic",
+                sentence_end=True,
+                terminal_punctuation="period",
+            ),
+            TranscriptSegment(
+                segment_id=make_segment_id(episode.episode_id, 1, 21_000),
+                start_ms=21_000,
+                end_ms=25_000,
+                text="Now for something completely different.",
+                normalized_text="now for something completely different",
+                sentence_end=True,
+                terminal_punctuation="period",
+            ),
+        )
+        write_transcript(
+            transcript_path(paths, episode.episode_id),
+            EpisodeTranscript(
+                episode_id=episode.episode_id,
+                language="en",
+                model_id="whisper-tiny.en",
+                model_revision="test",
+                audio_sha256="a" * 64,
+                audio_duration_ms=60_000,
+                segments=segments,
+            ),
+        )
+
+    app = create_app(
+        LabelDatabase(tmp_path / "labels.sqlite3"),
+        [candidate],
+        [episode],
+        paths,
+        LabellingSettings(),
+    )
+    return TestClient(app)
+
+
+def test_transcript_context_is_resolved_from_the_cache(tmp_path: Path):
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    http = _transcript_app(tmp_path, write_transcript_file=True)
+    candidate = http.get("/api/next", params={"annotator_id": "a"}).json()["candidate"]
+    assert candidate["has_transcript"] is True
+    assert "first topic" in candidate["transcript_before"]
+    assert "completely different" in candidate["transcript_after"]
+
+
+def test_missing_transcript_is_handled_cleanly(tmp_path: Path):
+    pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    http = _transcript_app(tmp_path, write_transcript_file=False)
+    candidate = http.get("/api/next", params={"annotator_id": "a"}).json()["candidate"]
+    assert candidate["has_transcript"] is False
+    assert candidate["transcript_before"] is None
+    assert candidate["transcript_after"] is None

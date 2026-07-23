@@ -492,6 +492,23 @@ def _cmd_label_queue(args: argparse.Namespace) -> int:
     return 0
 
 
+def stage_candidate_ids(queue: Any, stage: str) -> set[str]:
+    """The candidate ids a serve session should expose for a queue stage.
+
+    ``all`` is the whole unique set; ``pilot`` / ``primary`` restrict to that
+    stage so a controlled pilot can be run and its progress counted against the
+    right denominator. Consistency re-checks are never served here -- they are
+    presentation-level repeats, not unique candidates.
+    """
+    if stage == "pilot":
+        return set(queue.pilot_candidate_ids)
+    if stage == "primary":
+        return set(queue.primary_candidate_ids)
+    if stage == "all":
+        return set(queue.unique_candidate_ids)
+    raise ValueError(f"Unknown serve stage {stage!r}")
+
+
 def _cmd_label_serve(args: argparse.Namespace) -> int:
     paths = _paths(args)
     episodes = manifests.read_episodes(paths.episodes_manifest)
@@ -503,11 +520,13 @@ def _cmd_label_serve(args: argparse.Namespace) -> int:
     ]
     if getattr(args, "queue", None):
         queue = read_queue(Path(args.queue))
-        wanted = set(queue.unique_candidate_ids)
+        stage = getattr(args, "stage", "all")
+        wanted = stage_candidate_ids(queue, stage)
         eligible = [c for c in eligible if c.candidate_id in wanted]
+        stage_label = "" if stage == "all" else f" ({stage} stage)"
         print(
-            f"Restricted to labelling queue {queue.queue_version}: "
-            f"{len(eligible)} of {queue.unique_count} queued candidate(s) present."
+            f"Restricted to labelling queue {queue.queue_version}{stage_label}: "
+            f"{len(eligible)} of {len(wanted)} queued candidate(s) present."
         )
     if not eligible:
         print(
@@ -768,6 +787,16 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--queue",
         default=None,
         help="Restrict the served candidates to a labelling queue artifact.",
+    )
+    serve_parser.add_argument(
+        "--stage",
+        choices=("all", "pilot", "primary"),
+        default="all",
+        help=(
+            "With --queue, serve only one queue stage. 'pilot' runs the small "
+            "diverse first pass (~24) as a controlled session; 'primary' runs the "
+            "remainder. Ignored without --queue."
+        ),
     )
     serve_parser.set_defaults(func=_cmd_label_serve)
 

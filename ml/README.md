@@ -245,12 +245,19 @@ recording collapse into one episode.
 .\.venv\Scripts\python.exe -m slotify_rank.cli label serve --port 8000
 # open http://127.0.0.1:8000/ , enter an annotator id (a pseudonym is fine)
 
+# Restrict to a queue, or to just its pilot stage for a controlled first pass:
+.\.venv\Scripts\python.exe -m slotify_rank.cli label serve `
+    --queue ..\data\labels\queue_v1.json --stage pilot --port 8000
+
 .\.venv\Scripts\python.exe -m slotify_rank.cli label export
 ```
 
-Rubric and guidance: `docs/labelling-guide.md`. Ratings save immediately,
-sessions resume where you stopped, and the heuristic's score is hidden from the
-annotator by default to avoid biasing the labels.
+Rubric and guidance: `docs/labelling-guide.md`; the step-by-step pilot session is
+`docs/pilot-labelling.md`. Ratings save immediately, sessions resume where you
+stopped, and the heuristic's score is hidden from the annotator by default to
+avoid biasing the labels. Transcript context either side of the break is
+resolved from the cached episode transcript (the same selection the feature
+pipeline uses), so what the annotator reads matches what the model consumes.
 
 ### What is and is not committed
 
