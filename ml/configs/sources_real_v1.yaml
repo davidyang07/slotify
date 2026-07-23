@@ -1,0 +1,143 @@
+# Real target-domain corpus -- Phase 5A, round 1.
+#
+# WHERE the audio comes from and under WHAT TERMS. This file is committed; it
+# holds no audio and no credentials. `slotify_rank.data.sources.load_sources`
+# validates every entry (licence required for direct_download, no secrets, real
+# audio-file URLs only) before any byte is fetched.
+#
+# PROVENANCE. Every entry below was discovered and verified against the Internet
+# Archive metadata API (https://archive.org/metadata/<identifier>) during the
+# Phase 5A survey: the identifier exists, the file name and duration are real,
+# and the item's `licenseurl` is a public-domain dedication or the Public Domain
+# Mark. Nothing here is a guessed URL. The direct download URL follows the
+# documented pattern https://archive.org/download/<identifier>/<file>.
+#
+# LICENCE. All six series are LibriVox recordings hosted by the Internet Archive
+# and released into the public domain, so they are freely redistributable and
+# re-fetchable -- the two properties the dataset card requires. Podcast and
+# interview feeds under CC-BY may be appended later (same schema, one new series
+# each) without touching any code; see docs/human-labelling-workflow.md.
+#
+# DOMAIN. Narrated spoken word and a multi-voice dramatic reading. Both are
+# TARGET_DOMAIN_CONTENT_TYPES. No music, no meetings.
+#
+# Acquire the whole corpus with:
+#   cd backend  # (any dir; the command is run from ml/ below)
+#   .venv/Scripts/python.exe -m slotify_rank.cli dataset fetch \
+#       --sources ml/configs/sources_real_v1.yaml
+#   ... then dataset probe / normalize / candidates generate / features, etc.
+# See docs/human-labelling-workflow.md for the full, copy-pasteable sequence.
+
+source_manifest_version: source-manifest-v1.0.0
+
+defaults:
+  language: en
+  source_name: "LibriVox / Internet Archive"
+  attribution: "Read for LibriVox (public domain); hosted by the Internet Archive."
+
+sources:
+  # -- Series 1: narrated single-speaker prose (male reader) ----------------
+  - id: art-of-war-0304
+    source_type: direct_download
+    url: https://archive.org/download/art_of_war_librivox/art_of_war_03-04_sun_tzu.mp3
+    title: "The Art of War - Chapters 3-4 (Sun Tzu, tr. Giles)"
+    series_id: art-of-war
+    content_type: narrated
+    license_name: "Public Domain (LibriVox dedication)"
+    license_url: https://creativecommons.org/licenses/publicdomain/
+    notes: "IA item art_of_war_librivox; verified 465s original mp3."
+
+  # -- Series 2: multi-voice dramatic reading (conversational) --------------
+  - id: two-br-02-b-01
+    source_type: direct_download
+    url: https://archive.org/download/2br02b_0801_librivox/2br02b_1_vonnegut.mp3
+    title: "2 B R 0 2 B - dramatic reading (Vonnegut)"
+    series_id: two-br-02-b
+    content_type: conversational
+    license_name: "Public Domain (LibriVox dedication)"
+    license_url: https://creativecommons.org/licenses/publicdomain/
+    notes: "IA item 2br02b_0801_librivox; multi-reader dramatic reading, 1340s."
+
+  # -- Series 3: short nonfiction essay (narrated) --------------------------
+  - id: snf013-towrite
+    source_type: direct_download
+    url: https://archive.org/download/nonfiction013_librivox/towriteornottowrite_rice_cc.mp3
+    title: "To Write or Not to Write (Short Nonfiction Vol. 013)"
+    series_id: short-nonfiction-013
+    content_type: narrated
+    license_name: "Public Domain (LibriVox dedication)"
+    license_url: https://creativecommons.org/licenses/publicdomain/
+    notes: "IA item nonfiction013_librivox; verified 243s original mp3."
+
+  # -- Series 4: short nonfiction, three different readers ------------------
+  - id: snf072-newmadrid
+    source_type: direct_download
+    url: https://archive.org/download/nonfiction072_2003_librivox/snf072_acctnewmadridearthquake_fuller_ks_128kb.mp3
+    title: "Account of the New Madrid Earthquake (Short Nonfiction Vol. 072)"
+    series_id: short-nonfiction-072
+    content_type: narrated
+    license_name: "Public Domain Mark 1.0"
+    license_url: https://creativecommons.org/publicdomain/mark/1.0/
+    notes: "IA item nonfiction072_2003_librivox; reader 'ks', 252s."
+
+  - id: snf072-fulton
+    source_type: direct_download
+    url: https://archive.org/download/nonfiction072_2003_librivox/snf072_robertfulton_sciam_ava_128kb.mp3
+    title: "Robert Fulton (Short Nonfiction Vol. 072)"
+    series_id: short-nonfiction-072
+    content_type: narrated
+    license_name: "Public Domain Mark 1.0"
+    license_url: https://creativecommons.org/publicdomain/mark/1.0/
+    notes: "IA item nonfiction072_2003_librivox; reader 'ava', 341s."
+
+  - id: snf072-luminous
+    source_type: direct_download
+    url: https://archive.org/download/nonfiction072_2003_librivox/snf072_luminousplants_gradenwitz_jms_128kb.mp3
+    title: "Luminous Plants (Short Nonfiction Vol. 072)"
+    series_id: short-nonfiction-072
+    content_type: narrated
+    license_name: "Public Domain Mark 1.0"
+    license_url: https://creativecommons.org/publicdomain/mark/1.0/
+    notes: "IA item nonfiction072_2003_librivox; reader 'jms', 407s."
+
+  # -- Series 5: short nonfiction (narrated) --------------------------------
+  - id: snf064-dayofinfamy
+    source_type: direct_download
+    url: https://archive.org/download/nonfiction064_1904_librivox/snf064_dayofinfamy_roosevelt_lcw_128kb.mp3
+    title: "Day of Infamy Speech (Short Nonfiction Vol. 064)"
+    series_id: short-nonfiction-064
+    content_type: narrated
+    license_name: "Public Domain Mark 1.0"
+    license_url: https://creativecommons.org/publicdomain/mark/1.0/
+    notes: "IA item nonfiction064_1904_librivox; reader 'lcw', 249s."
+
+  - id: snf064-notesonpianos
+    source_type: direct_download
+    url: https://archive.org/download/nonfiction064_1904_librivox/snf064_notesonpianos_mackall_dg_128kb.mp3
+    title: "Notes on Pianos (Short Nonfiction Vol. 064)"
+    series_id: short-nonfiction-064
+    content_type: narrated
+    license_name: "Public Domain Mark 1.0"
+    license_url: https://creativecommons.org/publicdomain/mark/1.0/
+    notes: "IA item nonfiction064_1904_librivox; reader 'dg', 296s."
+
+  # -- Series 6: short nonfiction, two different readers --------------------
+  - id: snf067-ramanujan
+    source_type: direct_download
+    url: https://archive.org/download/nonfiction067_1907_librivox/snf067_srinivasaramanujanobit_hardy_ava_128kb.mp3
+    title: "Obituary of Srinivasa Ramanujan (Short Nonfiction Vol. 067)"
+    series_id: short-nonfiction-067
+    content_type: narrated
+    license_name: "Public Domain Mark 1.0"
+    license_url: https://creativecommons.org/publicdomain/mark/1.0/
+    notes: "IA item nonfiction067_1907_librivox; reader 'ava', 337s."
+
+  - id: snf067-irishmarriage
+    source_type: direct_download
+    url: https://archive.org/download/nonfiction067_1907_librivox/snf067_irishmarriagerites_wilde_ks_128kb.mp3
+    title: "Irish Marriage Rites (Short Nonfiction Vol. 067)"
+    series_id: short-nonfiction-067
+    content_type: narrated
+    license_name: "Public Domain Mark 1.0"
+    license_url: https://creativecommons.org/publicdomain/mark/1.0/
+    notes: "IA item nonfiction067_1907_librivox; reader 'ks', 338s."
