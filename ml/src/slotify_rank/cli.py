@@ -35,6 +35,14 @@ access is the one-time Hugging Face model download::
     python -m slotify_rank.cli pipeline features [--stage NAME] [--limit N]
     python -m slotify_rank.cli pipeline status
 
+Phase 5 -- the real-corpus experiment gate. Offline; reads labels and manifests
+only::
+
+    python -m slotify_rank.cli label queue --config ml/configs/labelling_queue_v1.yaml
+    python -m slotify_rank.cli label check --queue data/labels/queue_v1.json
+    python -m slotify_rank.cli experiment readiness [--require-ready]
+    python -m slotify_rank.cli experiment freeze --snapshot-version v1
+
 The console script ``slotify-rank`` is equivalent to ``python -m slotify_rank.cli``.
 
 Exit codes: ``0`` success, ``1`` runtime failure (message on stderr), ``2``
@@ -341,6 +349,12 @@ def build_parser() -> argparse.ArgumentParser:
     from slotify_rank.training_cli import register as register_training_commands
 
     register_training_commands(subparsers)
+
+    # Phase 5: the experiment readiness gate and the label freeze. No torch, no
+    # network -- it only reads labels and manifests.
+    from slotify_rank.experiment_cli import register as register_experiment_commands
+
+    register_experiment_commands(subparsers)
 
     return parser
 
