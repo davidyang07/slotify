@@ -117,6 +117,20 @@ CHECKPOINT_SCHEMA_VERSION = "checkpoint-schema-v1.0.0"
 #: (:mod:`slotify_rank.ranking.pairs`).
 PAIR_GENERATION_VERSION = "pairgen-v1.0.0"
 
+# Phase 5 (real corpus bootstrap, human-labelling queues, experiment gate).
+#: Shape of a stratified labelling-queue artifact
+#: (:mod:`slotify_rank.labelling.queue`). Bumping it invalidates a queue file;
+#: the queue records the candidate and split manifest hashes it was built from,
+#: so a queue built against a regenerated corpus is detectable rather than
+#: silently mismatched.
+LABELLING_QUEUE_SCHEMA_VERSION = "labelling-queue-v1.0.0"
+#: Shape of a frozen label snapshot (:mod:`slotify_rank.experiment.freeze`). A
+#: snapshot is immutable once written; a correction is a new version.
+LABEL_SNAPSHOT_SCHEMA_VERSION = "label-snapshot-v1.0.0"
+#: Shape of the readiness report and the experiment manifest
+#: (:mod:`slotify_rank.experiment.readiness`).
+EXPERIMENT_MANIFEST_VERSION = "experiment-v1.0.0"
+
 #: Schema versions this build is able to read. Anything else is a hard failure
 #: rather than a best-effort parse, because a silently mis-read manifest would
 #: corrupt every number downstream of it.
@@ -152,6 +166,9 @@ __all__ = [
     "MODEL_INPUT_SCHEMA_VERSION",
     "CHECKPOINT_SCHEMA_VERSION",
     "PAIR_GENERATION_VERSION",
+    "LABELLING_QUEUE_SCHEMA_VERSION",
+    "LABEL_SNAPSHOT_SCHEMA_VERSION",
+    "EXPERIMENT_MANIFEST_VERSION",
     "SUPPORTED_CHECKPOINT_SCHEMA_VERSIONS",
     "SUPPORTED_EPISODE_SCHEMA_VERSIONS",
     "SUPPORTED_DATASET_CANDIDATE_SCHEMA_VERSIONS",

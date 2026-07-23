@@ -1,0 +1,24 @@
+# Split configuration v2 -- the real Phase 5A target-domain corpus.
+#
+# WHY A NEW VERSION. v1 was frozen over the Phase 2 smoke fixtures only. Phase 5A
+# added six real public-domain series (see configs/sources_real_v1.yaml), a
+# material change in corpus composition, and a split manifest is IMMUTABLE for a
+# given version. Bumping to v2 records the real-corpus split without rewriting
+# the smoke split any earlier artifact might reference.
+#
+# Everything else matches v1: series grouping, a fixed seed, target-domain-only
+# test partition, and the six-group floor below which a three-way split degrades
+# to a single 'development' partition.
+
+split:
+  version: v2
+  seed: 42
+  group_by: series
+
+  ratios:
+    train: 0.70
+    validation: 0.15
+    test: 0.15
+
+  require_target_domain_test: true
+  min_groups_for_split: 6

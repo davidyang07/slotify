@@ -1,0 +1,45 @@
+# Stratified labelling-queue configuration v1 (Phase 5A, round 1).
+#
+# A queue built from this file is deterministic: the same candidate manifest,
+# the same split and this config produce a byte-identical queue on any machine.
+# Bump `version` when changing any value, so a new queue never quietly replaces
+# one that annotators have already worked through.
+#
+# See slotify_rank.labelling.queue for what each field controls. The hard strata
+# are (dataset split x heuristic-score tertile); the remaining dimensions are
+# spread by round-robin and reported as coverage.
+
+queue:
+  version: v1
+  seed: 20260723
+
+  # Aim for 250-300 unique candidates for the first genuine experiment.
+  target_unique: 280
+
+  # Stage sizes. pilot + primary partition the unique set; overlap and
+  # consistency are subsets of it (overlap = same ids for a 2nd annotator,
+  # consistency = re-presented repeats, never counted as unique).
+  pilot_size: 24          # 20-30
+  overlap_size: 40        # 30-50
+  consistency_size: 12    # 10-15
+
+  # No single episode may supply more than this many labelled candidates, so one
+  # long episode cannot dominate the set.
+  max_per_episode: 90
+
+  # Label allocation across the frozen split. Series separation is already
+  # guaranteed by the split; this only sets how many labels each split receives.
+  allocation:
+    train: 0.66
+    validation: 0.17
+    test: 0.17
+
+  # Only real target-domain audio is queued; repository fixtures and music are
+  # excluded so no smoke clip is ever shown to an annotator.
+  include_fixtures: false
+  eligible_content_types: [podcast, interview, conversational, narrated]
+
+  # Coverage bucketing.
+  position_buckets: 5
+  silence_bucket_edges_ms: [500, 1000, 2000]
+  long_silence_ms: 1500

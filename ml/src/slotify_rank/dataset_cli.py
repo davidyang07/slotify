@@ -41,6 +41,12 @@ from slotify_rank.data.stats import compute_statistics, write_statistics
 from slotify_rank.data.validate import validate_dataset
 from slotify_rank.labelling.database import DEFAULT_ACCEPTABLE_THRESHOLD, LabelDatabase
 from slotify_rank.labelling.export import export_labels
+from slotify_rank.labelling.queue import (
+    build_queue,
+    load_queue_config,
+    read_queue,
+    write_queue,
+)
 
 __all__ = ["register"]
 
@@ -417,6 +423,75 @@ def _cmd_generate(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _feature_records_by_id(paths: DataPaths) -> dict[str, Any]:
+    """Map candidate_id -> feature record, or empty when features are absent.
+
+    Optional: the queue stratifies on the candidate manifest alone and only uses
+    features (transcript / embedding availability, sentence boundaries) as extra
+    coverage signal when the Phase 3 pipeline has run.
+    """
+    if not paths.features_manifest.is_file():
+        return {}
+    from slotify_rank.features.assemble import read_feature_manifest
+
+    _, records = read_feature_manifest(paths.features_manifest)
+    return {record.candidate_id: record for record in records}
+
+
+def _queue_destination(paths: DataPaths, args: argparse.Namespace, version: str) -> Path:
+    if getattr(args, "output", None):
+        return Path(args.output)
+    return paths.labels_dir / f"queue_{version}.json"
+
+
+def _cmd_label_queue(args: argparse.Namespace) -> int:
+    paths = _paths(args)
+    candidates = manifests.read_candidates(paths.candidates_manifest)
+    episodes = manifests.read_episodes(paths.episodes_manifest)
+    if not candidates:
+        print(
+            "error: no candidates. Run `candidates generate` on real episodes first.",
+            file=sys.stderr,
+        )
+        return 1
+
+    from slotify_rank.data.checksum import sha256_file
+
+    config = load_queue_config(args.config)
+    split_path = paths.split_manifest(args.split_version)
+    split_hash = sha256_file(split_path) if split_path.is_file() else None
+    queue = build_queue(
+        candidates,
+        episodes,
+        config=config,
+        feature_records=_feature_records_by_id(paths),
+        candidate_manifest_hash=sha256_file(paths.candidates_manifest),
+        split_manifest_hash=split_hash,
+    )
+    destination = _queue_destination(paths, args, queue.queue_version)
+    write_queue(destination, queue, force=args.force)
+
+    cov = queue.coverage
+    print(
+        f"Queue {queue.queue_version}: {queue.unique_count} unique candidate(s) "
+        f"(pilot {len(queue.pilot_candidate_ids)}, primary "
+        f"{len(queue.primary_candidate_ids)}, overlap "
+        f"{len(queue.overlap_candidate_ids)}, consistency "
+        f"{len(queue.consistency_candidate_ids)})."
+    )
+    print(f"  score strata: {queue.score_strata.to_dict()}")
+    print(f"  by split: {cov['by_split']}")
+    print(f"  by score stratum: {cov['by_score_stratum']}")
+    print(f"  by series: {cov['by_series']}")
+    print(
+        f"  transcript-available {cov['transcript_available']}, "
+        f"signal-disagreement {cov['signal_disagreement']}, "
+        f"max per episode {cov['max_per_episode_selected']}"
+    )
+    print(f"Wrote {destination}")
+    return 0
+
+
 def _cmd_label_serve(args: argparse.Namespace) -> int:
     paths = _paths(args)
     episodes = manifests.read_episodes(paths.episodes_manifest)
@@ -426,6 +501,14 @@ def _cmd_label_serve(args: argparse.Namespace) -> int:
         for candidate in candidates
         if candidate.eligible_for_labelling and not candidate.is_synthetic
     ]
+    if getattr(args, "queue", None):
+        queue = read_queue(Path(args.queue))
+        wanted = set(queue.unique_candidate_ids)
+        eligible = [c for c in eligible if c.candidate_id in wanted]
+        print(
+            f"Restricted to labelling queue {queue.queue_version}: "
+            f"{len(eligible)} of {queue.unique_count} queued candidate(s) present."
+        )
     if not eligible:
         print(
             "error: no candidates eligible for labelling. Run "
@@ -630,7 +713,32 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Show the heuristic score and candidate sources (biases the annotator).",
     )
+    serve_parser.add_argument(
+        "--queue",
+        default=None,
+        help="Restrict the served candidates to a labelling queue artifact.",
+    )
     serve_parser.set_defaults(func=_cmd_label_serve)
+
+    queue_parser = label_sub.add_parser(
+        "queue", help="Build a deterministic, stratified labelling queue."
+    )
+    _add_common(queue_parser)
+    queue_parser.add_argument(
+        "--config", default=None, help="ml/configs/labelling_queue_v1.yaml"
+    )
+    queue_parser.add_argument(
+        "--split-version",
+        default="v2",
+        help="Split manifest version to stratify against (default v2, the real corpus).",
+    )
+    queue_parser.add_argument("--output", default=None, help="Queue artifact path.")
+    queue_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing queue of the same version (orphans its labels).",
+    )
+    queue_parser.set_defaults(func=_cmd_label_queue)
 
     export_parser = label_sub.add_parser(
         "export", help="Export human labels to versioned JSONL."
