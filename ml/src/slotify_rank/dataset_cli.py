@@ -548,6 +548,57 @@ def _cmd_label_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_label_check(args: argparse.Namespace) -> int:
+    from slotify_rank.data.checksum import sha256_file
+    from slotify_rank.labelling.quality import check_label_quality
+
+    paths = _paths(args)
+    candidates = manifests.read_candidates(paths.candidates_manifest)
+    episodes = manifests.read_episodes(paths.episodes_manifest)
+    database = LabelDatabase(paths.label_database, args.acceptable_threshold)
+    labels = database.all_labels()
+
+    queue = read_queue(Path(args.queue)) if args.queue else None
+    split_path = paths.split_manifest(args.split_version)
+    report = check_label_quality(
+        labels,
+        candidates,
+        episodes,
+        queue=queue,
+        acceptable_threshold=args.acceptable_threshold,
+        current_candidate_manifest_hash=(
+            sha256_file(paths.candidates_manifest)
+            if paths.candidates_manifest.is_file()
+            else None
+        ),
+        current_split_manifest_hash=(
+            sha256_file(split_path) if split_path.is_file() else None
+        ),
+    )
+    destination = (
+        Path(args.output)
+        if args.output
+        else paths.artifacts_dir / "label_quality_report.json"
+    )
+    report.write(destination)
+
+    for finding in report.findings:
+        prefix = {"error": "ERROR  ", "warning": "warning", "info": "info   "}[
+            finding.severity
+        ]
+        subject = f" [{finding.subject}]" if finding.subject else ""
+        print(f"  {prefix} {finding.check}{subject}: {finding.message}")
+    print(
+        f"{report.label_count} label(s) from {report.annotator_count} annotator(s): "
+        f"{len(report.errors)} error(s), {len(report.warnings)} warning(s)."
+    )
+    print(f"Wrote {destination}")
+    if not report.ok:
+        print("Label quality check FAILED (errors must be fixed).")
+        return 1
+    return 0
+
+
 def _cmd_label_export(args: argparse.Namespace) -> int:
     paths = _paths(args)
     candidates = manifests.read_candidates(paths.candidates_manifest)
@@ -739,6 +790,18 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Overwrite an existing queue of the same version (orphans its labels).",
     )
     queue_parser.set_defaults(func=_cmd_label_queue)
+
+    check_parser = label_sub.add_parser(
+        "check", help="Run label-quality controls (warnings only; never mutates)."
+    )
+    _add_common(check_parser)
+    check_parser.add_argument("--queue", default=None, help="Assigned queue artifact.")
+    check_parser.add_argument("--split-version", default="v2")
+    check_parser.add_argument("--output", default=None)
+    check_parser.add_argument(
+        "--acceptable-threshold", type=int, default=DEFAULT_ACCEPTABLE_THRESHOLD
+    )
+    check_parser.set_defaults(func=_cmd_label_check)
 
     export_parser = label_sub.add_parser(
         "export", help="Export human labels to versioned JSONL."
