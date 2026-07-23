@@ -1,0 +1,49 @@
+{
+  "schema_version": "experiment-v1.0.0",
+  "package_version": "0.2.0",
+  "phase_5b_ready": false,
+  "gate": {
+    "min_unique_candidates": 200,
+    "min_episodes": 8,
+    "min_series": 6,
+    "min_train_series": 4,
+    "min_validation_series": 1,
+    "min_test_series": 1,
+    "relevance_threshold": 4.0,
+    "min_pair_score_difference": 1.0
+  },
+  "blocking_reasons": [
+    "human-labelled unique candidates 0 < 200",
+    "human-labelled episodes 0 < 8",
+    "represented series 0 < 6",
+    "training series 0 < 4",
+    "validation series 0 < 1",
+    "test series 0 < 1",
+    "training split contains no usable ranking pairs",
+    "validation split contains no usable ranking pairs",
+    "test split contains no graded relevant candidates (quality_score >= 4.0)",
+    "not all labelled candidates have a complete multimodal feature record"
+  ],
+  "metrics": {
+    "human_labelled_unique_candidates": 0,
+    "human_labelled_episodes": 0,
+    "human_labelled_series": 0,
+    "labels_by_split": {},
+    "labels_by_quality_score": {},
+    "acceptable_count": 0,
+    "unacceptable_count": 0,
+    "train_series": [],
+    "validation_series": [],
+    "test_series": [],
+    "usable_pairs_train": 0,
+    "usable_pairs_validation": 0,
+    "episodes_without_usable_pairs_train": [],
+    "episodes_without_usable_pairs_validation": [],
+    "test_relevant_candidate_count": 0,
+    "feature_complete_labelled": 0,
+    "feature_incomplete_labelled": [],
+    "labels_pass_integrity": true,
+    "integrity_error_count": 0,
+    "integrity_warning_count": 0
+  }
+}
