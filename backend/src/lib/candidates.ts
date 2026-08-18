@@ -1,11 +1,6 @@
 import { clamp, endsWithSentenceBoundary } from "./text";
 import { HEURISTIC_V1 } from "./heuristic-config";
-import type {
-  Candidate,
-  InsertionMode,
-  ProsCons,
-  ScoredCandidate,
-} from "../types";
+import type { Candidate, InsertionMode, ScoredCandidate } from "../types";
 
 // Baseline constants live in config/heuristic_offline_v1.json and are shared
 // with the Python port in ml/src/slotify_rank/candidates/heuristic.py. Editing
@@ -81,57 +76,6 @@ export const scoreCandidate = (
     }
   }
   return clamp(score, SCORING.score_min, SCORING.score_max);
-};
-
-export const buildFallbackProsCons = ({
-  mode,
-  silenceMs,
-  timeSeconds,
-  durationSeconds,
-}: {
-  mode: InsertionMode;
-  silenceMs: number;
-  timeSeconds: number;
-  durationSeconds: number | null;
-}): ProsCons => {
-  const pros: string[] = [];
-  if (mode === "song") {
-    pros.push("Beat-aligned low-energy valley");
-  } else if (silenceMs >= 800) {
-    pros.push(`Natural pause detected (~${Math.round(silenceMs)}ms)`);
-  } else if (silenceMs >= 500) {
-    pros.push("Clear pause boundary detected");
-  }
-  pros.push("Low background energy at cut");
-  pros.push("Clean sentence boundary / transition");
-
-  const cons: string[] = [];
-  if (silenceMs > 0 && silenceMs < 600) {
-    cons.push("Short pause may feel abrupt");
-  }
-  if (durationSeconds) {
-    if (timeSeconds < 10) {
-      cons.push("Early placement may feel disruptive");
-    } else if (timeSeconds > durationSeconds - 10) {
-      cons.push("Late placement may feel rushed");
-    }
-  }
-  cons.push("Slight background noise present");
-
-  const pickedPros = pros.slice(0, 3);
-  while (pickedPros.length < 3) {
-    pickedPros.push("Natural pacing supports insertion");
-  }
-  const pickedCons = cons.slice(0, 2);
-  while (pickedCons.length < 2) {
-    pickedCons.push("Minor tonal shift possible");
-  }
-
-  return {
-    pros: pickedPros,
-    cons: pickedCons,
-    rationale: `Chosen for a clear pause near ${timeSeconds.toFixed(1)}s that minimizes disruption.`,
-  };
 };
 
 /**

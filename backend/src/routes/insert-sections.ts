@@ -1,3 +1,20 @@
+/**
+ * POST /api/insert-sections -- find and rank ad-break candidates in an upload.
+ *
+ * Three outcomes are reported as three different things, because they mean
+ * three different things to a user:
+ *
+ *   200 { placementStatus: "ok" }             analysis ran, points were found
+ *   200 { placementStatus: "no_candidates" }  analysis ran, nothing qualified
+ *   502 { placementStatus: "unavailable" }    analysis itself failed
+ *
+ * The route previously collapsed all three: when the Python analyser threw, it
+ * logged a warning and substituted candidates at 25 %, 50 % and 75 % of the
+ * duration, so a total analysis failure was indistinguishable in the response
+ * from a successful run. Those fallbacks are gone. Nothing in this file
+ * invents a timestamp.
+ */
+
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,14 +27,17 @@ import {
   enhanceSlotsWithOpenAI,
   requestTranscription,
 } from "../services/openai";
+import { mergeCandidates } from "../lib/candidates";
+import { rankWithHeuristic } from "../lib/ranking";
+import { HEURISTIC_V1 } from "../lib/heuristic-config";
 import {
-  mergeCandidates,
-  scoreCandidate,
-  selectTopSlots,
-  buildFallbackProsCons,
-} from "../lib/candidates";
+  buildPlacementSignals,
+  buildRationale,
+  clampSlotMs,
+  dedupeByMs,
+  toPlacementScores,
+} from "../lib/placement";
 import {
-  clamp,
   endsWithSentenceBoundary,
   parseJsonField,
   normalizeStatements,
@@ -25,104 +45,162 @@ import {
 import type {
   Candidate,
   InsertionMode,
-  ScoredCandidate,
+  RankerProvenance,
   Slot,
   SponsorStatement,
 } from "../types";
 
 export const insertSectionsRouter = Router();
 
+const CANDIDATE_GENERATION = "signal_offline_v1";
+const MAX_SLOTS = HEURISTIC_V1.selection.max_returned;
+const MIN_SEPARATION_SECONDS = HEURISTIC_V1.selection.min_separation_seconds;
+
+/** Build the sponsor statements the client asked for, if any. */
+const buildSponsorStatements = async (body: any): Promise<SponsorStatement[]> => {
+  const sponsorsField = parseJsonField(body?.sponsors);
+  if (Array.isArray(sponsorsField)) {
+    return Promise.all(
+      sponsorsField.map(async (entry: any, index: number) => {
+        const name = String(entry?.name ?? entry?.brand ?? "").trim();
+        const productDesc = String(entry?.productDesc ?? "").trim();
+        const rawStatement = String(entry?.statement ?? "").trim();
+        const statement =
+          rawStatement || (await generateBrandStatement({ name, productDesc }));
+        return {
+          id: entry?.id ?? `sponsor-${index + 1}`,
+          name,
+          statement,
+          generated: !rawStatement,
+        };
+      }),
+    );
+  }
+  const statements = normalizeStatements(body?.statements ?? body?.statement);
+  return statements.map((statement, index) => ({
+    id: `sponsor-${index + 1}`,
+    name: "",
+    statement,
+    generated: false,
+  }));
+};
+
+/**
+ * Optional extra candidates from OpenAI's transcription. Purely additive: a
+ * failure here narrows the candidate pool, it never fabricates one.
+ */
+const transcriptCandidates = async (
+  buffer: Buffer,
+  filename: string,
+  durationSeconds: number | null,
+): Promise<Candidate[]> => {
+  if (!process.env.OPENAI_API_KEY) return [];
+  try {
+    const response = await requestTranscription(buffer, filename);
+    if (!response.ok) return [];
+    const transcript = (await response.json()) as any;
+    const segments = Array.isArray(transcript?.segments) ? transcript.segments : [];
+    return segments
+      .map((segment: any, index: number) => {
+        const text = String(segment.text ?? "").trim();
+        if (!endsWithSentenceBoundary(text)) return null;
+        const end = Number(segment.end ?? 0);
+        if (!Number.isFinite(end)) return null;
+        if (durationSeconds && end > durationSeconds) return null;
+        const nextStart = Number(segments[index + 1]?.start ?? end);
+        return {
+          ms: Math.round(end * 1000),
+          silenceMs: Math.round(Math.max(0, (nextStart - end) * 1000)),
+          snippet: text,
+        };
+      })
+      .filter(Boolean) as Candidate[];
+  } catch (error) {
+    console.warn("OpenAI transcript candidates unavailable.", error);
+    return [];
+  }
+};
+
 insertSectionsRouter.post(
   "/api/insert-sections",
   upload.single("audio"),
   async (req, res) => {
     const audioFile = req.file;
-    const count = Number.parseInt(req.body?.count ?? "5", 10);
-
     if (!audioFile) {
-      res.status(400).json({ error: "audio file is required." });
+      res.status(400).json({
+        placementStatus: "unavailable",
+        error: "audio file is required.",
+        slots: [],
+        points: [],
+      });
       return;
     }
+
+    const requestedCount = Number.parseInt(req.body?.count ?? String(MAX_SLOTS), 10);
+    const count = Number.isFinite(requestedCount)
+      ? Math.min(MAX_SLOTS, Math.max(1, requestedCount))
+      : MAX_SLOTS;
+    const mode: InsertionMode =
+      String(req.body?.mode ?? "podcast").trim().toLowerCase() === "song"
+        ? "song"
+        : "podcast";
 
     const tempDir = await fs.promises.mkdtemp(
       path.join(os.tmpdir(), "insert-sections-"),
     );
     const audioPath = path.join(
       tempDir,
-      `${Date.now()}-${audioFile.originalname || "audio.mp3"}`,
+      `${Date.now()}-${path.basename(audioFile.originalname || "audio.mp3")}`,
     );
     const cleanup = async () => {
-      await fs.promises.unlink(audioPath).catch(() => undefined);
-      await fs.promises.rmdir(tempDir).catch(() => undefined);
+      await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
     };
 
     try {
       await fs.promises.writeFile(audioPath, audioFile.buffer);
-      const duration = await getAudioDuration(audioPath).catch(() => null);
-      const mode: InsertionMode =
-        String(req.body?.mode ?? "podcast").trim().toLowerCase() === "song"
-          ? "song"
-          : "podcast";
-      let analysisResult: any = null;
+      const probedDuration = await getAudioDuration(audioPath).catch(() => null);
+
+      let analysis: any;
       try {
-        analysisResult = await runPythonAnalyze(audioPath, mode);
+        analysis = await runPythonAnalyze(audioPath, mode);
       } catch (error) {
-        console.warn("Analyze CLI failed, using fallback.", error);
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error("Audio analysis failed.", detail);
+        res.status(502).json({
+          placementStatus: "unavailable",
+          slots: [],
+          points: [],
+          duration: probedDuration,
+          provenance: {
+            candidateGeneration: CANDIDATE_GENERATION,
+            source: null,
+            mode: "heuristic",
+            modelVariant: null,
+            modelRunId: null,
+            scoreScale: null,
+            isCalibratedProbability: false,
+          },
+          error: "Audio analysis failed; no insertion points can be reported.",
+          detail,
+        });
+        return;
       }
 
-      const durationMs = Number(analysisResult?.duration_ms ?? 0) || null;
+      const analysedDurationMs = Number(analysis?.duration_ms ?? 0) || null;
       const durationSeconds =
-        duration ?? (durationMs ? durationMs / 1000 : null);
+        probedDuration ?? (analysedDurationMs ? analysedDurationMs / 1000 : null);
 
-      let transcriptCandidates: Candidate[] = [];
-      if (process.env.OPENAI_API_KEY) {
-        try {
-          const transcriptResponse = await requestTranscription(
-            audioFile.buffer,
-            audioFile.originalname || "audio.mp3",
-          );
-
-          if (transcriptResponse.ok) {
-            const transcript = (await transcriptResponse.json()) as any;
-            const segments = Array.isArray(transcript?.segments)
-              ? transcript.segments
-              : [];
-            transcriptCandidates = segments
-              .map((segment: any, index: number) => {
-                const text = String(segment.text ?? "").trim();
-                if (!endsWithSentenceBoundary(text)) return null;
-                const end = Number(segment.end ?? 0);
-                if (!Number.isFinite(end)) return null;
-                if (durationSeconds && end > durationSeconds) return null;
-                const nextStart = Number(segments[index + 1]?.start ?? end);
-                const gapMs = Math.max(0, (nextStart - end) * 1000);
-                return {
-                  ms: Math.round(end * 1000),
-                  silenceMs: Math.round(gapMs),
-                  snippet: text,
-                };
-              })
-              .filter(Boolean) as Candidate[];
-          }
-        } catch (error) {
-          console.warn("OpenAI transcript candidates failed.", error);
-        }
-      }
-
-      const snippetsRaw = analysisResult?.snippets ?? {};
       const snippets: Record<number, string> = Object.fromEntries(
-        Object.entries(snippetsRaw).map(([key, value]) => [
+        Object.entries(analysis?.snippets ?? {}).map(([key, value]) => [
           Number.parseInt(key, 10),
           String(value ?? "").trim(),
         ]),
       );
 
-      const candidates: Candidate[] = Array.isArray(analysisResult?.candidates)
-        ? (analysisResult.candidates
+      const signalCandidates: Candidate[] = Array.isArray(analysis?.candidates)
+        ? (analysis.candidates
             .map((entry: any) => {
-              const ms = Number(
-                entry.mid_ms ?? entry.ms ?? entry.time_ms ?? 0,
-              );
+              const ms = Number(entry.mid_ms ?? entry.ms ?? entry.time_ms ?? 0);
               if (!Number.isFinite(ms) || ms < 0) return null;
               const silenceMs = Number(entry.silence_ms ?? 0);
               return {
@@ -133,184 +211,141 @@ insertSectionsRouter.post(
             })
             .filter(Boolean) as Candidate[])
         : [];
+
       const maxMs = durationSeconds ? durationSeconds * 1000 : null;
-      const boundedCandidates =
+      const bounded =
         maxMs !== null
-          ? candidates.filter((entry) => entry.ms <= maxMs)
-          : candidates;
-      const combinedCandidates = mergeCandidates(
-        boundedCandidates,
-        transcriptCandidates,
+          ? signalCandidates.filter((entry) => entry.ms <= maxMs)
+          : signalCandidates;
+      const extra = await transcriptCandidates(
+        audioFile.buffer,
+        audioFile.originalname || "audio.mp3",
+        durationSeconds,
       );
+      const candidates = mergeCandidates(bounded, extra);
 
-      const fallbackCandidates: Candidate[] =
-        durationSeconds && durationSeconds > 0
-          ? [0.25, 0.5, 0.75].map((ratio) => ({
-              ms: Math.round(durationSeconds * ratio * 1000),
-              silenceMs: 0,
-              snippet: "",
-            }))
-          : [
-              { ms: 12000, silenceMs: 0, snippet: "" },
-              { ms: 24000, silenceMs: 0, snippet: "" },
-              { ms: 36000, silenceMs: 0, snippet: "" },
-            ];
+      const sponsorStatements = await buildSponsorStatements(req.body);
 
-      const usableCandidates = combinedCandidates.length
-        ? combinedCandidates
-        : fallbackCandidates;
-      const scoredCandidates: ScoredCandidate[] = usableCandidates.map(
-        (candidate) => ({
-          ...candidate,
-          score: scoreCandidate(candidate, durationSeconds, mode),
-        }),
-      );
-
-      console.log("Analyze candidates:", {
-        count: scoredCandidates.length,
-        mode,
-      });
-
-      const selected = selectTopSlots(
-        scoredCandidates,
-        6,
-        Number.isFinite(count) ? Math.max(3, count) : 3,
-      ).slice(0, 3);
-
-      const maxSlotMs =
-        durationSeconds !== null && durationSeconds !== undefined
-          ? Math.max(0, Math.round(durationSeconds * 1000) - 200)
-          : null;
-      const normalizedSelected = selected.map((candidate) => {
-        if (maxSlotMs === null) return candidate;
-        return {
-          ...candidate,
-          ms: Math.min(candidate.ms, maxSlotMs),
-        };
-      });
-      const dedupedSelected: ScoredCandidate[] = [];
-      const seenMs = new Set<number>();
-      for (const candidate of normalizedSelected) {
-        if (seenMs.has(candidate.ms)) continue;
-        seenMs.add(candidate.ms);
-        dedupedSelected.push(candidate);
+      if (candidates.length === 0) {
+        res.json({
+          placementStatus: "no_candidates",
+          slots: [],
+          points: [],
+          duration: durationSeconds,
+          candidateCount: 0,
+          provenance: {
+            candidateGeneration: CANDIDATE_GENERATION,
+            source: null,
+            mode: "heuristic",
+            modelVariant: null,
+            modelRunId: null,
+            scoreScale: null,
+            isCalibratedProbability: false,
+          },
+          sponsorStatements,
+          warning:
+            "Analysis completed but found no eligible insertion point in this audio.",
+        });
+        return;
       }
 
-      let slots: Slot[] = dedupedSelected.map((candidate) => {
-        const timeSeconds = candidate.ms / 1000;
-        const clampedTimeSeconds =
-          durationSeconds !== null && durationSeconds !== undefined
-            ? Math.min(Math.max(0, timeSeconds), durationSeconds)
-            : Math.max(0, timeSeconds);
-        const clampedMs = Math.round(clampedTimeSeconds * 1000);
-        const confidence = Math.round(clamp(70 + candidate.score * 25, 70, 95));
-        const fallbackText = buildFallbackProsCons({
+      const ranking = rankWithHeuristic({
+        candidates,
+        episodeId: "upload",
+        durationSeconds,
+        mode,
+        minSeparationSeconds: MIN_SEPARATION_SECONDS,
+        count,
+      });
+
+      const clamped = ranking.ranked.map((entry) => ({
+        ...entry,
+        ms: clampSlotMs(entry.ms, durationSeconds),
+      }));
+      const unique = dedupeByMs(clamped);
+      const placementScores = toPlacementScores(
+        unique.map((entry) => entry.rawScore),
+        ranking.scoreScale,
+      );
+
+      let slots: Slot[] = unique.map((entry, index) => {
+        const timeSeconds = entry.ms / 1000;
+        const signals = buildPlacementSignals({
           mode,
-          silenceMs: candidate.silenceMs,
-          timeSeconds: clampedTimeSeconds,
+          silenceMs: entry.silenceMs,
+          snippet: entry.snippet,
+          timeSeconds,
           durationSeconds,
         });
         return {
-          insertion_ms: clampedMs,
-          insertion_time_seconds: Number(clampedTimeSeconds.toFixed(3)),
-          confidence_percent: confidence,
-          pros: fallbackText.pros,
-          cons: fallbackText.cons,
-          rationale: fallbackText.rationale,
-          silence_ms: candidate.silenceMs,
-          snippet: candidate.snippet ?? "",
+          candidate_id: entry.candidateId,
+          insertion_ms: entry.ms,
+          insertion_time_seconds: Number(timeSeconds.toFixed(3)),
+          placement_score: placementScores[index],
+          raw_score: entry.rawScore,
+          rank: index + 1,
+          source: ranking.source,
+          signals,
+          rationale: buildRationale(signals, timeSeconds),
+          rationale_source: "measured_signals" as const,
+          silence_ms: entry.silenceMs,
+          snippet: entry.snippet ?? "",
         };
       });
 
+      // Optional narrative enrichment. It may rewrite the rationale text; it may
+      // never add, move or remove a slot, and the response says when it spoke.
       try {
-        const openAiDetails = await enhanceSlotsWithOpenAI({
+        const details = await enhanceSlotsWithOpenAI({
           slots,
-          candidates: scoredCandidates,
+          candidates: candidates.map((candidate) => ({ ...candidate, score: 0 })),
           mode,
           durationSeconds,
         });
-        if (openAiDetails) {
+        if (details) {
           slots = slots.map((slot) => {
-            const match = openAiDetails.find(
+            const match = details.find(
               (entry) => Number(entry.insertion_ms) === slot.insertion_ms,
             );
-            if (!match) return slot;
-            return {
-              ...slot,
-              pros:
-                Array.isArray(match.pros) && match.pros.length === 3
-                  ? match.pros
-                  : slot.pros,
-              cons:
-                Array.isArray(match.cons) && match.cons.length === 2
-                  ? match.cons
-                  : slot.cons,
-              rationale:
-                typeof match.rationale === "string" && match.rationale.trim()
-                  ? match.rationale.trim()
-                  : slot.rationale,
-            };
+            const rationale =
+              typeof match?.rationale === "string" && match.rationale.trim()
+                ? match.rationale.trim()
+                : null;
+            if (!rationale) return slot;
+            return { ...slot, rationale, rationale_source: "openai" as const };
           });
         }
       } catch (error) {
-        console.warn("OpenAI slot details failed, using fallback.", error);
+        console.warn("OpenAI slot narration unavailable; keeping measured rationale.", error);
       }
 
-      slots.sort((a, b) => b.confidence_percent - a.confidence_percent);
-
-      console.log(
-        "Analyze top slots:",
-        slots.map((slot) => ({
-          insertion_ms: slot.insertion_ms,
-          confidence_percent: slot.confidence_percent,
-        })),
-      );
-
-      const sponsorsField = parseJsonField(req.body?.sponsors);
-      const statementsField = req.body?.statements ?? req.body?.statement;
-      let sponsorStatements: SponsorStatement[] = [];
-      if (Array.isArray(sponsorsField)) {
-        sponsorStatements = await Promise.all(
-          sponsorsField.map(async (entry: any, index: number) => {
-            const name = String(entry?.name ?? entry?.brand ?? "").trim();
-            const productDesc = String(entry?.productDesc ?? "").trim();
-            const rawStatement = String(entry?.statement ?? "").trim();
-            const statement =
-              rawStatement ||
-              (await generateBrandStatement({ name, productDesc }));
-            return {
-              id: entry?.id ?? `sponsor-${index + 1}`,
-              name,
-              statement,
-              generated: !rawStatement,
-            };
-          }),
-        );
-      } else {
-        const statements = normalizeStatements(statementsField);
-        sponsorStatements = statements.map((statement, index) => ({
-          id: `sponsor-${index + 1}`,
-          name: "",
-          statement,
-          generated: false,
-        }));
-      }
-
-      const points = slots.map((slot) => slot.insertion_time_seconds);
-      const confidences = slots.map((slot) => slot.confidence_percent);
+      const provenance: RankerProvenance = {
+        candidateGeneration: CANDIDATE_GENERATION,
+        source: ranking.source,
+        mode: ranking.mode,
+        modelVariant: ranking.modelVariant,
+        modelRunId: ranking.modelRunId,
+        scoreScale: ranking.scoreScale,
+        isCalibratedProbability: false,
+      };
 
       res.json({
-        points,
-        confidences,
-        duration: durationSeconds,
-        source: analysisResult ? "heuristic" : "fallback",
+        placementStatus: "ok",
         slots,
+        points: slots.map((slot) => slot.insertion_time_seconds),
+        placementScores: slots.map((slot) => slot.placement_score),
+        duration: durationSeconds,
+        candidateCount: candidates.length,
+        provenance,
         sponsorStatements,
+        warning: ranking.warnings.length ? ranking.warnings.join(" ") : null,
       });
     } catch (error) {
       res.status(500).json({
-        error:
-          error instanceof Error ? error.message : "Insert analysis failed.",
+        placementStatus: "unavailable",
+        slots: [],
+        points: [],
+        error: error instanceof Error ? error.message : "Insert analysis failed.",
       });
     } finally {
       await cleanup();

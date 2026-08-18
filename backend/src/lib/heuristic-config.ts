@@ -42,6 +42,7 @@ export interface HeuristicSelectionConfig {
   min_separation_seconds: number;
   requested_count: number;
   max_returned: number;
+  /** Fixture-only; see lib/baseline-parity.ts. The product never pads. */
   ratio_fallback_positions: number[];
   ratio_fallback_score: number;
   spacing_fallback_score: number;
@@ -64,6 +65,13 @@ export interface HeuristicProfile {
     ratio_positions: number[];
     fixed_positions_ms: number[];
   };
+  /**
+   * The frozen `heuristic_offline_v1` slot finalisation. `end_guard_ms` is
+   * still used by the product; the `confidence_*` mapping is NOT -- the product
+   * reports a `placement_score` instead (see lib/placement.ts) and these keys
+   * survive only so backend/scripts/dump-heuristic-golden.ts can keep
+   * reproducing the frozen baseline record that ml/ evaluates against.
+   */
   slot_finalisation: {
     end_guard_ms: number;
     confidence_base: number;
