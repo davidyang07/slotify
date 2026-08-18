@@ -35,6 +35,12 @@ access is the one-time Hugging Face model download::
     python -m slotify_rank.cli pipeline features [--stage NAME] [--limit N]
     python -m slotify_rank.cli pipeline status
 
+Phase 6 -- product-facing inference. Loads a trained checkpoint and scores one
+audio file; never trains::
+
+    python -m slotify_rank.cli infer describe --checkpoint artifacts/training/<run>/best_checkpoint.pt
+    python -m slotify_rank.cli infer rank --audio episode.mp3 --checkpoint <path> --output ranking.json
+
 Phase 5 -- the real-corpus experiment gate. Offline; reads labels and manifests
 only::
 
@@ -355,6 +361,13 @@ def build_parser() -> argparse.ArgumentParser:
     from slotify_rank.experiment_cli import register as register_experiment_commands
 
     register_experiment_commands(subparsers)
+
+    # Phase 6: product-facing inference. Lazy for the same reason as training --
+    # and additionally because this is what the Express API spawns, so its
+    # import cost is on the request path.
+    from slotify_rank.inference_cli import register as register_inference_commands
+
+    register_inference_commands(subparsers)
 
     return parser
 
