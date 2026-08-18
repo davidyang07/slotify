@@ -4,6 +4,7 @@ import express from "express";
 
 import { port, allowedOrigins } from "./config";
 import { healthRouter } from "./routes/health";
+import { capabilitiesRouter, readCapabilities } from "./routes/capabilities";
 import { cloneRouter } from "./routes/clone";
 import { mergeRouter } from "./routes/merge";
 import { insertSectionsRouter } from "./routes/insert-sections";
@@ -12,12 +13,6 @@ import { ttsRouter } from "./routes/tts";
 import { generateRouter } from "./routes/generate";
 import { adInsertRouter } from "./routes/ad-insert";
 
-// Check for ElevenLabs API key
-if (!process.env.ELEVENLABS_API_KEY) {
-  console.warn(
-    "Warning: ELEVENLABS_API_KEY not set. Voice cloning and TTS will fail.",
-  );
-}
 
 const app = express();
 
@@ -35,6 +30,7 @@ app.use(
 app.use(express.json({ limit: "2mb" }));
 
 app.use(healthRouter);
+app.use(capabilitiesRouter);
 app.use(cloneRouter);
 app.use(mergeRouter);
 app.use(insertSectionsRouter);
@@ -44,13 +40,19 @@ app.use(generateRouter);
 app.use(adInsertRouter);
 
 app.listen(port, () => {
+  const capabilities = readCapabilities();
   console.log(`API listening on http://localhost:${port}`);
   console.log(`CORS allowed origins: ${allowedOrigins.join(", ")}`);
-  if (!process.env.ELEVENLABS_API_KEY) {
-    console.warn(
-      "⚠️  ELEVENLABS_API_KEY not set. Voice cloning and TTS endpoints will fail.",
-    );
-  } else {
-    console.log("✓ ElevenLabs API key configured");
-  }
+  // Placement is the core demo and needs no credentials, so the startup banner
+  // states what works rather than only what is missing.
+  console.log(`Placement: enabled (${capabilities.ranker.active} ranker)`);
+  console.log(`  ${capabilities.ranker.reason}`);
+  console.log(
+    `Voice cloning / TTS: ${capabilities.tts ? "enabled" : "disabled (ELEVENLABS_API_KEY not set)"}`,
+  );
+  console.log(
+    `OpenAI enrichment: ${
+      capabilities.openaiEnhancement ? "enabled" : "disabled (OPENAI_API_KEY not set)"
+    }`,
+  );
 });
