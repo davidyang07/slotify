@@ -1,0 +1,105 @@
+{
+  "schema_version": "resume-evidence-v1.0.0",
+  "package_version": "0.2.0",
+  "generated_at": "2026-08-18T07:34:29+00:00",
+  "git_sha": "988aeb427de7e8d5ffe01215d8e94cad5d564f15",
+  "unavailable_marker": "NOT YET SUPPORTED",
+  "measurements": {
+    "human_labelled_candidate_count": 0,
+    "human_labelled_audio_hours": 0.0,
+    "human_annotator_count": 0,
+    "weakly_labelled_candidate_count": 0,
+    "held_out_evaluation_candidate_count": 0,
+    "generated_candidate_count": 595,
+    "processed_audio_hours": 0.8387,
+    "processed_episode_count": 13,
+    "complete_multimodal_candidate_count": 583,
+    "featurised_candidate_count": 595,
+    "audio_only_candidate_count": 12,
+    "transcribed_audio_hours": 0.8213,
+    "audio_embedding_model": "openai/whisper-tiny.en",
+    "text_embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "phase_5b_ready": false,
+    "model_variant": "gated",
+    "model_parameter_count": 489477,
+    "model_run_id": "gated-d8ed976101aa4c3b",
+    "model_training_label_source": "weak_heuristic",
+    "model_training_data_provenance": "weak_supervision",
+    "baseline_ndcg_at_3": "NOT YET SUPPORTED",
+    "model_ndcg_at_3": "NOT YET SUPPORTED",
+    "relative_improvement_percent": "NOT YET SUPPORTED",
+    "evaluation_id": "NOT YET SUPPORTED",
+    "blocked_comparisons": [
+      {
+        "evaluation_id": "eval-5fdb9c01c499f43f",
+        "blocking_reasons": [
+          "ground truth is label_source='weak_heuristic', not human. A comparison against heuristic_offline_v1 scored with heuristic-derived labels is circular: the baseline is the teacher.",
+          "the model was trained with label_source='weak_heuristic', so its ordering reflects its teacher rather than human judgement."
+        ],
+        "measured_baseline_ndcg_at_3": 1.0,
+        "measured_model_ndcg_at_3": 1.0,
+        "measured_relative_improvement_percent": 0.0
+      }
+    ]
+  },
+  "claims": [
+    {
+      "claim_id": "A",
+      "statement": "Built a multimodal PyTorch ranker using audio and transcript features to detect natural podcast ad breaks.",
+      "verdict": "SUPPORTED",
+      "reasons": [
+        "A gated PyTorch ranker with 489477 parameters consumes openai/whisper-tiny.en speech representations and sentence-transformers/all-MiniLM-L6-v2 transcript embeddings, and is served through the product's inference path.",
+        "The served checkpoint was trained with label_source=weak_heuristic, so it demonstrates the architecture and the serving path, not ranking quality."
+      ],
+      "evidence": {
+        "model_variant": "gated",
+        "model_parameter_count": 489477,
+        "audio_embedding_model": "openai/whisper-tiny.en",
+        "text_embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "complete_multimodal_candidate_count": 583
+      }
+    },
+    {
+      "claim_id": "B",
+      "statement": "Trained on 2,400+ labelled candidates.",
+      "verdict": "NOT YET SUPPORTED",
+      "reasons": [
+        "human_labelled_candidate_count = 0 (measured from the label database, not estimated).",
+        "generated_candidate_count = 595 -- candidates produced by the generators, which are NOT labels.",
+        "No human label exists, so no count of labelled candidates can be quoted."
+      ],
+      "evidence": {
+        "human_labelled_candidate_count": 0,
+        "generated_candidate_count": 595,
+        "weakly_labelled_candidate_count": 0,
+        "held_out_evaluation_candidate_count": 0
+      }
+    },
+    {
+      "claim_id": "C",
+      "statement": "Improving NDCG@3 by 18% over the heuristic baseline.",
+      "verdict": "NOT YET SUPPORTED",
+      "reasons": [
+        "No publishable held-out comparison exists, so no NDCG@3 improvement can be quoted.",
+        "1 comparison(s) ran but were blocked; see measurements.blocked_comparisons for the measured values and the reasons they may not be published."
+      ],
+      "evidence": {
+        "baseline_ndcg_at_3": "NOT YET SUPPORTED",
+        "model_ndcg_at_3": "NOT YET SUPPORTED",
+        "relative_improvement_percent": "NOT YET SUPPORTED",
+        "evaluation_id": "NOT YET SUPPORTED"
+      }
+    }
+  ],
+  "artifacts_read": {
+    "label_statistics": "artifacts/dataset/label_statistics.json",
+    "candidate_statistics": "artifacts/dataset/candidate_statistics.json",
+    "dataset_statistics": "artifacts/dataset/dataset_statistics.json",
+    "split_statistics": "artifacts/dataset/split_statistics.json",
+    "feature_statistics": "artifacts/features/feature_statistics.json",
+    "embedding_statistics": "artifacts/features/embedding_statistics.json",
+    "readiness_report": "artifacts/experiments/readiness_report.json",
+    "training_summary": "artifacts/training/gated-d8ed976101aa4c3b/training_summary.json"
+  },
+  "artifacts_missing": []
+}

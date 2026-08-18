@@ -1,33 +1,55 @@
 {
-  "generated_at": "2026-07-22T10:25:01+00:00",
+  "generated_at": "2026-08-18T07:31:55+00:00",
   "package_version": "0.2.0",
   "candidate_generation_version": "candgen-v1.0.0",
-  "generated_candidate_count": 20,
-  "eligible_for_evaluation_count": 20,
-  "synthetic_product_padding_count": 11,
+  "generated_candidate_count": 595,
+  "eligible_for_evaluation_count": 595,
+  "synthetic_product_padding_count": 0,
   "synthetic_excluded_from_all_counts": true,
-  "episodes_with_candidates": 7,
-  "candidates_per_minute": 9.1202,
-  "count_before_merge": 88,
-  "count_after_merge": 28,
-  "merge_reduction_count": 60,
-  "merge_reduction_pct": 68.18,
-  "dropped_by_edge_guard": 42,
-  "dropped_by_density_cap": 8,
+  "episodes_with_candidates": 13,
+  "candidates_per_minute": 11.8245,
+  "count_before_merge": 1767,
+  "count_after_merge": 1239,
+  "merge_reduction_count": 528,
+  "merge_reduction_pct": 29.88,
+  "dropped_by_edge_guard": 78,
+  "dropped_by_density_cap": 644,
   "candidates_by_source_flag": {
-    "pause": 12,
-    "rms_minimum": 12,
-    "silence": 10
+    "fixed_interval": 35,
+    "pause": 88,
+    "rms_minimum": 377,
+    "silence": 426
   },
   "candidates_by_primary_source": {
-    "pause": 10,
-    "rms_minimum": 5,
-    "silence": 5
+    "fixed_interval": 28,
+    "pause": 62,
+    "rms_minimum": 163,
+    "silence": 342
   },
-  "fixed_interval_only_count": 0,
-  "fixed_interval_only_pct": 0.0,
-  "synthetic_or_invalid_pct": 35.48,
+  "fixed_interval_only_count": 20,
+  "fixed_interval_only_pct": 3.36,
+  "synthetic_or_invalid_pct": 0.0,
   "per_episode_generation": [
+    {
+      "episode_id": "the-art-of-war-chapters-3-4-sun-tzu-tr-giles_77496808b036",
+      "duration_ms": 465397,
+      "count_by_source_before_merge": {
+        "fixed_interval": 15,
+        "rms_minimum": 97
+      },
+      "count_before_merge": 112,
+      "count_after_merge": 109,
+      "count_after_density_cap": 93,
+      "dropped_edge_guard": 2,
+      "dropped_density_cap": 16,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9898,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 93 of 109 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
     {
       "episode_id": "fixture-cats-versus-dogs-debate_52a83dd90eca",
       "duration_ms": 18261,
@@ -41,7 +63,7 @@
       "count_after_density_cap": 3,
       "dropped_edge_guard": 11,
       "dropped_density_cap": 1,
-      "synthetic_recorded": 2,
+      "synthetic_recorded": 0,
       "transcript_available": false,
       "candidates_per_minute": 9.8571,
       "notes": [
@@ -62,7 +84,7 @@
       "count_after_density_cap": 3,
       "dropped_edge_guard": 5,
       "dropped_density_cap": 1,
-      "synthetic_recorded": 2,
+      "synthetic_recorded": 0,
       "transcript_available": false,
       "candidates_per_minute": 11.4025,
       "notes": [
@@ -81,7 +103,7 @@
       "count_after_density_cap": 1,
       "dropped_edge_guard": 1,
       "dropped_density_cap": 0,
-      "synthetic_recorded": 2,
+      "synthetic_recorded": 0,
       "transcript_available": false,
       "candidates_per_minute": 3.7802,
       "notes": [
@@ -100,7 +122,7 @@
       "count_after_density_cap": 3,
       "dropped_edge_guard": 7,
       "dropped_density_cap": 3,
-      "synthetic_recorded": 2,
+      "synthetic_recorded": 0,
       "transcript_available": false,
       "candidates_per_minute": 9.1715,
       "notes": [
@@ -121,7 +143,7 @@
       "count_after_density_cap": 3,
       "dropped_edge_guard": 6,
       "dropped_density_cap": 0,
-      "synthetic_recorded": 1,
+      "synthetic_recorded": 0,
       "transcript_available": false,
       "candidates_per_minute": 8.9673,
       "notes": [
@@ -141,7 +163,7 @@
       "count_after_density_cap": 4,
       "dropped_edge_guard": 7,
       "dropped_density_cap": 0,
-      "synthetic_recorded": 1,
+      "synthetic_recorded": 0,
       "transcript_available": false,
       "candidates_per_minute": 10.4946,
       "notes": [
@@ -161,12 +183,122 @@
       "count_after_density_cap": 3,
       "dropped_edge_guard": 5,
       "dropped_density_cap": 3,
-      "synthetic_recorded": 1,
+      "synthetic_recorded": 0,
       "transcript_available": false,
       "candidates_per_minute": 9.431,
       "notes": [
         "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
         "density cap of 12.0/min kept 3 of 6 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "to-write-or-not-to-write-short-nonfiction-vol-01_240f636783a0",
+      "duration_ms": 242951,
+      "count_by_source_before_merge": {
+        "fixed_interval": 8,
+        "pause": 51,
+        "rms_minimum": 44,
+        "silence": 40
+      },
+      "count_before_merge": 143,
+      "count_after_merge": 96,
+      "count_after_density_cap": 48,
+      "dropped_edge_guard": 6,
+      "dropped_density_cap": 48,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.8542,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 48 of 96 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "day-of-infamy-speech-short-nonfiction-vol-064_cee889299103",
+      "duration_ms": 249001,
+      "count_by_source_before_merge": {
+        "fixed_interval": 8,
+        "pause": 46,
+        "rms_minimum": 53,
+        "silence": 38
+      },
+      "count_before_merge": 145,
+      "count_after_merge": 93,
+      "count_after_density_cap": 49,
+      "dropped_edge_guard": 6,
+      "dropped_density_cap": 44,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.8072,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 49 of 93 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "obituary-of-srinivasa-ramanujan-short-nonfiction_b5d6de9335ba",
+      "duration_ms": 337261,
+      "count_by_source_before_merge": {
+        "fixed_interval": 11,
+        "pause": 66,
+        "rms_minimum": 67,
+        "silence": 44
+      },
+      "count_before_merge": 188,
+      "count_after_merge": 113,
+      "count_after_density_cap": 67,
+      "dropped_edge_guard": 6,
+      "dropped_density_cap": 46,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9196,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 67 of 113 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "account-of-the-new-madrid-earthquake-short-nonfi_dacf6132b790",
+      "duration_ms": 252145,
+      "count_by_source_before_merge": {
+        "fixed_interval": 8,
+        "pause": 66,
+        "rms_minimum": 51,
+        "silence": 34
+      },
+      "count_before_merge": 159,
+      "count_after_merge": 99,
+      "count_after_density_cap": 50,
+      "dropped_edge_guard": 8,
+      "dropped_density_cap": 49,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.8979,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 50 of 99 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "2-b-r-0-2-b-dramatic-reading-vonnegut_208b3c991ee6",
+      "duration_ms": 1340786,
+      "count_by_source_before_merge": {
+        "fixed_interval": 44,
+        "pause": 309,
+        "rms_minimum": 233,
+        "silence": 346
+      },
+      "count_before_merge": 932,
+      "count_after_merge": 701,
+      "count_after_density_cap": 268,
+      "dropped_edge_guard": 8,
+      "dropped_density_cap": 433,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.993,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 268 of 701 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
       ]
     }
   ]

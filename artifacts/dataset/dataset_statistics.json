@@ -1,35 +1,42 @@
 {
-  "generated_at": "2026-07-22T10:25:01+00:00",
+  "generated_at": "2026-08-18T07:31:55+00:00",
   "package_version": "0.2.0",
   "preprocessing_version": "preprocess-v1.0.0",
-  "processed_episode_count": 7,
-  "processed_audio_hours": 0.0365,
-  "target_domain_episode_count": 5,
-  "target_domain_audio_hours": 0.0267,
+  "processed_episode_count": 13,
+  "processed_audio_hours": 0.8387,
+  "target_domain_episode_count": 11,
+  "target_domain_audio_hours": 0.8288,
   "out_of_domain_audio_hours": 0.0099,
-  "registered_episode_count": 7,
+  "registered_episode_count": 13,
   "unprocessed_episode_count": 0,
-  "series_count": 4,
+  "series_count": 10,
   "duration_hours_by_content_type": {
-    "conversational": 0.0095,
+    "conversational": 0.3819,
     "music": 0.0099,
-    "narrated": 0.0119,
+    "narrated": 0.4416,
     "podcast": 0.0053
   },
   "duration_hours_by_source": {
+    "LibriVox / Internet Archive": 0.8021,
     "Slotify repository fixture": 0.0365
   },
   "duration_hours_by_license": {
+    "Public Domain (LibriVox dedication)": 0.5692,
+    "Public Domain Mark 1.0": 0.2329,
     "undeclared (private)": 0.0365
   },
   "duration_hours_by_split": {
-    "development": 0.0365
+    "test": 0.3724,
+    "train": 0.3725,
+    "validation": 0.0937
   },
   "episodes_by_split": {
-    "development": 7
+    "test": 1,
+    "train": 11,
+    "validation": 1
   },
   "episodes_by_status": {
-    "normalized": 7
+    "normalized": 13
   },
   "target_domain_content_types": [
     "conversational",

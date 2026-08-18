@@ -4,31 +4,33 @@
   "feature_spec_version": "featurespec-v1.1.0",
   "transcription_version": "transcript-v1.0.0",
   "episodes": {
-    "selected": 7,
-    "with_feature_records": 7
+    "selected": 13,
+    "with_feature_records": 13
   },
   "transcription": {
-    "episodes_transcribed": 7,
+    "episodes_transcribed": 13,
     "failures": 0,
-    "segment_count": 45,
-    "transcribed_audio_ms": 126459,
-    "transcribed_audio_hours": 0.0351
+    "segment_count": 743,
+    "transcribed_audio_ms": 2956759,
+    "transcribed_audio_hours": 0.8213
   },
   "candidates": {
-    "processed": 20,
-    "complete_multimodal": 18,
-    "audio_only": 2,
+    "processed": 595,
+    "complete_multimodal": 583,
+    "audio_only": 12,
     "text_only": 0,
     "handcrafted_only": 0,
     "failed": 0,
     "missing_both_learned_modalities": 0,
     "by_split": {
-      "development": 20
+      "test": 268,
+      "train": 260,
+      "validation": 67
     },
     "by_content_type": {
-      "conversational": 6,
+      "conversational": 274,
+      "narrated": 314,
       "music": 4,
-      "narrated": 7,
       "podcast": 3
     }
   },
@@ -151,16 +153,16 @@
       "candidate_energy_mean_dbfs": 0.0,
       "candidate_energy_min_dbfs": 0.0,
       "candidate_silence_duration_ms": 0.0,
-      "chars_after": 0.0,
-      "chars_before": 0.1,
-      "context_cosine_similarity": 0.1,
+      "chars_after": 0.001681,
+      "chars_before": 0.018487,
+      "context_cosine_similarity": 0.020168,
       "dbfs_mean_after_short": 0.0,
       "dbfs_mean_before_short": 0.0,
       "edge_guard_violation": 0.0,
       "energy_discontinuity_context": 0.0,
       "energy_discontinuity_medium": 0.0,
       "energy_discontinuity_short": 0.0,
-      "following_segment_duration_ms": 0.0,
+      "following_segment_duration_ms": 0.001681,
       "heuristic_clamped": 0.0,
       "heuristic_component_base": 0.0,
       "heuristic_component_edge": 0.0,
@@ -184,7 +186,7 @@
       "onset_strength_mean_around_medium": 0.0,
       "onset_strength_mean_around_short": 0.0,
       "pause_duration_ms": 0.0,
-      "prior_segment_duration_ms": 0.1,
+      "prior_segment_duration_ms": 0.018487,
       "rms_delta_across_context": 0.0,
       "rms_delta_across_medium": 0.0,
       "rms_delta_across_short": 0.0,
@@ -209,7 +211,7 @@
       "rms_var_around_context": 0.0,
       "rms_var_around_medium": 0.0,
       "rms_var_around_short": 0.0,
-      "semantic_change_score": 0.1,
+      "semantic_change_score": 0.020168,
       "sentence_end": 1.0,
       "silence_duration_ms": 0.0,
       "source_fixed_interval": 0.0,
@@ -235,22 +237,22 @@
       "spectral_rolloff_mean_around_context": 0.0,
       "spectral_rolloff_mean_around_medium": 0.0,
       "spectral_rolloff_mean_around_short": 0.0,
-      "terminal_punctuation_ordinal": 0.1,
+      "terminal_punctuation_ordinal": 0.018487,
       "text_after_available": 0.0,
       "text_before_available": 0.0,
       "transcript_available": 0.0,
-      "transcript_gap_after_ms": 0.0,
-      "transcript_gap_before_ms": 0.1,
-      "transcript_inter_segment_pause_ms": 0.1,
-      "transcript_sentence_end": 0.1,
+      "transcript_gap_after_ms": 0.001681,
+      "transcript_gap_before_ms": 0.018487,
+      "transcript_inter_segment_pause_ms": 0.020168,
+      "transcript_sentence_end": 0.018487,
       "window_available_after_context": 0.0,
       "window_available_after_medium": 0.0,
       "window_available_after_short": 0.0,
       "window_available_before_context": 0.0,
       "window_available_before_medium": 0.0,
       "window_available_before_short": 0.0,
-      "words_after": 0.0,
-      "words_before": 0.1,
+      "words_after": 0.001681,
+      "words_before": 0.018487,
       "zcr_mean_around_context": 0.0,
       "zcr_mean_around_medium": 0.0,
       "zcr_mean_around_short": 0.0,
@@ -272,30 +274,30 @@
     "constructed_text_vector_note": "4 blocks of the native dimension: [before | after | |before-after| | before*after]"
   },
   "cache": {
-    "hits": 28,
+    "hits": 0,
     "misses": 0,
-    "hit_rate": 1.0,
+    "hit_rate": null,
     "stage_counts": {
       "transcribe": {
-        "complete": 7,
+        "complete": 13,
         "failed": 0,
         "partial": 0,
         "stale": 0
       },
       "acoustic": {
-        "complete": 7,
+        "complete": 13,
         "failed": 0,
         "partial": 0,
         "stale": 0
       },
       "audio_embedding": {
-        "complete": 7,
+        "complete": 13,
         "failed": 0,
         "partial": 0,
         "stale": 0
       },
       "text_embedding": {
-        "complete": 7,
+        "complete": 13,
         "failed": 0,
         "partial": 0,
         "stale": 0
@@ -309,65 +311,15 @@
     }
   },
   "runtime": {
-    "total_seconds": 0.483,
-    "stages": [
-      {
-        "stage": "transcribe",
-        "processed": 0,
-        "skipped": 7,
-        "failed": 0,
-        "cache_hits": 7,
-        "cache_misses": 0,
-        "seconds": 0.112
-      },
-      {
-        "stage": "acoustic",
-        "processed": 0,
-        "skipped": 7,
-        "failed": 0,
-        "cache_hits": 7,
-        "cache_misses": 0,
-        "seconds": 0.069
-      },
-      {
-        "stage": "audio_embedding",
-        "processed": 0,
-        "skipped": 7,
-        "failed": 0,
-        "cache_hits": 7,
-        "cache_misses": 0,
-        "seconds": 0.058
-      },
-      {
-        "stage": "text_embedding",
-        "processed": 0,
-        "skipped": 7,
-        "failed": 0,
-        "cache_hits": 7,
-        "cache_misses": 0,
-        "seconds": 0.074
-      },
-      {
-        "stage": "assemble",
-        "processed": 7,
-        "skipped": 0,
-        "failed": 0,
-        "cache_hits": 0,
-        "cache_misses": 0,
-        "seconds": 0.17,
-        "details": {
-          "records": 20,
-          "excluded_synthetic": 11
-        }
-      }
-    ],
-    "candidates_per_second": 41.408
+    "total_seconds": 0,
+    "stages": [],
+    "candidates_per_second": null
   },
   "disk_usage_bytes": {
-    "transcripts": 22253,
-    "handcrafted": 225561,
-    "audio_embeddings": 132990,
-    "text_embeddings": 65078,
-    "feature_manifest": 96294
+    "transcripts": 309725,
+    "handcrafted": 6957593,
+    "audio_embeddings": 3856109,
+    "text_embeddings": 1910356,
+    "feature_manifest": 3039455
   }
 }

@@ -1,31 +1,43 @@
 {
-  "generated_at": "2026-07-22T10:25:01+00:00",
+  "generated_at": "2026-08-18T07:31:55+00:00",
   "package_version": "0.2.0",
   "split_manifest_present": true,
-  "split_version": "v1",
+  "split_version": "v2",
   "algorithm_version": "split-grouped-greedy-v1.0.0",
   "seed": 42,
   "group_by": "series",
-  "degraded": true,
-  "reason": "only 4 independent group(s) under group_by='series'; a train/validation/test split needs at least 6 to be meaningful. Everything is assigned to 'development' -- do not report held-out metrics from it.",
-  "group_count": 4,
+  "degraded": false,
+  "reason": null,
+  "group_count": 10,
   "episodes_by_split": {
-    "development": 7
+    "test": 1,
+    "train": 11,
+    "validation": 1
   },
   "series_by_split": {
-    "development": 4
+    "test": 1,
+    "train": 8,
+    "validation": 1
   },
   "duration_hours_by_split": {
-    "development": 0.0365
+    "test": 0.3724,
+    "train": 0.3725,
+    "validation": 0.0937
   },
   "duration_share_by_split": {
-    "development": 1.0
+    "test": 0.4441,
+    "train": 0.4442,
+    "validation": 0.1117
   },
   "candidates_by_split": {
-    "development": 20
+    "test": 268,
+    "train": 260,
+    "validation": 67
   },
   "target_domain_episodes_by_split": {
-    "development": 5
+    "test": 1,
+    "train": 9,
+    "validation": 1
   },
   "target_ratios": {
     "train": 0.7,
