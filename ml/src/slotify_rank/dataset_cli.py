@@ -642,6 +642,57 @@ def _cmd_label_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_label_weak(args: argparse.Namespace) -> int:
+    """Generate the weak, heuristic-derived bootstrap labels.
+
+    Loud on purpose. These are not human labels, they are not counted as human
+    labels anywhere, and a model trained on them distills the baseline rather
+    than beating it.
+    """
+    from slotify_rank.labelling.weak import (
+        build_weak_label_rows,
+        write_weak_label_export,
+    )
+
+    paths = _paths(args)
+    candidates = manifests.read_candidates(paths.candidates_manifest)
+    rows, summary = build_weak_label_rows(candidates)
+    if not rows:
+        print(
+            "No eligible candidate carried a heuristic score, so no weak label "
+            "could be derived.",
+            file=sys.stderr,
+        )
+        return 1
+
+    destination = (
+        Path(args.output)
+        if args.output
+        else paths.labels_dir / f"weak_labels_{args.dataset_version}.jsonl"
+    )
+    write_weak_label_export(destination, rows, summary)
+
+    print("WEAK LABELS - NOT HUMAN LABELS.")
+    print(
+        "  Derived by binning heuristic_offline_v1's own score into the 1-5 rubric"
+    )
+    print(
+        "  within each episode. A model trained on these distills the baseline and"
+    )
+    print("  must never be compared against it, or quoted as a quality result.")
+    print(f"  candidates: {summary.candidate_count}")
+    print(f"  episodes:   {summary.episode_count}")
+    print(f"  grades:     {dict(sorted(summary.grades.items()))}")
+    if summary.episodes_without_spread:
+        print(
+            f"  {len(summary.episodes_without_spread)} episode(s) had no score "
+            "spread and therefore express no preference."
+        )
+    print(f"Wrote {destination}")
+    print(f"Wrote {destination.with_suffix(destination.suffix + '.meta.json')}")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # parser wiring
 # ---------------------------------------------------------------------------
@@ -842,3 +893,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--acceptable-threshold", type=int, default=DEFAULT_ACCEPTABLE_THRESHOLD
     )
     export_parser.set_defaults(func=_cmd_label_export)
+
+    weak_parser = label_sub.add_parser(
+        "weak",
+        help="Generate WEAK heuristic-derived labels for the bootstrap run "
+        "(not human labels; see docs/resume-claim-matrix.md).",
+    )
+    _add_common(weak_parser)
+    weak_parser.add_argument("--output", default=None)
+    weak_parser.add_argument("--dataset-version", default="v1")
+    weak_parser.set_defaults(func=_cmd_label_weak)
