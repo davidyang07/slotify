@@ -20,4 +20,11 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // Pure-logic tests run under node --test, not in the browser.
+    files: ['**/*.test.ts'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
 ])

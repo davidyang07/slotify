@@ -24,5 +24,8 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Pure-logic tests are node programs, not browser code. They are typechecked
+  // by tsconfig.test.json, which gives them node types instead of DOM ones.
+  "exclude": ["src/**/*.test.ts"]
 }
