@@ -21,7 +21,24 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+
+/**
+ * Start one workspace's dev script.
+ *
+ * On Windows the command goes through a shell as a single string. Node >= 18.20
+ * refuses to spawn a `.cmd` without one (CVE-2024-27980), and passing an args
+ * array alongside `shell: true` earns a deprecation warning -- so the command is
+ * built here instead. Nothing in it comes from user input; the workspace and
+ * script names are literals below.
+ *
+ * Running the packages' own bin files under this Node would avoid the shell
+ * entirely, but tsx re-execs itself and does not survive being invoked that way,
+ * so npm stays the entry point.
+ */
+const npmRun = (script) =>
+  process.platform === "win32"
+    ? { command: `npm run ${script}`, options: { shell: true } }
+    : { command: "npm", args: ["run", script], options: {} };
 
 const heuristicOnly = process.argv.includes("--heuristic");
 const skipPreflight = process.argv.includes("--skip-preflight");
@@ -59,8 +76,14 @@ if (heuristicOnly) {
 
 const children = [];
 
-const start = (name, args, cwd) => {
-  const child = spawn(npm, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+const start = (name, script, cwd) => {
+  const { command, args, options } = npmRun(script);
+  const child = spawn(command, args ?? [], {
+    cwd,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+    ...options,
+  });
   const prefix = `[${name}] `;
   const forward = (stream, target) => {
     stream.setEncoding("utf8");
@@ -103,11 +126,13 @@ console.log(
   })\n`,
 );
 
-start("api", ["run", "dev"], path.join(REPO_ROOT, "backend"));
-start("ui", ["run", "dev"], path.join(REPO_ROOT, "frontend"));
+start("api", "dev", path.join(REPO_ROOT, "backend"));
+start("ui", "dev", path.join(REPO_ROOT, "frontend"));
 
 if (!process.argv.includes("--no-open")) {
   setTimeout(() => {
-    console.log("\n  Open http://localhost:5173 -- upload audio and click Analyze.\n");
+    console.log("");
+    console.log("  Open http://localhost:5173 -- upload audio and click Analyze.");
+    console.log("");
   }, 4000);
 }

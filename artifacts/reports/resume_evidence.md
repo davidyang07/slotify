@@ -2,8 +2,8 @@
 
 **Generated file - do not edit.** Produced by `slotify-rank report resume-evidence`, which reads the artifacts named at the bottom. Every number here comes from one of them.
 
-- Git SHA: `988aeb427de7e8d5ffe01215d8e94cad5d564f15`
-- Generated: 2026-08-18T07:34:29+00:00
+- Git SHA: `1a25a798189c7719ef38173872d6451b428fe9db`
+- Generated: 2026-08-18T08:05:45+00:00
 - Package version: 0.2.0
 
 `NOT YET SUPPORTED` means no artifact produced that value. It is not a zero: a measured zero (for example, zero human labels) is printed as `0`.

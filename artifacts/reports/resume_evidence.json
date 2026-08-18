@@ -1,8 +1,8 @@
 {
   "schema_version": "resume-evidence-v1.0.0",
   "package_version": "0.2.0",
-  "generated_at": "2026-08-18T07:34:29+00:00",
-  "git_sha": "988aeb427de7e8d5ffe01215d8e94cad5d564f15",
+  "generated_at": "2026-08-18T08:05:45+00:00",
+  "git_sha": "1a25a798189c7719ef38173872d6451b428fe9db",
   "unavailable_marker": "NOT YET SUPPORTED",
   "measurements": {
     "human_labelled_candidate_count": 0,
