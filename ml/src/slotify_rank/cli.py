@@ -40,6 +40,7 @@ audio file; never trains::
 
     python -m slotify_rank.cli infer describe --checkpoint artifacts/training/<run>/best_checkpoint.pt
     python -m slotify_rank.cli infer rank --audio episode.mp3 --checkpoint <path> --output ranking.json
+    python -m slotify_rank.cli evaluation compare --labels LABELS.jsonl --model CHECKPOINT --split test
 
 Phase 5 -- the real-corpus experiment gate. Offline; reads labels and manifests
 only::
@@ -368,6 +369,12 @@ def build_parser() -> argparse.ArgumentParser:
     from slotify_rank.inference_cli import register as register_inference_commands
 
     register_inference_commands(subparsers)
+
+    # Phase 6: the held-out comparison and the generated evidence report. Both
+    # read artifacts and refuse to publish a number the evidence cannot support.
+    from slotify_rank.evaluation_cli import register as register_evaluation_commands
+
+    register_evaluation_commands(subparsers)
 
     return parser
 
