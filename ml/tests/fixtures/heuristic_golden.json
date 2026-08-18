@@ -6,7 +6,8 @@
     "backend/src/lib/candidates.ts::mergeCandidates",
     "backend/src/lib/candidates.ts::scoreCandidate",
     "backend/src/lib/candidates.ts::selectTopSlots",
-    "backend/src/routes/insert-sections.ts:136-260 (mirrored in this script)"
+    "backend/src/lib/baseline-parity.ts::padSelectionForBaselineParity (fixture-only; reproduces the padding the product no longer emits)",
+    "backend/src/routes/insert-sections.ts:136-260 as of the Phase 1 baseline commit (mirrored in this script)"
   ],
   "episodes": [
     {
@@ -147,19 +148,22 @@
           "ms": 60000,
           "silenceMs": 1800,
           "snippet": "So that was the whole story.",
-          "score": 1
+          "score": 1,
+          "origin": "candidate"
         },
         {
           "ms": 120200,
           "silenceMs": 2500,
           "snippet": "and then we were going to the store.",
-          "score": 1
+          "score": 1,
+          "origin": "candidate"
         },
         {
           "ms": 300000,
           "silenceMs": 2400,
           "snippet": "We'll come back to that later.",
-          "score": 1
+          "score": 1,
+          "origin": "candidate"
         }
       ],
       "slots": [
@@ -290,19 +294,22 @@
           "ms": 30000,
           "silenceMs": 1000,
           "snippet": "That makes sense.",
-          "score": 1
+          "score": 1,
+          "origin": "candidate"
         },
         {
           "ms": 57000,
           "silenceMs": 1400,
           "snippet": "Thanks for listening.",
-          "score": 0.6799999999999999
+          "score": 0.6799999999999999,
+          "origin": "candidate"
         },
         {
           "ms": 2000,
           "silenceMs": 1200,
           "snippet": "Welcome back.",
-          "score": 0.6399999999999999
+          "score": 0.6399999999999999,
+          "origin": "candidate"
         }
       ],
       "slots": [
@@ -462,19 +469,22 @@
           "ms": 100000,
           "silenceMs": 2000,
           "snippet": "Right, exactly.",
-          "score": 1
+          "score": 1,
+          "origin": "candidate"
         },
         {
           "ms": 150000,
           "silenceMs": 2000,
           "snippet": "Sure thing.",
-          "score": 1
+          "score": 1,
+          "origin": "candidate"
         },
         {
           "ms": 200000,
           "silenceMs": 2000,
           "snippet": "Of course.",
-          "score": 1
+          "score": 1,
+          "origin": "candidate"
         }
       ],
       "slots": [
@@ -603,19 +613,22 @@
           "ms": 90000,
           "silenceMs": 1000,
           "snippet": "Understood.",
-          "score": 1
+          "score": 1,
+          "origin": "candidate"
         },
         {
           "ms": 120000,
           "silenceMs": 1000,
           "snippet": "Understood.",
-          "score": 1
+          "score": 1,
+          "origin": "candidate"
         },
         {
           "ms": 150000,
           "silenceMs": 1000,
           "snippet": "Understood.",
-          "score": 1
+          "score": 1,
+          "origin": "candidate"
         }
       ],
       "slots": [
@@ -696,19 +709,22 @@
           "ms": 88000,
           "silenceMs": 1600,
           "snippet": "Let's pause there.",
-          "score": 1
+          "score": 1,
+          "origin": "candidate"
         },
         {
           "ms": 44000,
           "silenceMs": 0,
           "snippet": "",
-          "score": 0.5
+          "score": 0.5,
+          "origin": "ratio_fallback"
         },
         {
           "ms": 100000,
           "silenceMs": 0,
           "snippet": "",
-          "score": 0.5
+          "score": 0.5,
+          "origin": "ratio_fallback"
         }
       ],
       "slots": [
@@ -806,19 +822,22 @@
           "ms": 46000,
           "silenceMs": 1900,
           "snippet": "Okay.",
-          "score": 1
+          "score": 1,
+          "origin": "candidate"
         },
         {
           "ms": 52000,
           "silenceMs": 0,
           "snippet": "",
-          "score": 0.4
+          "score": 0.4,
+          "origin": "spacing_fallback"
         },
         {
           "ms": 58000,
           "silenceMs": 0,
           "snippet": "",
-          "score": 0.4
+          "score": 0.4,
+          "origin": "spacing_fallback"
         }
       ],
       "slots": [
@@ -930,19 +949,22 @@
           "ms": 50000,
           "silenceMs": 0,
           "snippet": "",
-          "score": 0.6
+          "score": 0.6,
+          "origin": "candidate"
         },
         {
           "ms": 100000,
           "silenceMs": 0,
           "snippet": "",
-          "score": 0.6
+          "score": 0.6,
+          "origin": "candidate"
         },
         {
           "ms": 150000,
           "silenceMs": 0,
           "snippet": "",
-          "score": 0.6
+          "score": 0.6,
+          "origin": "candidate"
         }
       ],
       "slots": [
@@ -1023,19 +1045,22 @@
           "ms": 30000,
           "silenceMs": 0,
           "snippet": "",
-          "score": 0.5
+          "score": 0.5,
+          "origin": "candidate"
         },
         {
           "ms": 60000,
           "silenceMs": 0,
           "snippet": "",
-          "score": 0.5
+          "score": 0.5,
+          "origin": "candidate"
         },
         {
           "ms": 90000,
           "silenceMs": 0,
           "snippet": "",
-          "score": 0.5
+          "score": 0.5,
+          "origin": "candidate"
         }
       ],
       "slots": [
@@ -1259,19 +1284,22 @@
           "ms": 300000,
           "silenceMs": 2600,
           "snippet": "Good point.",
-          "score": 1
+          "score": 1,
+          "origin": "candidate"
         },
         {
           "ms": 540000,
           "silenceMs": 1900,
           "snippet": "Absolutely.",
-          "score": 1
+          "score": 1,
+          "origin": "candidate"
         },
         {
           "ms": 660000,
           "silenceMs": 2200,
           "snippet": "No question.",
-          "score": 1
+          "score": 1,
+          "origin": "candidate"
         }
       ],
       "slots": [

@@ -173,7 +173,6 @@ insertSectionsRouter.post(
 
       const selected = selectTopSlots(
         scoredCandidates,
-        durationSeconds,
         6,
         Number.isFinite(count) ? Math.max(3, count) : 3,
       ).slice(0, 3);

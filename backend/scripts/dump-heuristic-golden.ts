@@ -13,6 +13,11 @@
  * run offline; the mirrored block is annotated with the exact route lines it
  * reproduces. See docs/multimodal-ranking-mvp-plan.md §5 (drift risk R17).
  *
+ * The baseline is FROZEN. The product path has since stopped padding
+ * under-filled selections and stopped presenting a 70-95 "confidence"; this
+ * generator reapplies both from `src/lib/baseline-parity.ts` so the denominator
+ * every NDCG@3 comparison uses does not move when the product improves.
+ *
  * The Python port in ml/src/slotify_rank/candidates/heuristic.py must reproduce
  * this file byte-for-byte in value. Expected outputs are generated ONLY here,
  * never from the Python implementation under test.
@@ -28,6 +33,7 @@ import {
   scoreCandidate,
   selectTopSlots,
 } from "../src/lib/candidates";
+import { padSelectionForBaselineParity } from "../src/lib/baseline-parity";
 import { clamp } from "../src/lib/text";
 import type { Candidate, InsertionMode, ScoredCandidate } from "../src/types";
 
@@ -293,12 +299,15 @@ const runEpisode = (episodeCase: EpisodeCase): GoldenEpisode => {
     }),
   );
 
-  // insert-sections.ts:174-179
-  const selected = selectTopSlots(
-    scoredCandidates,
+  // insert-sections.ts:174-179 as of the Phase 1 baseline commit. The route no
+  // longer pads (see src/lib/candidates.ts), so the padding that belongs to the
+  // frozen baseline record is reapplied here from the fixture-only module.
+  const requested = Number.isFinite(count) ? Math.max(3, count) : 3;
+  const selected = padSelectionForBaselineParity(
+    selectTopSlots(scoredCandidates, 6, requested),
     durationSeconds,
     6,
-    Number.isFinite(count) ? Math.max(3, count) : 3,
+    requested,
   ).slice(0, 3);
 
   // insert-sections.ts:181-198
@@ -382,7 +391,8 @@ const main = (): void => {
       "backend/src/lib/candidates.ts::mergeCandidates",
       "backend/src/lib/candidates.ts::scoreCandidate",
       "backend/src/lib/candidates.ts::selectTopSlots",
-      "backend/src/routes/insert-sections.ts:136-260 (mirrored in this script)",
+      "backend/src/lib/baseline-parity.ts::padSelectionForBaselineParity (fixture-only; reproduces the padding the product no longer emits)",
+      "backend/src/routes/insert-sections.ts:136-260 as of the Phase 1 baseline commit (mirrored in this script)",
     ],
     episodes: CASES.map(runEpisode),
   };

@@ -11,7 +11,7 @@ import type {
 // with the Python port in ml/src/slotify_rank/candidates/heuristic.py. Editing
 // them changes the `heuristic_offline_v1` baseline; see
 // docs/multimodal-ranking-mvp-plan.md §5.
-const { merge: MERGE, scoring: SCORING, selection: SELECTION } = HEURISTIC_V1;
+const { merge: MERGE, scoring: SCORING } = HEURISTIC_V1;
 
 export const mergeCandidates = (
   base: Candidate[],
@@ -134,9 +134,23 @@ export const buildFallbackProsCons = ({
   };
 };
 
+/**
+ * Choose up to `count` insertion points from the candidates that analysis
+ * actually found, honouring a minimum spacing between them.
+ *
+ * This function NEVER invents a slot. The result length is bounded by the
+ * number of real candidates that survive the spacing constraint, so a caller
+ * that asks for three and receives one has genuinely been told "there is one
+ * defensible insertion point in this audio". The padding the product used to
+ * apply here (fixed ratio positions, then multiples of the minimum separation)
+ * produced timestamps that no signal supported and were indistinguishable in
+ * the response from real detections. It now lives in
+ * `baseline-parity.ts` and is reachable only from the golden-fixture
+ * generator, which must keep reproducing the frozen `heuristic_offline_v1`
+ * record.
+ */
 export const selectTopSlots = (
   candidates: ScoredCandidate[],
-  durationSeconds: number | null,
   minSeparationSeconds: number,
   count: number,
 ): ScoredCandidate[] => {
@@ -154,44 +168,5 @@ export const selectTopSlots = (
     }
     if (selected.length >= count) break;
   }
-
-  if (durationSeconds) {
-    const fallbackTimes = SELECTION.ratio_fallback_positions.map(
-      (ratio) => ratio * durationSeconds * 1000,
-    );
-    for (const fallback of fallbackTimes) {
-      if (selected.length >= count) break;
-      const tooClose = selected.some(
-        (entry) => Math.abs(entry.ms - fallback) < minSeparationMs,
-      );
-      if (!tooClose && fallback >= 0 && fallback <= durationSeconds * 1000) {
-        selected.push({
-          ms: Math.round(fallback),
-          silenceMs: 0,
-          snippet: "",
-          score: SELECTION.ratio_fallback_score,
-        });
-      }
-    }
-  }
-
-  while (selected.length < count) {
-    let base = minSeparationMs;
-    if (selected.length) {
-      const latest = [...selected].sort((a, b) => a.ms - b.ms).slice(-1)[0];
-      base = latest.ms + minSeparationMs;
-    }
-    const tooClose = selected.some(
-      (entry) => Math.abs(entry.ms - base) < minSeparationMs,
-    );
-    const candidateMs = tooClose ? base + minSeparationMs : base;
-    selected.push({
-      ms: Math.round(candidateMs),
-      silenceMs: 0,
-      snippet: "",
-      score: SELECTION.spacing_fallback_score,
-    });
-  }
-
-  return selected.slice(0, count);
+  return selected;
 };
