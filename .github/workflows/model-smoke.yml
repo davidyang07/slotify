@@ -1,0 +1,43 @@
+name: Model smoke
+
+# The opt-in half of the test suite: the tests that download real Whisper and
+# MiniLM weights and assert the dimensions the feature pipeline is built around
+# are what the models actually produce.
+#
+# Deliberately manual. These tests depend on Hugging Face being reachable, and a
+# Hugging Face outage must not turn an unrelated pull request red -- a CI signal
+# people learn to ignore is worse than no signal. Run it after changing an
+# encoder, a pooling rule or a dimension constant.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly, so drift in an upstream model is noticed within a week rather than
+    # at the moment someone needs the pipeline to work.
+    - cron: "0 6 * * 1"
+
+jobs:
+  model-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Cache Hugging Face weights
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ runner.os }}-whisper-tiny-en-minilm-l6-v2
+      - name: Install the package and its extras
+        working-directory: ml
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[dev,label,features]"
+      - name: Run the model smoke tests
+        working-directory: ml
+        run: python -m pytest -m model_smoke -o addopts=""

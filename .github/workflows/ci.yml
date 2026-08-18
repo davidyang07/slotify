@@ -1,0 +1,109 @@
+name: CI
+
+# Credential-free by design. Every job here runs with no API keys, no model
+# downloads and no network access beyond the package registries, because the
+# placement engine's core -- the baseline, the metrics, the dataset pipeline and
+# the inference contract -- is meant to be reproducible by anyone who clones the
+# repository. Anything that needs Hugging Face weights lives in model-smoke.yml
+# and is triggered manually, so a Hugging Face outage cannot turn an unrelated
+# pull request red.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint
+        working-directory: frontend
+      - run: npm test
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+        working-directory: backend
+      - run: npm run typecheck
+        working-directory: backend
+      - run: npm test
+        working-directory: backend
+
+  ml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install ffmpeg
+        # The dataset pipeline decodes through the same ffmpeg the product uses
+        # rather than a Python decoding library, so the audio-marked tests need it.
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install the package and its extras
+        working-directory: ml
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[dev,label,features]"
+      - name: Run the default suite
+        # The default addopts deselect model_smoke, so nothing here downloads a
+        # model. Failing on a warning would make a dependency's deprecation
+        # notice break an unrelated change, so warnings stay warnings.
+        working-directory: ml
+        run: python -m pytest
+
+  parity:
+    # The TypeScript scorer is the source of truth for heuristic_offline_v1 and
+    # the Python port must reproduce it exactly. Regenerating the golden fixture
+    # here and asserting it is unchanged catches a drift that neither language's
+    # own tests would notice.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+        working-directory: backend
+      - name: Regenerate the golden fixture from the TypeScript scorer
+        working-directory: backend
+        run: npx tsx scripts/dump-heuristic-golden.ts --out ../ml/tests/fixtures/heuristic_golden.json
+      - name: Assert the committed fixture is unchanged
+        run: |
+          if ! git diff --quiet -- ml/tests/fixtures/heuristic_golden.json; then
+            echo "::error::The TypeScript scorer no longer produces the committed golden fixture."
+            echo "heuristic_offline_v1 is the frozen denominator for every NDCG comparison."
+            echo "If this change is intended, bump config_version in config/heuristic_offline_v1.json"
+            echo "and commit the regenerated fixture."
+            git diff -- ml/tests/fixtures/heuristic_golden.json
+            exit 1
+          fi
+          echo "Golden fixture unchanged."
