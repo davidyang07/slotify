@@ -2462,3 +2462,95 @@ input[type="file"] {
     border-radius: var(--r-lg);
   }
 }
+
+/* --------------------------------------------------------------------------
+   Ranking provenance and the honest empty state.
+
+   Both exist so the UI can say where a number came from and admit when there
+   is nothing to show, rather than filling the grid with plausible-looking
+   slots. See frontend/src/lib/recommendations.ts.
+   -------------------------------------------------------------------------- */
+
+.provenance-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.85rem;
+  margin-top: 0.7rem;
+}
+
+.provenance-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.24rem 0.58rem;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  color: var(--text);
+}
+
+.provenance-note {
+  font-family: var(--font-body);
+  font-size: 0.76rem;
+  color: var(--text-dim);
+}
+
+.slot-source {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* A manual slot carries no score, so its badge is deliberately neutral -- it
+   must not read like a weak detection. */
+.badge-manual {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+
+.note-caution {
+  color: var(--text-dim);
+}
+
+.slot-rationale {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.empty-state {
+  display: grid;
+  gap: 0.7rem;
+  justify-items: start;
+  padding: 2rem 1.6rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.empty-state h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.empty-state p {
+  margin: 0;
+  max-width: 60ch;
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.empty-state-note {
+  font-size: 0.78rem !important;
+  color: var(--text-dim) !important;
+}

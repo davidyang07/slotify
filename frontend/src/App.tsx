@@ -1,9 +1,25 @@
 import type { CSSProperties, DragEvent } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import LandingHero from "./components/LandingHero";
 import SlotifyLogo from "./components/SlotifyLogo";
 import SoundwaveIcon from "./components/SoundwaveIcon";
+import {
+  UNKNOWN_CAPABILITIES,
+  fetchCapabilities,
+  generationBlockedReason,
+  type Capabilities,
+} from "./lib/capabilities";
+import {
+  clampSlotsToDuration,
+  describeScoreScale,
+  describeSource,
+  emptyStateMessage,
+  makeManualSlot,
+  parsePlacementResponse,
+  type PlacementResult,
+  type Slot,
+} from "./lib/recommendations";
 
 const timelineSteps = [
   { id: "upload", label: "Upload" },
@@ -24,17 +40,6 @@ type UploadDropzoneProps = {
   onFiles: (files: FileList) => void;
 };
 
-type Slot = {
-  id: string;
-  time: number;
-  confidence: number;
-};
-
-type InsertSuggestion = {
-  time: number;
-  confidence: number;
-};
-
 type Sponsor = {
   id: string;
   name: string;
@@ -50,24 +55,6 @@ const WAVEFORM_BARS = Array.from({ length: 52 }, (_, i) => {
     8;
   return Math.floor(Math.min(80, h));
 });
-
-const slotNotes = [
-  [
-    "Natural topic shift detected",
-    "Clean pause boundary (0.8s)",
-    "Slightly early in content",
-  ],
-  [
-    "Extended silence detected (1.2s)",
-    "Mid-episode engagement peak",
-    "Minor audio level mismatch",
-  ],
-  [
-    "Audio energy valley",
-    "Speaker breath pause",
-    "Near existing music transition",
-  ],
-];
 
 function UploadDropzone({
   id,
@@ -219,8 +206,10 @@ function App() {
   const [voiceCloneError, setVoiceCloneError] = useState("");
   const [insertAt, setInsertAt] = useState("0");
   const [analysisError, setAnalysisError] = useState("");
-  const [insertSuggestions, setInsertSuggestions] = useState<InsertSuggestion[]>(
-    [],
+  const [placement, setPlacement] = useState<PlacementResult | null>(null);
+  const [hasAnalyzed, setHasAnalyzed] = useState(false);
+  const [capabilities, setCapabilities] = useState<Capabilities>(
+    UNKNOWN_CAPABILITIES,
   );
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -242,10 +231,14 @@ function App() {
   const [showRightsModal, setShowRightsModal] = useState(false);
   const [rightsAccepted, setRightsAccepted] = useState(false);
   const [rightsCertified, setRightsCertified] = useState(false);
+  /** Set while the rights modal is open, so confirming resumes the right action. */
+  const [pendingGeneration, setPendingGeneration] = useState<{
+    mode: "preview" | "render";
+    slotIds: string[];
+  } | null>(null);
   const [selectedTone, setSelectedTone] = useState("professional");
   const [selectedLanguage, setSelectedLanguage] = useState("en");
   const [showAddSlot, setShowAddSlot] = useState(false);
-  const [newSlotTime, setNewSlotTime] = useState("");
   const [newSlotMinutes, setNewSlotMinutes] = useState("0");
   const [newSlotSeconds, setNewSlotSeconds] = useState("0");
   const [showFileInfo, setShowFileInfo] = useState(true);
@@ -263,7 +256,8 @@ function App() {
     () => slots.find((slot) => slot.id === focusedSlotId) ?? null,
     [slots, focusedSlotId],
   );
-  const isUploadReady = Boolean(
+  /** Generation needs a sponsor to read out; analysis does not. */
+  const isSponsorReady = Boolean(
     baseAudio && sponsors.some((entry) => entry.name.trim()),
   );
   const formatTime = (seconds: number | null) => {
@@ -297,7 +291,7 @@ function App() {
     };
   }, [baseAudio]);
 
-  const drawWaveform = () => {
+  const drawWaveform = useCallback(() => {
     const canvas = waveformRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -377,12 +371,11 @@ function App() {
         }
       }
     }
-  };
+  }, [audioDuration, insertAt, selectedSlotIds, slots]);
 
   useEffect(() => {
     if (!baseAudio) {
       waveformPeaksRef.current = null;
-      setInsertSuggestions([]);
       setAudioDuration(null);
       drawWaveform();
       return;
@@ -425,7 +418,7 @@ function App() {
         if (!cancelled) {
           drawWaveform();
         }
-      } catch (waveError) {
+      } catch {
         waveformPeaksRef.current = null;
         setAudioDuration(null);
         drawWaveform();
@@ -436,7 +429,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [baseAudio]);
+  }, [baseAudio, drawWaveform]);
 
   useEffect(() => {
     const handleResize = () => drawWaveform();
@@ -444,47 +437,45 @@ function App() {
     return () => {
       window.removeEventListener("resize", handleResize);
     };
-  }, []);
+  }, [drawWaveform]);
 
   useEffect(() => {
     drawWaveform();
-  }, [insertAt, slots, audioDuration, selectedSlotIds]);
+  }, [drawWaveform]);
 
+  // Slots are exactly what the server returned. If it returned none, none are
+  // shown -- the UI used to top the list up to three with slots at 22/48/72 %
+  // of the duration and hard-coded scores of 92/85/78, which made an analysis
+  // that found nothing indistinguishable from one that found three good breaks.
   useEffect(() => {
-    const fallbackTimes =
-      audioDuration && audioDuration > 0
-        ? [0.22, 0.48, 0.72].map((ratio) => ratio * audioDuration)
-        : [12, 24, 36];
-    const fallbackSlots = fallbackTimes.map((time, index) => ({
-      time,
-      confidence: [92, 85, 78][index] ?? 72,
-    }));
-    const suggestions =
-      insertSuggestions.length >= 3
-        ? insertSuggestions.slice(0, 3)
-        : fallbackSlots;
-    const nextSlots = suggestions.map((entry, index) => {
-      const clampedTime =
-        audioDuration && audioDuration > 0
-          ? Math.min(Math.max(0, entry.time), audioDuration)
-          : Math.max(0, entry.time);
-      return {
-        id: `slot-${index + 1}`,
-        time: clampedTime,
-        confidence: entry.confidence,
-      };
-    });
+    const nextSlots = clampSlotsToDuration(placement?.slots ?? [], audioDuration);
     setSlots(nextSlots);
     if (!selectedSlotIds.length && nextSlots.length) {
       setSelectedSlotIds([nextSlots[0].id]);
       setFocusedSlotId(nextSlots[0].id);
     }
-  }, [insertSuggestions, audioDuration, selectedSlotIds.length]);
+  }, [placement, audioDuration, selectedSlotIds.length]);
 
   useEffect(() => {
     if (!focusedSlot) return;
     setInsertAt(focusedSlot.time.toFixed(2));
   }, [focusedSlot]);
+
+  // What this deployment can do. Placement never depends on it; only ad
+  // generation is gated, and it says why it is gated.
+  useEffect(() => {
+    let cancelled = false;
+    fetchCapabilities(apiBase)
+      .then((next) => {
+        if (!cancelled) setCapabilities(next);
+      })
+      .catch(() => {
+        if (!cancelled) setCapabilities(UNKNOWN_CAPABILITIES);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBase]);
 
   useEffect(() => {
     setRightsCertified(false);
@@ -493,6 +484,10 @@ function App() {
   useEffect(() => {
     setVoiceId("");
     setVoiceCloneError("");
+    setPlacement(null);
+    setHasAnalyzed(false);
+    setSelectedSlotIds([]);
+    setFocusedSlotId(null);
   }, [baseAudio]);
 
   useEffect(() => {
@@ -528,8 +523,11 @@ function App() {
         .map((slot) => `Slot ${slot.id.replace("slot-", "")}`)
         .join(", ")
     : "Not selected";
-  const selectedConfidence =
-    selectedSlots.length === 1 ? `${selectedSlots[0].confidence}%` : "--";
+  const selectedPlacementScore =
+    selectedSlots.length === 1 && selectedSlots[0].placementScore !== null
+      ? `${selectedSlots[0].placementScore} / 100`
+      : "--";
+  const generationBlocked = generationBlockedReason(capabilities);
 
   const updateSponsor = (id: string, patch: Partial<Sponsor>) => {
     setSponsors((prev) =>
@@ -564,11 +562,11 @@ function App() {
     setFocusedSlotId(slotId);
   };
 
-  const handleAnalyzeInsert = async () => {
+  const runPlacementAnalysis = async () => {
     setAnalysisError("");
     if (!baseAudio) {
       setAnalysisError("Upload a base audio file first.");
-      return;
+      return false;
     }
 
     setIsAnalyzing(true);
@@ -582,73 +580,59 @@ function App() {
         body: form,
       });
 
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Insert analysis failed.");
+      // A failed analysis still answers in the placement schema, so the honest
+      // degraded state is rendered from the body rather than from a bare status.
+      const data = await response.json().catch(() => null);
+      const result = parsePlacementResponse(data);
+      setPlacement(result);
+      setHasAnalyzed(true);
+      if (result.status !== "ok") {
+        setAnalysisError(emptyStateMessage(result));
+        return true;
       }
-
-      const data = (await response.json()) as {
-        points?: Array<number | { time?: number; confidence?: number }>;
-        confidences?: number[];
-      };
-      const points = Array.isArray(data.points) ? data.points : [];
-      const confidences = Array.isArray(data.confidences)
-        ? data.confidences
-        : [];
-      const suggestions = points
-        .map((value, index) => {
-          if (value && typeof value === "object") {
-            const time = Number(value.time);
-            const confidence = Number(value.confidence);
-            return {
-              time,
-              confidence: Number.isFinite(confidence) ? confidence : 72,
-            };
-          }
-          const time = Number(value);
-          const confidence = Number(confidences[index]);
-          return {
-            time,
-            confidence: Number.isFinite(confidence) ? confidence : 72,
-          };
-        })
-        .filter((entry) => Number.isFinite(entry.time));
-      setInsertSuggestions(suggestions);
-      if (suggestions.length === 0) {
-        setAnalysisError("No insert points returned.");
-      }
+      return true;
     } catch (analysisErr) {
-      setAnalysisError(
+      const message =
         analysisErr instanceof Error
           ? analysisErr.message
-          : "Insert analysis failed.",
-      );
+          : "Insert analysis failed.";
+      setPlacement({
+        status: "unavailable",
+        slots: [],
+        duration: null,
+        candidateCount: null,
+        provenance: null,
+        message,
+      });
+      setHasAnalyzed(true);
+      setAnalysisError(message);
+      return false;
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  const handleRequestAnalyze = () => {
+  /**
+   * Analysis is the first thing that happens after upload and needs no
+   * credentials. Voice cloning used to gate it -- the rights modal ran, the
+   * ElevenLabs clone ran, and placement only happened if that succeeded, so the
+   * whole ranking demo depended on a paid API. Cloning now happens lazily, at
+   * the point where audio is actually generated.
+   */
+  const handleRequestAnalyze = async () => {
     setAnalysisError("");
-    if (!isUploadReady) {
-      setAnalysisError(
-        "Add the audio file and at least one sponsor name before continuing.",
-      );
+    if (!baseAudio) {
+      setAnalysisError("Add an audio file before continuing.");
       return;
     }
-    setRightsAccepted(false);
-    setShowRightsModal(true);
+    const ran = await runPlacementAnalysis();
+    if (ran) setActivePage("analyze");
   };
 
-  const handleConfirmRights = async () => {
-    setShowRightsModal(false);
-    setRightsCertified(true);
-    setVoiceCloneError("");
-    if (!baseAudio) {
-      setError("Upload a base audio file before cloning voice.");
-      return;
-    }
-
+  /** Clone the uploaded voice, once, on demand. Returns the voice id. */
+  const ensureVoiceClone = async (): Promise<string> => {
+    if (voiceId) return voiceId;
+    if (!baseAudio) throw new Error("Upload a base audio file before generating audio.");
     setIsCloningVoice(true);
     try {
       const cloneForm = new FormData();
@@ -662,26 +646,50 @@ function App() {
         body: cloneForm,
       });
       if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Voice clone failed.");
+        throw new Error((await response.text()) || "Voice clone failed.");
       }
       const data = (await response.json()) as { voiceId?: string };
-      if (!data.voiceId) {
-        throw new Error("Voice clone response missing voiceId.");
-      }
+      if (!data.voiceId) throw new Error("Voice clone response missing voiceId.");
       setVoiceId(data.voiceId);
-    } catch (cloneErr) {
-      const message =
-        cloneErr instanceof Error ? cloneErr.message : "Voice clone failed.";
-      setVoiceCloneError(message);
-      setError(message);
+      return data.voiceId;
+    } finally {
       setIsCloningVoice(false);
+    }
+  };
+
+  /**
+   * Ad generation is the step that clones a voice, so the rights certification
+   * belongs here rather than in front of analysis.
+   */
+  const requestGeneration = (mode: "preview" | "render", slotIds: string[]) => {
+    setError("");
+    const blocked = generationBlockedReason(capabilities);
+    if (blocked) {
+      setError(blocked);
       return;
     }
+    if (!isSponsorReady) {
+      setError("Add a sponsor name before generating audio.");
+      return;
+    }
+    if (!rightsCertified) {
+      setPendingGeneration({ mode, slotIds });
+      setRightsAccepted(false);
+      setShowRightsModal(true);
+      return;
+    }
+    void handleMerge(mode, slotIds);
+  };
 
-    setIsCloningVoice(false);
-    await handleAnalyzeInsert();
-    setActivePage("analyze");
+  const handleConfirmRights = async () => {
+    setShowRightsModal(false);
+    setRightsCertified(true);
+    setVoiceCloneError("");
+    const pending = pendingGeneration;
+    setPendingGeneration(null);
+    if (pending) {
+      await handleMerge(pending.mode, pending.slotIds);
+    }
   };
 
   const handleMerge = async (
@@ -690,11 +698,6 @@ function App() {
   ) => {
     setError("");
     setStatus("");
-
-    if (!voiceId) {
-      setError("Voice clone not ready yet. Finish cloning from your upload.");
-      return;
-    }
 
     if (!baseAudio) {
       setError("Upload a base audio file for merging.");
@@ -735,6 +738,7 @@ function App() {
     }
 
     try {
+      const activeVoiceId = await ensureVoiceClone();
       const slotsInOrder = [...slotsToInsert].sort((a, b) => b.time - a.time);
       let currentAudio: Blob | File = baseAudio;
 
@@ -746,7 +750,7 @@ function App() {
         const sponsorName = sponsorEntry?.name ?? "";
 
         const ttsPayload: Record<string, string | object> = {
-          voiceId,
+          voiceId: activeVoiceId,
           modelId: "eleven_multilingual_v2",
           outputFormat: "mp3_44100_128",
         };
@@ -802,9 +806,9 @@ function App() {
           : "Render complete. Ready to export.",
       );
     } catch (ttsError) {
-      setError(
-        ttsError instanceof Error ? ttsError.message : "Merge failed.",
-      );
+      const message = ttsError instanceof Error ? ttsError.message : "Merge failed.";
+      setError(message);
+      if (message.toLowerCase().includes("clone")) setVoiceCloneError(message);
     } finally {
       setIsPreviewing(false);
       setIsRendering(false);
@@ -830,13 +834,13 @@ function App() {
                 disabled={
                   step.id !== "upload" &&
                   step.id !== "landing" &&
-                  (!isUploadReady || !rightsCertified)
+                  (!baseAudio || !hasAnalyzed)
                 }
                 onClick={() => {
                   if (
                     step.id !== "upload" &&
                     step.id !== "landing" &&
-                    (!isUploadReady || !rightsCertified)
+                    (!baseAudio || !hasAnalyzed)
                   ) {
                     return;
                   }
@@ -1001,11 +1005,18 @@ function App() {
                 <button
                   type="button"
                   className="primary wide"
-                  onClick={handleRequestAnalyze}
-                  disabled={isAnalyzing || !isUploadReady}
+                  onClick={() => void handleRequestAnalyze()}
+                  disabled={isAnalyzing || !baseAudio}
                 >
                   {isAnalyzing ? "Analyzing..." : "Analyze & recommend slots"}
                 </button>
+                <span className="helper">
+                  Analysis runs locally on the server and needs no API keys.
+                  Sponsor names are only needed later, when generating audio.
+                </span>
+                {generationBlocked && (
+                  <span className="helper">{generationBlocked}</span>
+                )}
                 {analysisError && (
                   <span className="helper helper-error">{analysisError}</span>
                 )}
@@ -1042,9 +1053,26 @@ function App() {
                 <p className="eyebrow">Analyze</p>
                 <h2>Recommended insertion points</h2>
                 <p className="subtitle">
-                  Optimized for smooth transitions and listener retention.
-                  Select slots to continue.
+                  Ranked from the audio's own signals. Select slots to continue.
                 </p>
+                {placement?.provenance && (
+                  <div className="provenance-strip">
+                    <span className="provenance-chip">
+                      {describeSource(placement.provenance)}
+                    </span>
+                    <span className="provenance-note">
+                      {describeScoreScale(placement.provenance)}
+                    </span>
+                    {placement.candidateCount !== null && (
+                      <span className="provenance-note">
+                        {placement.candidateCount} candidate
+                        {placement.candidateCount === 1 ? "" : "s"} considered,
+                        {" "}
+                        {slots.length} shown
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1143,22 +1171,14 @@ function App() {
                         return;
                       }
 
-                      // Generate unique slot ID
-                      const existingIds = slots.map(s => s.id);
-                      let slotNumber = slots.length + 1;
-                      let newSlotId = `slot-${slotNumber}`;
-                      while (existingIds.includes(newSlotId)) {
-                        slotNumber++;
-                        newSlotId = `slot-${slotNumber}`;
-                      }
-
-                      const newSlot: Slot = {
-                        id: newSlotId,
-                        time: totalSeconds,
-                        confidence: 75, // Default confidence for manually added slots
-                      };
-
-                      setSlots((prev) => [...prev, newSlot].sort((a, b) => a.time - b.time));
+                      // A manual slot carries no score, because nothing scored
+                      // it. It is tagged `manual` so it cannot be read as a
+                      // detection.
+                      setSlots((prev) =>
+                        [...prev, makeManualSlot(totalSeconds, prev)].sort(
+                          (a, b) => a.time - b.time,
+                        ),
+                      );
                       setNewSlotMinutes("0");
                       setNewSlotSeconds("0");
                       setShowAddSlot(false);
@@ -1171,105 +1191,144 @@ function App() {
               )}
             </div>
 
-            <div className="slot-grid">
-              {slots.map((slot, index) => {
-                const notes = slotNotes[index] ?? [];
-                const badgeClass =
-                  slot.confidence >= 90
-                    ? "badge-high"
-                    : slot.confidence >= 80
-                      ? "badge-mid"
-                      : "badge-low";
-                return (
-                  <div
-                    key={slot.id}
-                    className={`slot-preview${
-                      selectedSlotIds.includes(slot.id) ? " active" : ""
-                    }`}
-                  >
-                    <div className="slot-preview-top">
-                      <div>
-                        <div className="slot-preview-label">
-                          Slot {slot.id.replace("slot-", "")}
+            {slots.length === 0 ? (
+              <div className="empty-state">
+                <h3>No insertion points to show</h3>
+                <p>{emptyStateMessage(placement)}</p>
+                <p className="empty-state-note">
+                  Nothing is filled in here. When analysis finds one point, one
+                  is shown; when it finds none, none are.
+                </p>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => void runPlacementAnalysis()}
+                  disabled={isAnalyzing || !baseAudio}
+                >
+                  {isAnalyzing ? "Analyzing..." : "Run analysis again"}
+                </button>
+              </div>
+            ) : (
+              <div className="slot-grid">
+                {slots.map((slot) => {
+                  const scoreClass =
+                    slot.placementScore === null
+                      ? "badge-manual"
+                      : slot.placementScore >= 67
+                        ? "badge-high"
+                        : slot.placementScore >= 34
+                          ? "badge-mid"
+                          : "badge-low";
+                  return (
+                    <div
+                      key={slot.id}
+                      className={`slot-preview${
+                        selectedSlotIds.includes(slot.id) ? " active" : ""
+                      }`}
+                    >
+                      <div className="slot-preview-top">
+                        <div>
+                          <div className="slot-preview-label">
+                            {slot.rank ? `Rank ${slot.rank}` : "Manual slot"}
+                          </div>
+                          <div className="slot-preview-time">
+                            {formatTime(slot.time)}
+                          </div>
                         </div>
-                        <div className="slot-preview-time">
-                          {formatTime(slot.time)}
-                        </div>
+                        <span className={`slot-badge ${scoreClass}`}>
+                          {slot.placementScore === null
+                            ? "manual"
+                            : `${slot.placementScore}/100`}
+                        </span>
                       </div>
-                      <span className={`slot-badge ${badgeClass}`}>
-                        {slot.confidence}%
-                      </span>
-                    </div>
-                    <div className="slot-select">
-                      <label htmlFor={`${slot.id}-sponsor`}>
-                        Insert brand statement
-                      </label>
-                      <select
-                        id={`${slot.id}-sponsor`}
-                        value={
-                          slotAssignments[slot.id] ?? sponsors[0]?.id ?? ""
-                        }
-                        onChange={(event) =>
-                          setSlotAssignments((prev) => ({
-                            ...prev,
-                            [slot.id]: event.target.value,
-                          }))
-                        }
-                      >
-                        {sponsors.map((entry) => (
-                          <option key={entry.id} value={entry.id}>
-                            {entry.name.trim()
-                              ? entry.name
-                              : `Sponsor ${entry.id.replace("sponsor-", "")}`}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="slot-preview-notes">
-                      {notes.map((note, noteIndex) => (
-                        <div key={`${slot.id}-${noteIndex}`} className="note">
-                          <span
-                            className={`note-icon ${
-                              noteIndex === notes.length - 1 ? "down" : "up"
-                            }`}
+                      <div className="slot-source">
+                        {slot.source === "learned_ranker"
+                          ? "Learned ranker"
+                          : slot.source === "manual"
+                            ? "Added by you"
+                            : "Heuristic baseline"}
+                      </div>
+                      <div className="slot-select">
+                        <label htmlFor={`${slot.id}-sponsor`}>
+                          Insert brand statement
+                        </label>
+                        <select
+                          id={`${slot.id}-sponsor`}
+                          value={slotAssignments[slot.id] ?? sponsors[0]?.id ?? ""}
+                          onChange={(event) =>
+                            setSlotAssignments((prev) => ({
+                              ...prev,
+                              [slot.id]: event.target.value,
+                            }))
+                          }
+                        >
+                          {sponsors.map((entry) => (
+                            <option key={entry.id} value={entry.id}>
+                              {entry.name.trim()
+                                ? entry.name
+                                : `Sponsor ${entry.id.replace("sponsor-", "")}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="slot-preview-notes">
+                        {slot.signals.length === 0 && (
+                          <div className="note">
+                            No signal was measured for this point.
+                          </div>
+                        )}
+                        {slot.signals.map((signal, signalIndex) => (
+                          <div
+                            key={`${slot.id}-${signalIndex}`}
+                            className={`note note-${signal.kind}`}
                           >
-                            {noteIndex === notes.length - 1 ? "↓" : "✓"}
-                          </span>
-                          {note}
-                        </div>
-                      ))}
+                            <span
+                              className={`note-icon ${
+                                signal.kind === "supporting" ? "up" : "down"
+                              }`}
+                            >
+                              {signal.kind === "supporting" ? "OK" : "!"}
+                            </span>
+                            {signal.label}
+                          </div>
+                        ))}
+                      </div>
+                      {slot.rationale && (
+                        <p className="slot-rationale">{slot.rationale}</p>
+                      )}
+                      <div className="slot-preview-actions">
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => {
+                            setSelectedSlotIds((prev) =>
+                              prev.includes(slot.id) ? prev : [...prev, slot.id],
+                            );
+                            setFocusedSlotId(slot.id);
+                            requestGeneration("preview", [slot.id]);
+                          }}
+                          disabled={isPreviewing || Boolean(generationBlocked)}
+                          title={generationBlocked ?? undefined}
+                        >
+                          Preview
+                        </button>
+                        <button
+                          type="button"
+                          className={`primary select-slot${
+                            selectedSlotIds.includes(slot.id) ? " selected" : ""
+                          }`}
+                          onClick={() => toggleSlotSelection(slot.id)}
+                        >
+                          {selectedSlotIds.includes(slot.id)
+                            ? "Selected"
+                            : "Select Slot"}
+                        </button>
+                      </div>
                     </div>
-                    <div className="slot-preview-actions">
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={() => {
-                          setSelectedSlotIds((prev) =>
-                            prev.includes(slot.id) ? prev : [...prev, slot.id],
-                          );
-                          setFocusedSlotId(slot.id);
-                          handleMerge("preview", [slot.id]);
-                        }}
-                        disabled={isPreviewing}
-                      >
-                        Preview
-                      </button>
-                      <button
-                        type="button"
-                        className={`primary select-slot${
-                          selectedSlotIds.includes(slot.id) ? " selected" : ""
-                        }`}
-                        onClick={() => toggleSlotSelection(slot.id)}
-                      >
-                        {selectedSlotIds.includes(slot.id)
-                          ? "Selected"
-                          : "Select Slot"}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Voice Settings Section */}
             <div className="voice-settings-section">
@@ -1350,7 +1409,7 @@ function App() {
                 <p className="eyebrow">Export</p>
                 <h2>Render the final placement.</h2>
                 <p className="subtitle">
-                  Review confidence and export the final merged file.
+                  Review the ranking and export the final merged file.
                 </p>
               </div>
               <button
@@ -1369,8 +1428,12 @@ function App() {
                   <strong>{selectedSlotSummary}</strong>
                 </div>
                 <div className="summary-item">
-                  <span>Confidence</span>
-                  <strong>{selectedConfidence}</strong>
+                  <span>Placement score</span>
+                  <strong>{selectedPlacementScore}</strong>
+                </div>
+                <div className="summary-item">
+                  <span>Ranked by</span>
+                  <strong>{describeSource(placement?.provenance ?? null)}</strong>
                 </div>
                 <div className="summary-item">
                   <span>Sponsor</span>
@@ -1381,11 +1444,18 @@ function App() {
                 <button
                   type="button"
                   className="primary"
-                  onClick={() => handleMerge("render", selectedSlotIds)}
-                  disabled={isRendering}
+                  onClick={() => requestGeneration("render", selectedSlotIds)}
+                  disabled={isRendering || Boolean(generationBlocked)}
+                  title={generationBlocked ?? undefined}
                 >
                   {isRendering ? "Rendering..." : "Render & export"}
                 </button>
+                {generationBlocked && (
+                  <div className="helper">{generationBlocked}</div>
+                )}
+                {voiceCloneError && (
+                  <div className="helper helper-error">{voiceCloneError}</div>
+                )}
                 {isRendering && <div className="loader" />}
                 {status && <div className="helper">{status}</div>}
                 
@@ -1498,7 +1568,9 @@ function App() {
               </button>
             </div>
             <p className="modal-body">
-              Before proceeding, please confirm you have the necessary rights.
+              Placement analysis has already run without touching your voice.
+              This step clones it to generate the sponsor read, so please
+              confirm you have the necessary rights.
             </p>
             <label className="modal-check">
               <input
@@ -1517,7 +1589,10 @@ function App() {
               <button
                 type="button"
                 className="ghost"
-                onClick={() => setShowRightsModal(false)}
+                onClick={() => {
+                  setShowRightsModal(false);
+                  setPendingGeneration(null);
+                }}
               >
                 Cancel
               </button>
@@ -1525,9 +1600,9 @@ function App() {
                 type="button"
                 className="primary"
                 disabled={!rightsAccepted}
-                onClick={handleConfirmRights}
+                onClick={() => void handleConfirmRights()}
               >
-                Continue to Analysis
+                Continue to generation
               </button>
             </div>
           </div>
