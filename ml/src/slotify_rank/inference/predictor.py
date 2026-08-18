@@ -148,12 +148,17 @@ class RankerPredictor:
         state = payload.get("model_state_dict")
         if not isinstance(state, Mapping):
             raise CheckpointError(f"{checkpoint} has no usable model_state_dict")
-        missing, unexpected = model.load_state_dict(state, strict=True)  # type: ignore[misc]
-        if missing or unexpected:  # pragma: no cover - strict=True already raises
+        try:
+            model.load_state_dict(state, strict=True)  # type: ignore[arg-type]
+        except RuntimeError as error:
+            # The checkpoint's declared schema and its actual weights disagree.
+            # torch reports this as a bare RuntimeError about tensor shapes;
+            # translated here so a caller sees the same failure type as every
+            # other kind of incompatible checkpoint.
             raise IncompatibleCheckpoint(
-                f"{checkpoint}: state dict does not match the rebuilt model "
-                f"(missing={list(missing)}, unexpected={list(unexpected)})"
-            )
+                f"{checkpoint}: the stored weights do not match the architecture "
+                f"the checkpoint describes. {error}"
+            ) from error
         model.to(torch.device(device))
         model.eval()
 
