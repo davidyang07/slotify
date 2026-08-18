@@ -39,16 +39,25 @@ export const buildPlacementSignals = ({
   snippet,
   timeSeconds,
   durationSeconds,
+  transcriptAvailable = null,
 }: {
   mode: InsertionMode;
   silenceMs: number;
   snippet: string;
   timeSeconds: number;
   durationSeconds: number | null;
+  /**
+   * What the ranker itself saw, when it knows. The learned path transcribes and
+   * can say whether transcript context existed; the heuristic path only has the
+   * analyser's snippet, so it passes null and the snippet is used instead.
+   */
+  transcriptAvailable?: boolean | null;
 }): PlacementSignal[] => {
   const signals: PlacementSignal[] = [];
-  const hasTranscript =
+  const hasSnippet =
     Boolean(snippet) && snippet !== SCORING.unavailable_snippet_sentinel;
+  const hasTranscript =
+    transcriptAvailable === null ? hasSnippet : transcriptAvailable;
 
   if (silenceMs >= NOTABLE_PAUSE_MS) {
     signals.push({
@@ -57,12 +66,16 @@ export const buildPlacementSignals = ({
     });
   }
 
-  if (hasTranscript) {
+  if (hasTranscript && hasSnippet) {
     if (endsWithSentenceBoundary(snippet)) {
       signals.push({ kind: "supporting", label: "Falls on a sentence boundary" });
     } else {
       signals.push({ kind: "caution", label: "Cuts mid-sentence" });
     }
+  } else if (hasTranscript) {
+    // The ranker read transcript context here; this response just has no
+    // snippet text to quote back.
+    signals.push({ kind: "supporting", label: "Transcript context available" });
   } else {
     signals.push({
       kind: "caution",

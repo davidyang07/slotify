@@ -26,6 +26,19 @@ export interface RankedCandidate {
   snippet: string;
   /** The ranker's own score, on whatever scale that ranker uses. */
   rawScore: number;
+  /**
+   * 0-100, computed by the ranker over EVERY candidate it scored -- not over
+   * the shortlist that survives spacing. Normalizing after the shortlist would
+   * stretch two adjacent scores to 100 and 0 and make a good second choice look
+   * like a bad one.
+   */
+  normalizedScore: number;
+  /**
+   * Whether the ranker had transcript context here. Only the learned path
+   * transcribes, so this is how the UI stops claiming "no transcript" for a
+   * candidate the model read a transcript for.
+   */
+  textAvailable: boolean | null;
 }
 
 export interface RankingResult {
@@ -74,6 +87,10 @@ export const rankWithHeuristic = ({
       silenceMs: entry.silenceMs,
       snippet: entry.snippet,
       rawScore: entry.score,
+      // scoreCandidate is bounded in [0, 1], so this is an absolute scale and
+      // needs no reference to the other candidates.
+      normalizedScore: Math.round(Math.min(100, Math.max(0, entry.score * 100))),
+      textAvailable: null,
     })),
     source: BASELINE_VERSION as RecommendationSource,
     mode: "heuristic",

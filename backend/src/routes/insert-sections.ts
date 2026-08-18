@@ -28,14 +28,14 @@ import {
   requestTranscription,
 } from "../services/openai";
 import { mergeCandidates } from "../lib/candidates";
-import { rankWithHeuristic } from "../lib/ranking";
+import { rankCandidates } from "../services/ranker";
+import { resolveRankerMode } from "../lib/ranker-mode";
 import { HEURISTIC_V1 } from "../lib/heuristic-config";
 import {
   buildPlacementSignals,
   buildRationale,
   clampSlotMs,
   dedupeByMs,
-  toPlacementScores,
 } from "../lib/placement";
 import {
   endsWithSentenceBoundary,
@@ -53,6 +53,19 @@ import type {
 export const insertSectionsRouter = Router();
 
 const CANDIDATE_GENERATION = "signal_offline_v1";
+
+/**
+ * The configured ranker, for the degraded responses. Reported even when nothing
+ * was ranked, so a client can tell a heuristic deployment's failure from a
+ * learned one's.
+ */
+const currentRankerMode = (): string => {
+  try {
+    return resolveRankerMode().mode;
+  } catch {
+    return "unavailable";
+  }
+};
 const MAX_SLOTS = HEURISTIC_V1.selection.max_returned;
 const MIN_SEPARATION_SECONDS = HEURISTIC_V1.selection.min_separation_seconds;
 
@@ -164,8 +177,16 @@ insertSectionsRouter.post(
       try {
         analysis = await runPythonAnalyze(audioPath, mode);
       } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        console.error("Audio analysis failed.", detail);
+        const full = error instanceof Error ? error.message : String(error);
+        // The analyser's stderr is a Python traceback. The whole thing goes to
+        // the server log; the client gets the final line, which is the actual
+        // error, without the repository's internal paths.
+        const lines = full
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean);
+        const detail = lines[lines.length - 1] ?? full;
+        console.error("Audio analysis failed.", full);
         res.status(502).json({
           placementStatus: "unavailable",
           slots: [],
@@ -174,7 +195,7 @@ insertSectionsRouter.post(
           provenance: {
             candidateGeneration: CANDIDATE_GENERATION,
             source: null,
-            mode: "heuristic",
+            mode: currentRankerMode(),
             modelVariant: null,
             modelRunId: null,
             scoreScale: null,
@@ -236,7 +257,7 @@ insertSectionsRouter.post(
           provenance: {
             candidateGeneration: CANDIDATE_GENERATION,
             source: null,
-            mode: "heuristic",
+            mode: currentRankerMode(),
             modelVariant: null,
             modelRunId: null,
             scoreScale: null,
@@ -249,9 +270,10 @@ insertSectionsRouter.post(
         return;
       }
 
-      const ranking = rankWithHeuristic({
+      const ranking = await rankCandidates({
         candidates,
         episodeId: "upload",
+        audioPath,
         durationSeconds,
         mode,
         minSeparationSeconds: MIN_SEPARATION_SECONDS,
@@ -263,10 +285,6 @@ insertSectionsRouter.post(
         ms: clampSlotMs(entry.ms, durationSeconds),
       }));
       const unique = dedupeByMs(clamped);
-      const placementScores = toPlacementScores(
-        unique.map((entry) => entry.rawScore),
-        ranking.scoreScale,
-      );
 
       let slots: Slot[] = unique.map((entry, index) => {
         const timeSeconds = entry.ms / 1000;
@@ -276,12 +294,13 @@ insertSectionsRouter.post(
           snippet: entry.snippet,
           timeSeconds,
           durationSeconds,
+          transcriptAvailable: entry.textAvailable,
         });
         return {
           candidate_id: entry.candidateId,
           insertion_ms: entry.ms,
           insertion_time_seconds: Number(timeSeconds.toFixed(3)),
-          placement_score: placementScores[index],
+          placement_score: entry.normalizedScore,
           raw_score: entry.rawScore,
           rank: index + 1,
           source: ranking.source,
