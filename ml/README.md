@@ -441,3 +441,106 @@ Every run writes `artifacts/training/<run_id>/` with `resolved_config.json`,
 
 Phase 4 metrics on synthetic data are **not** model-quality evidence -- see
 `docs/model-training.md` § "How Phase 4 differs from Phase 5".
+
+---
+
+## Product inference (Phase 6)
+
+Loading a trained checkpoint and scoring one audio file. Never trains anything —
+`slotify_rank.inference` has no code path that can fit a model.
+
+```bash
+# What is in a checkpoint, without scoring anything.
+python -m slotify_rank.cli infer describe \
+  --checkpoint ../artifacts/training/gated-d8ed976101aa4c3b/best_checkpoint.pt
+
+# Rank one audio file. JSON on stdout, progress on stderr.
+python -m slotify_rank.cli infer rank \
+  --audio ../backend/audio_tests/rogan-test1.mp3 \
+  --checkpoint ../artifacts/training/gated-d8ed976101aa4c3b/best_checkpoint.pt \
+  --top 3
+
+# Faster, at the cost of the text modality. The response says the text block was
+# masked; it never pretends a transcript existed.
+python -m slotify_rank.cli infer rank --audio EPISODE.mp3 --checkpoint … --no-transcribe
+```
+
+The Express API calls exactly this command (`backend/src/services/learned-ranker.ts`).
+The upload becomes a throwaway single-episode corpus and runs through the real
+Phase 3 stages, so the feature layout at serving time is the layout the model was
+trained on by construction. See [`../docs/model-inference.md`](../docs/model-inference.md).
+
+## Weak bootstrap labels
+
+There are no human labels yet, which correctly blocks every quality claim. It
+also blocked something much smaller: proving the inference path works end to end
+on real audio with real weights. `label weak` unblocks only the second thing.
+
+```bash
+# Grade every candidate by binning heuristic_offline_v1's own score into the
+# 1-5 rubric within its episode. NOT human labels; stamped weak_heuristic.
+python -m slotify_rank.cli label weak
+
+# Train on them. The source must be named; there is no default that reaches it.
+python -m slotify_rank.cli training run \
+  --model-config configs/models/gated_v1.yaml \
+  --labels ../data/labels/weak_labels_v1.jsonl \
+  --allow-label-source weak_heuristic \
+  --split-version v2
+```
+
+A model trained this way is a **distillation of the baseline**. Its validation
+NDCG measures fidelity to its teacher, not ranking quality, and
+`evaluation compare` refuses to publish an improvement computed from it. The run
+summary classifies it as a bootstrap and carries a warning saying all of this.
+
+## Held-out evaluation
+
+```bash
+python -m slotify_rank.cli evaluation compare \
+  --labels ../data/labels/labels_v1.jsonl \
+  --model ../artifacts/training/<run_id>/best_checkpoint.pt \
+  --baseline heuristic_offline_v1 \
+  --split test --split-version v2 \
+  --require-publishable
+```
+
+Writes `artifacts/evaluation/<evaluation_id>/`:
+
+| File | Contents |
+|---|---|
+| `comparison.json` | Inputs, both systems' metrics, the headline, and every blocking reason |
+| `metrics.json` | Aggregates at k = 1, 3, 5 |
+| `per_episode_metrics.json` | The per-episode detail behind every average |
+| `ranked_candidates.jsonl` | Both systems' score and the label, per candidate |
+| `summary.md` | Rendered from the same dict as the JSON |
+
+The headline is
+`100 * (model_ndcg_at_3 - baseline_ndcg_at_3) / baseline_ndcg_at_3`, written once
+in `evaluation/compare.py::relative_improvement_percent`. It is marked **not
+publishable** — and `--require-publishable` exits 1 — when any of these holds:
+
+- the ground truth is not `human` (comparing against the baseline using the
+  baseline's own labels is circular);
+- the model was trained on non-human labels;
+- the split is not `test`;
+- the baseline is not `heuristic_offline_v1`;
+- any evaluation episode also appears in the training run's episode list;
+- no candidate in the split meets the relevance threshold, so NDCG is undefined.
+
+A zero baseline returns `None`, never an infinite improvement.
+
+## The evidence report
+
+```bash
+python -m slotify_rank.cli report resume-evidence
+# or, from the repository root, regenerating every upstream artifact first:
+npm run evidence
+```
+
+Reads every generated artifact and writes
+`artifacts/reports/resume_evidence.{json,md}` with a verdict per claim. Nothing
+in it is typed. A metric nothing produced renders `NOT YET SUPPORTED`; a measured
+zero renders `0`. The two are different strings on purpose — rendering both as
+`0` would let a reader think a metric was measured and came out badly when it was
+never measured at all.
