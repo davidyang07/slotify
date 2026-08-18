@@ -41,6 +41,8 @@ __all__ = [
     "append_epoch_metrics",
     "write_training_summary",
     "SYNTHETIC_WARNING",
+    "SMOKE_WARNING",
+    "WEAK_SUPERVISION_WARNING",
 ]
 
 SYNTHETIC_WARNING = (
@@ -54,6 +56,16 @@ SMOKE_WARNING = (
     "SMOKE RUN. Data limits and/or a reduced epoch budget were applied (see "
     "resolved_config.json -> overrides). These metrics show that the pipeline "
     "runs; they are not a model-quality measurement."
+)
+
+WEAK_SUPERVISION_WARNING = (
+    "WEAKLY SUPERVISED BOOTSTRAP RUN. The targets were derived from "
+    "heuristic_offline_v1's own score, not from human judgement, so this model "
+    "is a distillation of the baseline. Its validation NDCG measures how well it "
+    "reproduces its teacher and is NOT a ranking-quality result. It must never "
+    "be compared against heuristic_offline_v1, because that baseline IS its "
+    "teacher. Its purpose is to prove the inference path end to end while the "
+    "human labelling round is outstanding; see docs/resume-claim-matrix.md."
 )
 
 
@@ -164,15 +176,31 @@ def build_summary(
     overrides: Mapping[str, Any],
     label_source: str = "human",
 ) -> dict[str, Any]:
-    """The machine-readable result. No metric is invented here."""
+    """The machine-readable result. No metric is invented here.
+
+    ``label_source`` is read from the label set the run actually loaded, never
+    assumed. A run supervised by anything other than human judgement is
+    classified as such here, so its numbers cannot be quoted as model quality by
+    a reader who only sees this file.
+    """
     best = dict(result.best_metrics or {})
+    weak = label_source != "human"
     provenance = (
-        "synthetic_fixture" if synthetic else ("smoke_limited" if smoke else "real")
+        "synthetic_fixture"
+        if synthetic
+        else "weak_supervision"
+        if weak
+        else "smoke_limited"
+        if smoke
+        else "real"
     )
     summary: dict[str, Any] = {
         "evidence_class": (
             "synthetic smoke run - not a model-quality result"
             if synthetic
+            else "weakly supervised bootstrap - distills heuristic_offline_v1; "
+            "not a model-quality result and never comparable against that baseline"
+            if weak
             else "limited smoke run - not a model-quality result"
             if smoke
             else "measured on real labelled data"
@@ -218,6 +246,8 @@ def build_summary(
     }
     if synthetic:
         summary["warning"] = SYNTHETIC_WARNING
+    elif weak:
+        summary["warning"] = WEAK_SUPERVISION_WARNING
     elif smoke:
         summary["warning"] = SMOKE_WARNING
     return summary

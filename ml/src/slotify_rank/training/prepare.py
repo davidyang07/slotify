@@ -27,7 +27,11 @@ from typing import Any, Mapping, Sequence
 
 from slotify_rank.data.paths import DataPaths
 from slotify_rank.data.schema import DatasetCandidate
-from slotify_rank.datasets.labels import LabelSet, read_label_export
+from slotify_rank.datasets.labels import (
+    DEFAULT_ALLOWED_LABEL_SOURCES,
+    LabelSet,
+    read_label_export,
+)
 from slotify_rank.datasets.loader import LoadedDataset, build_examples
 from slotify_rank.datasets.normalizer import FeatureNormalizer, fit_normalizer
 from slotify_rank.datasets.ranking_dataset import (
@@ -181,11 +185,19 @@ def prepare_dataset(
     split_lookup: Mapping[str, str] | None = None,
     features_manifest: Path | None = None,
     native_embedding_dimension: int | None = None,
+    allowed_label_sources: Sequence[str] = DEFAULT_ALLOWED_LABEL_SOURCES,
 ) -> PreparedDataset:
-    """Build a training-ready dataset. Raises rather than degrading quietly."""
+    """Build a training-ready dataset. Raises rather than degrading quietly.
+
+    ``allowed_label_sources`` defaults to human labels only. A caller that names
+    another source (the ``weak_heuristic`` bootstrap run) gets it recorded on the
+    returned :class:`LabelSet`, and from there into the run report and the
+    checkpoint -- so a run trained on weak labels can never present itself as
+    human-supervised.
+    """
     manifest_path = features_manifest or paths.features_manifest
     header, records = read_feature_manifest(manifest_path)
-    labels = read_label_export(label_export)
+    labels = read_label_export(label_export, allowed_label_sources=allowed_label_sources)
 
     declared = native_embedding_dimension
     if declared is None:

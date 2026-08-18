@@ -1,11 +1,18 @@
-"""Reading human labels for supervised training.
+"""Reading labels for supervised training.
 
 Human labels are the **only** default supervised source. Weak or heuristic
-labels are never loaded here: the whole value of the resume claim rests on the
-model having learned from human judgement, and a loader that silently accepts a
-heuristic-derived score would make that claim unverifiable from the code. A
-future configuration may name weak labels explicitly; there is deliberately no
-flag that does it by accident.
+labels are never loaded by accident: the whole value of the resume claim rests
+on the model having learned from human judgement, and a loader that silently
+accepted a heuristic-derived score would make that claim unverifiable from the
+code.
+
+A caller may pass ``allowed_label_sources`` to opt into another source
+explicitly -- ``weak_heuristic`` for the bootstrap distillation run that proves
+the inference path works before any human labels exist. Doing so is a named,
+recorded decision: the resulting :class:`LabelSet` carries ``label_source``,
+the training summary records it, the checkpoint records it, and the evaluation
+comparison refuses to publish a headline metric from anything but ``human``.
+There is deliberately no default that reaches weak labels.
 
 Multiple annotators per candidate are aggregated deterministically:
 
@@ -24,11 +31,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 __all__ = [
     "AggregatedLabel",
     "LabelSet",
+    "DEFAULT_ALLOWED_LABEL_SOURCES",
     "aggregate_labels",
     "read_label_export",
 ]
@@ -86,22 +94,33 @@ class LabelSet:
         }
 
 
+#: The only source a caller gets without asking for something else by name.
+DEFAULT_ALLOWED_LABEL_SOURCES: tuple[str, ...] = ("human",)
+
+
 def aggregate_labels(
     rows: Iterable[Mapping[str, Any]],
     acceptable_threshold: float,
     source: str = "",
+    allowed_label_sources: Sequence[str] = DEFAULT_ALLOWED_LABEL_SOURCES,
 ) -> LabelSet:
     """Pool per-annotator rows into one target per candidate."""
+    allowed = tuple(allowed_label_sources)
+    if not allowed:
+        raise ValueError("allowed_label_sources must name at least one source")
     grouped: dict[str, list[Mapping[str, Any]]] = {}
+    observed: set[str] = set()
     for row in rows:
         label_source = str(row.get("label_source", "human"))
-        if label_source != "human":
+        if label_source not in allowed:
             raise ValueError(
                 f"{source or 'label rows'}: candidate "
-                f"{row.get('candidate_id')!r} carries label_source={label_source!r}. "
-                "Only human labels are a supervised source; weak labels must be "
-                "enabled by an explicitly named configuration."
+                f"{row.get('candidate_id')!r} carries label_source={label_source!r}, "
+                f"but this run allows {list(allowed)}. Only human labels are a "
+                "supervised source by default; anything else must be requested by "
+                "name and is recorded on the run."
             )
+        observed.add(label_source)
         grouped.setdefault(str(row["candidate_id"]), []).append(row)
 
     labels: dict[str, AggregatedLabel] = {}
@@ -140,10 +159,17 @@ def aggregate_labels(
         acceptable_threshold=acceptable_threshold,
         source=source,
         unusable_candidate_ids=tuple(unusable),
+        # What was actually read, not what was permitted. A mixed export reports
+        # every source it contained, joined, so no summary can round it to
+        # "human".
+        label_source="+".join(sorted(observed)) if observed else "none",
     )
 
 
-def read_label_export(path: Path) -> LabelSet:
+def read_label_export(
+    path: Path,
+    allowed_label_sources: Sequence[str] = DEFAULT_ALLOWED_LABEL_SOURCES,
+) -> LabelSet:
     """Read ``labels_<version>.jsonl`` and its ``.meta.json`` sidecar.
 
     The sidecar carries the acceptability threshold that was in force when the
@@ -184,4 +210,5 @@ def read_label_export(path: Path) -> LabelSet:
         rows,
         acceptable_threshold=float(metadata["acceptable_threshold"]),
         source=str(export_path),
+        allowed_label_sources=allowed_label_sources,
     )

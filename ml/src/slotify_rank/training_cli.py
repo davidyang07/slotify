@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from slotify_rank.data import manifests
+from slotify_rank.datasets.labels import DEFAULT_ALLOWED_LABEL_SOURCES
 from slotify_rank.data.paths import DataPaths
 from slotify_rank.data.splits import read_split_manifest
 from slotify_rank.training.reporting import (
@@ -82,6 +83,19 @@ def _is_synthetic(label_export: Path) -> bool:
     return bool(metadata.get("synthetic", False))
 
 
+def _allowed_label_sources(args: argparse.Namespace) -> tuple[str, ...]:
+    """Which label sources this run may train on.
+
+    Human only, unless the caller names another one. There is no flag that
+    reaches weak labels without spelling the source out on the command line, and
+    whatever is used is recorded in the run summary and the checkpoint.
+    """
+    requested = getattr(args, "allow_label_source", None)
+    if not requested:
+        return DEFAULT_ALLOWED_LABEL_SOURCES
+    return tuple(dict.fromkeys(["human", *requested]))
+
+
 def _split_lookup(paths: DataPaths, version: str) -> dict[str, str]:
     path = paths.split_manifest(version)
     if not path.is_file():
@@ -131,6 +145,7 @@ def _prepare(args: argparse.Namespace, config: Any):
         label_export=label_export,
         candidates=_dataset_candidates(paths),
         split_lookup=_split_lookup(paths, getattr(args, "split_version", "v1")),
+        allowed_label_sources=_allowed_label_sources(args),
     )
     return paths, label_export, dataset
 
@@ -342,7 +357,12 @@ def _run_training(args: argparse.Namespace, resume_from: Path | None) -> int:
         synthetic=synthetic,
         smoke=smoke,
         overrides=overrides,
-        label_source="synthetic" if synthetic else "human",
+        # Read from the labels that were loaded, not assumed from a flag.
+        label_source=(
+            "synthetic"
+            if synthetic
+            else (dataset.label_set.label_source if dataset.label_set else "unknown")
+        ),
     )
     write_training_summary(artifacts, summary)
 
@@ -525,6 +545,16 @@ def _cmd_models_describe(args: argparse.Namespace) -> int:
 def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--data-root", help="Override the data root.")
     parser.add_argument("--labels", help="Label export JSONL (default: labels_v1).")
+    parser.add_argument(
+        "--allow-label-source",
+        dest="allow_label_source",
+        action="append",
+        metavar="SOURCE",
+        help="Permit a non-human label source (e.g. weak_heuristic). Repeatable. "
+        "Human labels are always allowed. Whatever is used is recorded in the "
+        "run summary and the checkpoint, and evaluation refuses to publish a "
+        "headline metric from anything but human labels.",
+    )
     parser.add_argument("--training-config", help="Training config YAML.")
     parser.add_argument("--split-version", default="v1", help="Split manifest version.")
     parser.add_argument("--output", help="Write the machine-readable report here.")
