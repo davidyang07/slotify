@@ -1,0 +1,22 @@
+{
+  "name": "slotify",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Multimodal audio ad-placement engine: a PyTorch ranker for podcast ad breaks, served through a React + Express product.",
+  "type": "module",
+  "scripts": {
+    "preflight": "node scripts/preflight.mjs",
+    "install:all": "npm --prefix backend ci && npm --prefix frontend ci",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "demo": "node scripts/demo.mjs",
+    "verify:backend": "npm --prefix backend run verify",
+    "verify:frontend": "npm --prefix frontend run verify",
+    "verify": "npm run verify:backend && npm run verify:frontend",
+    "evidence": "node scripts/evidence.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
