@@ -5,9 +5,33 @@ import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { runFfmpeg, getAudioDuration } from "./ffmpeg";
 import { streamToBuffer } from "../lib/stream";
 
-export const elevenlabs = new ElevenLabsClient({
-  apiKey: process.env.ELEVENLABS_API_KEY,
-});
+/**
+ * The ElevenLabs client, built on first use.
+ *
+ * It used to be constructed at module scope, and its constructor throws when no
+ * API key is present -- so importing this module without a key crashed the
+ * whole server at startup. Every route died, including the placement analysis
+ * that needs no credentials at all. Constructing lazily means a deployment with
+ * no key serves placement normally and fails only the endpoints that genuinely
+ * require the paid API, with a message saying so.
+ */
+let client: ElevenLabsClient | null = null;
+
+export const isElevenLabsConfigured = (): boolean =>
+  Boolean(process.env.ELEVENLABS_API_KEY);
+
+export const getElevenLabs = (): ElevenLabsClient => {
+  if (!isElevenLabsConfigured()) {
+    throw new Error(
+      "ELEVENLABS_API_KEY is not set, so voice cloning and text-to-speech are " +
+        "unavailable. Placement analysis does not need it; see GET /api/capabilities.",
+    );
+  }
+  if (client === null) {
+    client = new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY });
+  }
+  return client;
+};
 
 export interface SponsorBlock {
   tempDir: string;
@@ -50,7 +74,7 @@ export const buildSponsorBlock = async ({
   try {
     for (let index = 0; index < statements.length; index += 1) {
       const statement = statements[index];
-      const audio = await elevenlabs.textToSpeech.convert(voiceId, {
+      const audio = await getElevenLabs().textToSpeech.convert(voiceId, {
         text: statement,
         modelId: modelId ?? "eleven_multilingual_v2",
         outputFormat: (outputFormat ?? "mp3_44100_128") as any,

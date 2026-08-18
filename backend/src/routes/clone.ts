@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { Router } from "express";
 import { upload } from "../middleware/upload";
-import { elevenlabs } from "../services/elevenlabs";
+import { getElevenLabs } from "../services/elevenlabs";
 
 export const cloneRouter = Router();
 
@@ -40,7 +40,7 @@ cloneRouter.post("/api/clone", upload.array("files"), async (req, res) => {
     }
 
     const streams = tempPaths.map((tempPath) => fs.createReadStream(tempPath));
-    const voice = await elevenlabs.voices.ivc.create({
+    const voice = await getElevenLabs().voices.ivc.create({
       name,
       files: streams,
     });

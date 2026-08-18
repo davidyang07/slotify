@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { Readable } from "node:stream";
 import { Router } from "express";
-import { elevenlabs, buildSponsorBlock } from "../services/elevenlabs";
+import { getElevenLabs, buildSponsorBlock } from "../services/elevenlabs";
 import { generateBrandStatement } from "../services/openai";
 import { normalizeStatements } from "../lib/text";
 
@@ -39,7 +39,7 @@ ttsRouter.post("/api/tts", async (req, res) => {
   try {
     console.log("TTS statements:", { count: statements.length, statements });
     if (statements.length === 1) {
-      const audio = await elevenlabs.textToSpeech.convert(voiceId, {
+      const audio = await getElevenLabs().textToSpeech.convert(voiceId, {
         text: statements[0],
         modelId: modelId ?? "eleven_multilingual_v2",
         outputFormat: outputFormat ?? "mp3_44100_128",
