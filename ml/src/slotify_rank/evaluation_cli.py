@@ -234,7 +234,7 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_resume_evidence(args: argparse.Namespace) -> int:
+def _cmd_model_evidence(args: argparse.Namespace) -> int:
     from slotify_rank.evaluation.evidence import collect_evidence, write_evidence
 
     paths = _paths(args)
@@ -249,9 +249,9 @@ def _cmd_resume_evidence(args: argparse.Namespace) -> int:
     )
     written = write_evidence(directory, evidence)
 
-    print(f"Resume evidence at git {evidence.git_sha}")
-    for claim in evidence.claims:
-        print(f"  Claim {claim.claim_id}: {claim.verdict}")
+    print(f"Model evidence at git {evidence.git_sha}")
+    for capability in evidence.capabilities:
+        print(f"  {capability.capability}: {capability.status}")
     for key in (
         "human_labelled_candidate_count",
         "generated_candidate_count",
@@ -322,12 +322,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     report_sub = report_parser.add_subparsers(dest="report_command", required=True)
     evidence_parser = report_sub.add_parser(
-        "resume-evidence",
-        help="Read every artifact and report which resume claims they support.",
+        "model-evidence",
+        help="Read every artifact and report what each capability's evidence "
+        "currently establishes.",
     )
     evidence_parser.add_argument("--data-root", default=None)
     evidence_parser.add_argument(
         "--artifacts-root", default=None, dest="artifacts_root"
     )
     evidence_parser.add_argument("--output-dir", default=None, dest="output_dir")
-    evidence_parser.set_defaults(func=_cmd_resume_evidence)
+    evidence_parser.set_defaults(func=_cmd_model_evidence)

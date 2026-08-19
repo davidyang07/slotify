@@ -1,16 +1,16 @@
-"""The generated resume-evidence report.
+"""The generated model-evidence report.
 
-One job: read what the repository has actually produced, and say for each resume
-claim whether it is supported. Not one number in the output is typed. Every
-field is read from a generated artifact, and a field whose artifact does not
-exist reports :data:`NOT_SUPPORTED` -- never ``0``, never ``null``, never a
-plausible-looking placeholder.
+One job: read what the repository has actually produced, and say for each
+capability what the evidence currently establishes. Not one number in the output
+is typed. Every field is read from a generated artifact, and a field whose
+artifact does not exist reports :data:`NOT_AVAILABLE` -- never ``0``, never
+``null``, never a plausible-looking placeholder.
 
 The distinction that matters most:
 
     0 human labels     is a measurement. It means someone counted, and the
                        answer was zero.
-    NOT YET SUPPORTED  means nothing produced that number at all.
+    NOT YET AVAILABLE  means nothing produced that number at all.
 
 Rendering both as ``0`` would let a reader conclude that a metric was measured
 and came out badly, when in fact it was never measured. So the two are
@@ -31,21 +31,24 @@ from slotify_rank.data.checksum import atomic_write_bytes
 
 __all__ = [
     "EVIDENCE_SCHEMA_VERSION",
-    "NOT_SUPPORTED",
-    "ClaimVerdict",
-    "ResumeEvidence",
+    "NOT_AVAILABLE",
+    "SUPPORTED",
+    "PARTIALLY_SUPPORTED",
+    "UNSUPPORTED",
+    "CapabilityEvidence",
+    "ModelEvidence",
     "collect_evidence",
     "render_markdown",
     "write_evidence",
 ]
 
-EVIDENCE_SCHEMA_VERSION = "resume-evidence-v1.0.0"
+EVIDENCE_SCHEMA_VERSION = "model-evidence-v1.0.0"
 
 #: The one string used for "nothing produced this". Compared against by tests so
 #: it cannot drift into something that reads like a value.
-NOT_SUPPORTED = "NOT YET SUPPORTED"
+NOT_AVAILABLE = "NOT YET AVAILABLE"
 
-#: Verdicts, in the vocabulary the report uses everywhere.
+#: Evidence statuses, in the vocabulary the report uses everywhere.
 SUPPORTED = "SUPPORTED"
 PARTIALLY_SUPPORTED = "PARTIALLY SUPPORTED"
 UNSUPPORTED = "NOT YET SUPPORTED"
@@ -72,35 +75,39 @@ def _git_sha(repo_root: Path) -> str:
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
-        return NOT_SUPPORTED
+        return NOT_AVAILABLE
     sha = result.stdout.strip()
-    return sha or NOT_SUPPORTED
+    return sha or NOT_AVAILABLE
 
 
 @dataclass
-class ClaimVerdict:
-    claim_id: str
-    statement: str
-    verdict: str
+class CapabilityEvidence:
+    """What the generated artifacts establish about one capability."""
+
+    capability_id: str
+    capability: str
+    requirement: str
+    status: str
     reasons: list[str] = field(default_factory=list)
     evidence: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "claim_id": self.claim_id,
-            "statement": self.statement,
-            "verdict": self.verdict,
+            "capability_id": self.capability_id,
+            "capability": self.capability,
+            "requirement": self.requirement,
+            "status": self.status,
             "reasons": list(self.reasons),
             "evidence": dict(self.evidence),
         }
 
 
 @dataclass
-class ResumeEvidence:
+class ModelEvidence:
     git_sha: str
     generated_at: str
     measurements: dict[str, Any]
-    claims: list[ClaimVerdict]
+    capabilities: list[CapabilityEvidence]
     artifacts_read: dict[str, str]
     artifacts_missing: list[str]
 
@@ -110,9 +117,11 @@ class ResumeEvidence:
             "package_version": PACKAGE_VERSION,
             "generated_at": self.generated_at,
             "git_sha": self.git_sha,
-            "unavailable_marker": NOT_SUPPORTED,
+            "unavailable_marker": NOT_AVAILABLE,
             "measurements": dict(self.measurements),
-            "claims": [claim.to_dict() for claim in self.claims],
+            "capabilities": [
+                capability.to_dict() for capability in self.capabilities
+            ],
             "artifacts_read": dict(self.artifacts_read),
             "artifacts_missing": list(self.artifacts_missing),
         }
@@ -142,7 +151,7 @@ def _publishable_comparison(evaluation_dir: Path) -> tuple[str, dict[str, Any]] 
     """The most recent comparison whose headline is publishable, if any.
 
     A comparison that ran but was blocked is deliberately not returned: the
-    headline metric fields must stay NOT YET SUPPORTED until one passes.
+    headline metric fields must stay NOT YET AVAILABLE until one passes.
     """
     if not evaluation_dir.is_dir():
         return None
@@ -190,8 +199,8 @@ def _display(path: Path, root: Path) -> str:
         return str(path)
 
 
-def collect_evidence(repo_root: Path, artifacts_root: Path | None = None) -> ResumeEvidence:
-    """Read every artifact and decide each claim."""
+def collect_evidence(repo_root: Path, artifacts_root: Path | None = None) -> ModelEvidence:
+    """Read every artifact and decide each capability's evidence status."""
     root = Path(repo_root)
     artifacts = Path(artifacts_root) if artifacts_root else root / "artifacts"
 
@@ -226,7 +235,7 @@ def collect_evidence(repo_root: Path, artifacts_root: Path | None = None) -> Res
     readiness = loaded["readiness_report"] or {}
 
     def measured(source: Mapping[str, Any], key: str) -> Any:
-        return source.get(key, NOT_SUPPORTED) if source else NOT_SUPPORTED
+        return source.get(key, NOT_AVAILABLE) if source else NOT_AVAILABLE
 
     training = _best_training_run(artifacts / "training")
     if training:
@@ -269,33 +278,35 @@ def collect_evidence(repo_root: Path, artifacts_root: Path | None = None) -> Res
         ),
         "audio_embedding_model": measured(embeddings, "audio_embedding_model"),
         "text_embedding_model": measured(embeddings, "text_embedding_model"),
-        "phase_5b_ready": readiness.get("phase_5b_ready", NOT_SUPPORTED),
-        "model_variant": training_summary.get("model_variant", NOT_SUPPORTED),
+        "phase_5b_ready": readiness.get("phase_5b_ready", NOT_AVAILABLE),
+        "model_variant": training_summary.get("model_variant", NOT_AVAILABLE),
         "model_parameter_count": training_summary.get(
-            "model_parameter_count", NOT_SUPPORTED
+            "model_parameter_count", NOT_AVAILABLE
         ),
-        "model_run_id": training_summary.get("run_id", NOT_SUPPORTED),
+        "model_run_id": training_summary.get("run_id", NOT_AVAILABLE),
         "model_training_label_source": training_summary.get(
-            "label_source", NOT_SUPPORTED
+            "label_source", NOT_AVAILABLE
         ),
         "model_training_data_provenance": training_summary.get(
-            "data_provenance", NOT_SUPPORTED
+            "data_provenance", NOT_AVAILABLE
         ),
         "baseline_ndcg_at_3": (
             comparison["headline"]["baseline"]["ndcg_at_3"]
             if comparison
-            else NOT_SUPPORTED
+            else NOT_AVAILABLE
         ),
         "model_ndcg_at_3": (
-            comparison["headline"]["model"]["ndcg_at_3"] if comparison else NOT_SUPPORTED
+            comparison["headline"]["model"]["ndcg_at_3"]
+            if comparison
+            else NOT_AVAILABLE
         ),
         "relative_improvement_percent": (
             comparison["headline"]["relative_improvement_percent"]
             if comparison
-            else NOT_SUPPORTED
+            else NOT_AVAILABLE
         ),
         "evaluation_id": (
-            comparison["evaluation_id"] if comparison else NOT_SUPPORTED
+            comparison["evaluation_id"] if comparison else NOT_AVAILABLE
         ),
         "blocked_comparisons": blocked,
     }
@@ -303,19 +314,19 @@ def collect_evidence(repo_root: Path, artifacts_root: Path | None = None) -> Res
     human_labels = measurements["human_labelled_candidate_count"]
     has_human_labels = isinstance(human_labels, (int, float)) and human_labels > 0
 
-    claims: list[ClaimVerdict] = []
+    capabilities: list[CapabilityEvidence] = []
 
-    # --- Claim A ---------------------------------------------------------
-    reasons_a: list[str] = []
-    verdict_a = UNSUPPORTED
+    # --- Multimodal learned ranking --------------------------------------
+    reasons_model: list[str] = []
+    status_model = UNSUPPORTED
     trained = training_summary.get("model_variant") is not None and bool(training_summary)
     multimodal = (
-        measurements["audio_embedding_model"] != NOT_SUPPORTED
-        and measurements["text_embedding_model"] != NOT_SUPPORTED
+        measurements["audio_embedding_model"] != NOT_AVAILABLE
+        and measurements["text_embedding_model"] != NOT_AVAILABLE
     )
     if trained and multimodal:
-        verdict_a = SUPPORTED
-        reasons_a.append(
+        status_model = SUPPORTED
+        reasons_model.append(
             f"A {measurements['model_variant']} PyTorch ranker with "
             f"{measurements['model_parameter_count']} parameters consumes "
             f"{measurements['audio_embedding_model']} speech representations and "
@@ -323,23 +334,25 @@ def collect_evidence(repo_root: Path, artifacts_root: Path | None = None) -> Res
             "served through the product's inference path."
         )
         if measurements["model_training_label_source"] != "human":
-            reasons_a.append(
+            reasons_model.append(
                 "The served checkpoint was trained with label_source="
                 f"{measurements['model_training_label_source']}, so it demonstrates "
                 "the architecture and the serving path, not ranking quality."
             )
     else:
-        reasons_a.append("No trained multimodal checkpoint was found.")
+        reasons_model.append("No trained multimodal checkpoint was found.")
 
-    claims.append(
-        ClaimVerdict(
-            claim_id="A",
-            statement=(
-                "Built a multimodal PyTorch ranker using audio and transcript "
-                "features to detect natural podcast ad breaks."
+    capabilities.append(
+        CapabilityEvidence(
+            capability_id="multimodal_ranking",
+            capability="Multimodal learned ranking",
+            requirement=(
+                "A multimodal PyTorch ranker consumes audio and transcript "
+                "features to rank candidate podcast ad breaks, and serves the "
+                "product's insertion analysis."
             ),
-            verdict=verdict_a,
-            reasons=reasons_a,
+            status=status_model,
+            reasons=reasons_model,
             evidence={
                 "model_variant": measurements["model_variant"],
                 "model_parameter_count": measurements["model_parameter_count"],
@@ -352,29 +365,44 @@ def collect_evidence(repo_root: Path, artifacts_root: Path | None = None) -> Res
         )
     )
 
-    # --- Claim B ---------------------------------------------------------
-    reasons_b = [
+    # --- Human-labelled dataset scale ------------------------------------
+    reasons_dataset = [
         f"human_labelled_candidate_count = {human_labels} "
         "(measured from the label database, not estimated).",
         f"generated_candidate_count = {measurements['generated_candidate_count']} "
         "-- candidates produced by the generators, which are NOT labels.",
     ]
-    verdict_b = SUPPORTED if has_human_labels and human_labels >= 2400 else UNSUPPORTED
     if not has_human_labels:
-        reasons_b.append(
-            "No human label exists, so no count of labelled candidates can be quoted."
+        status_dataset = UNSUPPORTED
+        reasons_dataset.append(
+            "No human label exists, so no labelled-candidate count can be quoted "
+            "and no human-ground-truth evaluation can run."
         )
-    elif human_labels < 2400:
-        verdict_b = PARTIALLY_SUPPORTED
-        reasons_b.append(
-            f"{human_labels} human labels exist; the claim states 2,400+."
+    elif measurements["phase_5b_ready"] is True:
+        status_dataset = SUPPORTED
+        reasons_dataset.append(
+            "The readiness gate passes on the human labels that exist, so they "
+            "are sufficient in number and spread to support a held-out "
+            "evaluation."
         )
-    claims.append(
-        ClaimVerdict(
-            claim_id="B",
-            statement="Trained on 2,400+ labelled candidates.",
-            verdict=verdict_b,
-            reasons=reasons_b,
+    else:
+        status_dataset = PARTIALLY_SUPPORTED
+        reasons_dataset.append(
+            f"{human_labels} human labels exist, but the readiness gate does not "
+            "pass, so they do not yet support a held-out evaluation. Run "
+            "`experiment readiness` for the blocking conditions."
+        )
+    capabilities.append(
+        CapabilityEvidence(
+            capability_id="human_labelled_dataset",
+            capability="Human-labelled dataset scale",
+            requirement=(
+                "Enough human-labelled candidates exist, spread across enough "
+                "episodes and series, for the readiness gate to pass and a "
+                "held-out evaluation to be possible."
+            ),
+            status=status_dataset,
+            reasons=reasons_dataset,
             evidence={
                 "human_labelled_candidate_count": human_labels,
                 "generated_candidate_count": measurements["generated_candidate_count"],
@@ -384,38 +412,46 @@ def collect_evidence(repo_root: Path, artifacts_root: Path | None = None) -> Res
                 "held_out_evaluation_candidate_count": measurements[
                     "held_out_evaluation_candidate_count"
                 ],
+                "phase_5b_ready": measurements["phase_5b_ready"],
             },
         )
     )
 
-    # --- Claim C ---------------------------------------------------------
-    reasons_c: list[str] = []
+    # --- Held-out ranking improvement -------------------------------------
+    reasons_improvement: list[str] = []
     if comparison is None:
-        verdict_c = UNSUPPORTED
-        reasons_c.append(
+        status_improvement = UNSUPPORTED
+        reasons_improvement.append(
             "No publishable held-out comparison exists, so no NDCG@3 improvement "
             "can be quoted."
         )
         if blocked:
-            reasons_c.append(
+            reasons_improvement.append(
                 f"{len(blocked)} comparison(s) ran but were blocked; see "
                 "measurements.blocked_comparisons for the measured values and the "
                 "reasons they may not be published."
             )
     else:
         improvement = measurements["relative_improvement_percent"]
-        verdict_c = SUPPORTED if isinstance(improvement, (int, float)) else UNSUPPORTED
-        reasons_c.append(
+        status_improvement = (
+            SUPPORTED if isinstance(improvement, (int, float)) else UNSUPPORTED
+        )
+        reasons_improvement.append(
             f"Held-out comparison {measurements['evaluation_id']} measured "
             f"{improvement} % relative NDCG@3 improvement over "
             "heuristic_offline_v1."
         )
-    claims.append(
-        ClaimVerdict(
-            claim_id="C",
-            statement="Improving NDCG@3 by 18% over the heuristic baseline.",
-            verdict=verdict_c,
-            reasons=reasons_c,
+    capabilities.append(
+        CapabilityEvidence(
+            capability_id="held_out_ranking_improvement",
+            capability="Held-out ranking improvement",
+            requirement=(
+                "A publishable held-out comparison reports the measured relative "
+                "NDCG@3 improvement of the learned ranker over "
+                "heuristic_offline_v1, whatever that improvement turns out to be."
+            ),
+            status=status_improvement,
+            reasons=reasons_improvement,
             evidence={
                 "baseline_ndcg_at_3": measurements["baseline_ndcg_at_3"],
                 "model_ndcg_at_3": measurements["model_ndcg_at_3"],
@@ -427,20 +463,20 @@ def collect_evidence(repo_root: Path, artifacts_root: Path | None = None) -> Res
         )
     )
 
-    return ResumeEvidence(
+    return ModelEvidence(
         git_sha=_git_sha(root),
         generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         measurements=measurements,
-        claims=claims,
+        capabilities=capabilities,
         artifacts_read=read,
         artifacts_missing=missing,
     )
 
 
 def _value(measurements: Mapping[str, Any], key: str) -> str:
-    value = measurements.get(key, NOT_SUPPORTED)
+    value = measurements.get(key, NOT_AVAILABLE)
     if value is None:
-        return NOT_SUPPORTED
+        return NOT_AVAILABLE
     return str(value)
 
 
@@ -448,30 +484,30 @@ def render_markdown(payload: Mapping[str, Any]) -> str:
     """Generated from the same dict as the JSON. A test asserts they agree."""
     measurements = payload["measurements"]
     lines = [
-        "# Resume evidence report",
+        "# Model evidence and evaluation status",
         "",
         "**Generated file - do not edit.** Produced by `slotify-rank report "
-        "resume-evidence`, which reads the artifacts named at the bottom. Every "
+        "model-evidence`, which reads the artifacts named at the bottom. Every "
         "number here comes from one of them.",
         "",
         f"- Git SHA: `{payload['git_sha']}`",
         f"- Generated: {payload['generated_at']}",
         f"- Package version: {payload['package_version']}",
         "",
-        f"`{NOT_SUPPORTED}` means no artifact produced that value. It is not a "
+        f"`{NOT_AVAILABLE}` means no artifact produced that value. It is not a "
         "zero: a measured zero (for example, zero human labels) is printed as `0`.",
         "",
-        "## Claim verdicts",
+        "## Capability status",
         "",
     ]
-    for claim in payload["claims"]:
+    for capability in payload["capabilities"]:
         lines += [
-            f"### Claim {claim['claim_id']} - {claim['verdict']}",
+            f"### {capability['capability']} - {capability['status']}",
             "",
-            f"> {claim['statement']}",
+            f"> {capability['requirement']}",
             "",
         ]
-        for reason in claim["reasons"]:
+        for reason in capability["reasons"]:
             lines.append(f"- {reason}")
         lines.append("")
 
@@ -488,7 +524,7 @@ def render_markdown(payload: Mapping[str, Any]) -> str:
         f"| Processed audio hours | {_value(measurements, 'processed_audio_hours')} |",
         f"| Processed episodes | {_value(measurements, 'processed_episode_count')} |",
         f"| Held-out evaluation candidates | {_value(measurements, 'held_out_evaluation_candidate_count')} |",
-        f"| Phase 5B experiment gate ready | {_value(measurements, 'phase_5b_ready')} |",
+        f"| Dataset/evaluation readiness gate | {_value(measurements, 'phase_5b_ready')} |",
         "",
         "## Model",
         "",
@@ -519,7 +555,7 @@ def render_markdown(payload: Mapping[str, Any]) -> str:
             "### Comparisons that ran but may not be published",
             "",
             "These measured real numbers on real artifacts. They are shown so the "
-            "pipeline is auditable, and they are **not** the claim.",
+            "pipeline is auditable, and they are **not** a result.",
             "",
         ]
         for entry in blocked:
@@ -544,15 +580,15 @@ def render_markdown(payload: Mapping[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def write_evidence(directory: Path, evidence: ResumeEvidence) -> dict[str, Path]:
+def write_evidence(directory: Path, evidence: ModelEvidence) -> dict[str, Path]:
     target = Path(directory)
     target.mkdir(parents=True, exist_ok=True)
     payload = evidence.to_dict()
-    json_path = target / "resume_evidence.json"
-    md_path = target / "resume_evidence.md"
+    json_path = target / "model_evidence.json"
+    md_path = target / "model_evidence.md"
     atomic_write_bytes(
         json_path,
         (json.dumps(payload, indent=2, ensure_ascii=False) + "\n").encode("utf-8"),
     )
     atomic_write_bytes(md_path, render_markdown(payload).encode("utf-8"))
-    return {"resume_evidence.json": json_path, "resume_evidence.md": md_path}
+    return {"model_evidence.json": json_path, "model_evidence.md": md_path}

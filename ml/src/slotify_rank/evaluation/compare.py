@@ -154,7 +154,7 @@ class ComparisonResult:
 
     @property
     def publishable(self) -> bool:
-        """Whether the headline number may appear on a resume."""
+        """Whether the headline number may be published."""
         return not self.blocking_reasons
 
     def headline(self) -> dict[str, Any]:
@@ -387,7 +387,7 @@ def compare(
 
 def _format(value: Any) -> str:
     if value is None:
-        return "NOT YET SUPPORTED"
+        return "NOT YET AVAILABLE"
     if isinstance(value, float):
         return f"{value:.4f}"
     return str(value)
@@ -436,7 +436,7 @@ def render_summary(payload: Mapping[str, Any]) -> str:
         f"- Model NDCG@3: {_format(headline['model']['ndcg_at_3'])}",
         "- Relative improvement: "
         + (
-            "NOT YET SUPPORTED"
+            "NOT YET AVAILABLE"
             if headline["relative_improvement_percent"] is None
             else f"{headline['relative_improvement_percent']:.2f} %"
         ),

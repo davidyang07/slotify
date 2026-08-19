@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Regenerate every statistical artifact, in dependency order, then print the
- * resume-evidence verdicts.
+ * model-evidence status for every capability.
  *
  * One command so the numbers in the repository can be re-derived rather than
  * trusted. It runs only the cheap, offline reporting steps -- it does not
@@ -43,8 +43,8 @@ const steps = [
     args: ["features", "stats", "--split-version", splitVersion],
   },
   {
-    name: "resume evidence",
-    args: ["report", "resume-evidence"],
+    name: "model evidence",
+    args: ["report", "model-evidence"],
   },
 ];
 
@@ -70,6 +70,6 @@ for (const step of steps) {
 console.log(
   failed
     ? `\n${failed} step(s) failed. The artifacts may be stale.`
-    : "\nArtifacts regenerated. See artifacts/reports/resume_evidence.md.",
+    : "\nArtifacts regenerated. See artifacts/reports/model_evidence.md.",
 );
 process.exit(failed ? 1 : 0);
