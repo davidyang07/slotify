@@ -7,6 +7,7 @@ fixtures (marked ``audio``) to prove it works on actual encoded audio.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -399,14 +400,20 @@ def test_generation_runs_on_a_real_smoke_fixture(tmp_path: Path):
     if not fixture.is_file():
         pytest.skip("smoke fixture is not present in this checkout")
 
-    repo_root = find_repo_root()
-    paths = DataPaths(repo_root=repo_root, data_root=tmp_path / "data")
+    # The scratch directory is its own repository root, and the fixture is
+    # copied into its raw directory first -- exactly what `dataset import-local`
+    # does. A manifest can only describe paths under its own root, so pointing a
+    # scratch data root at a file still sitting in the checkout is not a
+    # supported combination.
+    paths = DataPaths(repo_root=tmp_path, data_root=tmp_path / "data")
     paths.mkdirs()
+    imported = paths.raw_dir / fixture.name
+    shutil.copy2(fixture, imported)
     from slotify_rank.data.checksum import sha256_file
 
-    digest = sha256_file(fixture)
+    digest = sha256_file(imported)
     try:
-        metadata = probe_audio(fixture)
+        metadata = probe_audio(imported)
     except FFmpegNotFound:
         pytest.skip("ffprobe is not available")
 
@@ -417,7 +424,7 @@ def test_generation_runs_on_a_real_smoke_fixture(tmp_path: Path):
         normalized_path=None,
         normalized_sha256=None,
         preprocessing_version=None,
-        original_path=paths.relative(fixture),
+        original_path=paths.relative(imported),
         sha256=digest,
         duration_ms=metadata.duration_ms,
     )

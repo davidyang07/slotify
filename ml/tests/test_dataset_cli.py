@@ -8,11 +8,13 @@ not just the library functions underneath.
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
 
 from slotify_rank.cli import main
+from slotify_rank.config.settings import canonical_config_path
 from slotify_rank.data.ffmpeg import FFmpegNotFound, require_ffmpeg
 
 
@@ -28,9 +30,23 @@ needs_ffmpeg = pytest.mark.skipif(not _has_ffmpeg(), reason="FFmpeg is not insta
 
 
 @pytest.fixture()
-def workspace(tmp_path: Path):
-    """A scratch data root plus a sources file pointing at a synthesised clip."""
+def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """A scratch repository root holding a data root and a sources file.
+
+    Manifests record repository-relative paths, so a data root outside the
+    repository root cannot be described by one. The scratch directory therefore
+    becomes its own root: the canonical heuristic config is copied in and
+    ``SLOTIFY_REPO_ROOT`` points at it, which is the documented way to run the
+    package from somewhere other than the checkout. Without this the tests only
+    pass when pytest happens to place ``tmp_path`` inside the checkout.
+    """
     from tests.dataset_fixtures import write_speech_like_wav
+
+    canonical_config = canonical_config_path()
+    scratch_config = tmp_path / "config" / canonical_config.name
+    scratch_config.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(canonical_config, scratch_config)
+    monkeypatch.setenv("SLOTIFY_REPO_ROOT", str(tmp_path))
 
     audio = tmp_path / "audio" / "clip-one.wav"
     segments = []
