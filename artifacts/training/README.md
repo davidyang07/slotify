@@ -57,5 +57,5 @@ and are not measurements of anything.
 
 A run whose `label_source` is `human`, trained on the labelling round the
 readiness gate is waiting for. Until one exists,
-`artifacts/reports/resume_evidence.md` reports the ranking-quality claims as
+`artifacts/reports/model_evidence.md` reports ranking quality as
 `NOT YET SUPPORTED`, which is accurate.

@@ -2,11 +2,11 @@
 
 This is the CPU-first PyTorch learning-to-rank system that consumes the Phase 3
 multimodal feature artifacts and trains ranking models over candidates grouped
-by episode. It is the implementation behind the resume claim:
+by episode. It is the implementation behind the ranking capability:
 
-> Trained a multimodal PyTorch learning-to-rank model combining waveform
-> features, speech representations, and transcript embeddings to identify
-> natural podcast ad breaks.
+> A multimodal PyTorch learning-to-rank model combines waveform features, speech
+> representations and transcript embeddings to identify natural podcast ad
+> breaks.
 
 **What Phase 4 is.** The training machinery: dataset loading, eligibility
 checking, train-only normalization, within-episode pair generation, five model
@@ -314,7 +314,7 @@ mode: every value it changes is written to the run's `resolved_config.json` unde
 The committed synthetic smoke evidence lives at
 `artifacts/training/{handcrafted,concat,gated}-*/` (reports committed;
 checkpoints git-ignored). See also the
-[resume-claim matrix](resume-claim-matrix.md) Phase 4 section.
+[evidence matrix](evaluation-evidence.md) Phase 4 section.
 
 ---
 
@@ -362,9 +362,9 @@ headline NDCG improvement all belong to Phase 5**, not here.
 | Data | synthetic fixtures (+ real forward pass) | real human labels only |
 | Output | trainable checkpoints, reports | baseline-vs-model comparison, ablations |
 | Metrics | smoke NDCG — **not** quality evidence | headline NDCG@3 improvement with CIs |
-| Claim | "a trainable multimodal ranker exists" | "it outperforms the heuristic by X%" |
+| Supports | "a trainable multimodal ranker exists" | "it outperforms the heuristic by X %" |
 
 A synthetic smoke NDCG of 1.0 is not a result. It says the optimizer, the loss,
 the metric and the checkpointing are wired correctly on data where the answer is
 known. Quoting it as model quality would be exactly the error the whole
-resume-claim matrix exists to prevent.
+evidence matrix exists to prevent.

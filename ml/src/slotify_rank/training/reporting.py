@@ -65,7 +65,7 @@ WEAK_SUPERVISION_WARNING = (
     "reproduces its teacher and is NOT a ranking-quality result. It must never "
     "be compared against heuristic_offline_v1, because that baseline IS its "
     "teacher. Its purpose is to prove the inference path end to end while the "
-    "human labelling round is outstanding; see docs/resume-claim-matrix.md."
+    "human labelling round is outstanding; see docs/evaluation-evidence.md."
 )
 
 

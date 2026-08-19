@@ -11,7 +11,7 @@ or absolute paths.
 
 **Separation of label provenance.** ``label_status`` distinguishes ``human``,
 ``weak_heuristic`` and ``unlabelled``. These are never summed into one
-"labelled" figure: the resume claim matrix tracks them as separate quantities
+"labelled" figure: the evidence matrix tracks them as separate quantities
 precisely because collapsing them would overstate the human effort.
 
 The third rule is enforced rather than merely documented: candidates the

@@ -106,7 +106,7 @@ def export_labels(
         "label_source": "human",
         "note": (
             "Every row here is a human judgement. Weak or heuristic labels are "
-            "never written to this file; see docs/resume-claim-matrix.md."
+            "never written to this file; see docs/evaluation-evidence.md."
         ),
     }
     metadata_path = destination.with_suffix(destination.suffix + ".meta.json")

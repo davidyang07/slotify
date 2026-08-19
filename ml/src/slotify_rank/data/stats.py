@@ -1,9 +1,9 @@
 """Dataset, candidate, label and split statistics.
 
-Every number the resume ever quotes is computed here, from the manifests, and
-written to ``artifacts/dataset/``. Nothing is typed by hand and nothing is
+Every number the generated reports quote is computed here, from the manifests,
+and written to ``artifacts/dataset/``. Nothing is typed by hand and nothing is
 rounded up. The eight headline quantities named in
-``docs/resume-claim-matrix.md`` are kept strictly separate:
+``docs/evaluation-evidence.md`` are kept strictly separate:
 
 ``processed_audio_hours`` / ``processed_episode_count``
     Audio actually decoded and normalized. Episodes stuck at ``registered`` do

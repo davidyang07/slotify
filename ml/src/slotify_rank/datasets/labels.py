@@ -1,9 +1,9 @@
 """Reading labels for supervised training.
 
 Human labels are the **only** default supervised source. Weak or heuristic
-labels are never loaded by accident: the whole value of the resume claim rests
+labels are never loaded by accident: the whole value of a ranking result rests
 on the model having learned from human judgement, and a loader that silently
-accepted a heuristic-derived score would make that claim unverifiable from the
+accepted a heuristic-derived score would make that result unverifiable from the
 code.
 
 A caller may pass ``allowed_label_sources`` to opt into another source

@@ -201,18 +201,18 @@ comparison denominator is reproducible by anyone.
 
 ---
 
-## Evidence and honesty
+## Evaluation status
 
 This repository is deliberately built so that an unsupported number is hard to
 state. The generated report is the authority:
 
 ```bash
-npm run evidence     # regenerates every artifact, prints the verdicts
-cat artifacts/reports/resume_evidence.md
+npm run evidence     # regenerates every artifact, prints each capability's status
+cat artifacts/reports/model_evidence.md
 ```
 
 **What is measured today** (read from
-[`artifacts/reports/resume_evidence.md`](artifacts/reports/resume_evidence.md),
+[`artifacts/reports/model_evidence.md`](artifacts/reports/model_evidence.md),
 not typed here — re-run the command for current values):
 
 - a real multimodal PyTorch ranker exists, is trained, and is served through the
@@ -221,8 +221,8 @@ not typed here — re-run the command for current values):
   595 generated candidates, 583 with complete multimodal features;
 - **zero human labels exist.** The Phase 5B experiment gate is blocked and says
   so;
-- therefore **no ranking-quality claim is supported**, and the report says
-  `NOT YET SUPPORTED` rather than `0`.
+- therefore **no ranking-quality result is available**, and the report says
+  `NOT YET AVAILABLE` rather than `0`.
 
 The checkpoint that ships is a **weakly supervised bootstrap**: its targets come
 from `heuristic_offline_v1`'s own score, so it is a distillation of the baseline.
@@ -242,13 +242,13 @@ The guard rails, all tested:
 | Weak labels are refused unless named on the command line | `datasets/labels.py` |
 | A headline improvement requires human ground truth, a human-trained model, the test split, the canonical baseline, and no episode overlap | `evaluation/compare.py` |
 | A zero baseline yields `None`, never an infinite improvement | `evaluation/compare.py` |
-| An unmeasured metric renders `NOT YET SUPPORTED`, a measured zero renders `0` | `evaluation/evidence.py` |
+| An unmeasured metric renders `NOT YET AVAILABLE`, a measured zero renders `0` | `evaluation/evidence.py` |
 | Synthetic candidates can never be labelled, featurised or evaluated | `data/schema.py`, `pipeline/stages.py` |
 | Normalization statistics are fitted on the train split only, and refuse others | `datasets/normalizer.py` |
 | The product never invents a recommendation, a score or a reason | `backend/src/lib/`, `frontend/src/lib/` |
 
-See [`docs/resume-claim-matrix.md`](docs/resume-claim-matrix.md) for the full
-claim-to-artifact mapping.
+See [`docs/evaluation-evidence.md`](docs/evaluation-evidence.md) for the full
+capability-to-artifact mapping.
 
 ---
 
@@ -276,7 +276,7 @@ CI runs all of the above except model-smoke on every push, with no credentials.
 │   └── audio_tests/     # Sample audio for manual and CLI testing
 ├── config/
 │   └── heuristic_offline_v1.json   # The frozen baseline, in one place
-├── docs/                # Runbook, claim matrix, pipeline and labelling docs
+├── docs/                # Runbook, evidence matrix, pipeline and labelling docs
 ├── frontend/src/        # React UI; lib/ holds the pure, tested logic
 ├── ml/
 │   ├── configs/         # Versioned YAML for every stage
@@ -302,8 +302,8 @@ CI runs all of the above except model-smoke on every push, with no credentials.
 
 | Document | What it covers |
 | --- | --- |
-| [`docs/demo-runbook.md`](docs/demo-runbook.md) | The 2–3 minute interview walkthrough, with recovery paths |
-| [`docs/resume-claim-matrix.md`](docs/resume-claim-matrix.md) | Every claim mapped to the artifact that proves or refutes it |
+| [`docs/demo-runbook.md`](docs/demo-runbook.md) | The 2–3 minute demo walkthrough, with recovery paths |
+| [`docs/evaluation-evidence.md`](docs/evaluation-evidence.md) | Every capability mapped to the artifact that supports or refutes it |
 | [`docs/model-inference.md`](docs/model-inference.md) | How a request becomes a learned ranking |
 | [`docs/model-training.md`](docs/model-training.md) | The training system |
 | [`docs/feature-pipeline.md`](docs/feature-pipeline.md) | The multimodal feature pipeline |

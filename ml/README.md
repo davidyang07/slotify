@@ -533,14 +533,15 @@ A zero baseline returns `None`, never an infinite improvement.
 ## The evidence report
 
 ```bash
-python -m slotify_rank.cli report resume-evidence
+python -m slotify_rank.cli report model-evidence
 # or, from the repository root, regenerating every upstream artifact first:
 npm run evidence
 ```
 
 Reads every generated artifact and writes
-`artifacts/reports/resume_evidence.{json,md}` with a verdict per claim. Nothing
-in it is typed. A metric nothing produced renders `NOT YET SUPPORTED`; a measured
+`artifacts/reports/model_evidence.{json,md}` with an evidence status per
+capability. Nothing in it is typed. A metric nothing produced renders
+`NOT YET AVAILABLE`; a measured
 zero renders `0`. The two are different strings on purpose — rendering both as
 `0` would let a reader think a metric was measured and came out badly when it was
 never measured at all.

@@ -1,12 +1,12 @@
-# Resume claim-to-evidence matrix
+# Evaluation evidence matrix
 
-Every claim below is **unverified until its generating command succeeds and its artifact exists in
-this repository**. No number in this file may be typed by hand — each is read from the artifact named
-in its row.
+Every capability below is **unverified until its generating command succeeds and its artifact exists
+in this repository**. No number in this file may be typed by hand — each is read from the artifact
+named in its row.
 
 > **Start here.** The authoritative, machine-generated answer is
-> [`artifacts/reports/resume_evidence.md`](../artifacts/reports/resume_evidence.md), produced by
-> `slotify-rank report resume-evidence` (or `npm run evidence`). This document explains the
+> [`artifacts/reports/model_evidence.md`](../artifacts/reports/model_evidence.md), produced by
+> `slotify-rank report model-evidence` (or `npm run evidence`). This document explains the
 > *reasoning*; that report carries the *numbers*, and it is regenerated from the artifacts on
 > every run. Where the two disagree, the report is right and this file is stale.
 
@@ -20,7 +20,7 @@ Phase references point at `docs/multimodal-ranking-mvp-plan.md` §36–37.
 
 ## Phase 1 — foundation (complete)
 
-| Intended claim | Required evidence | Generating command | Artifact | Status |
+| Capability | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
 | A deterministic, reproducible signal-based baseline exists and is the comparison denominator | TypeScript↔Python parity on golden fixtures covering 11 scenarios; every score component serialized; config version stamped into every record | `cd backend; npx tsx scripts/dump-heuristic-golden.ts --out ..\ml\tests\fixtures\heuristic_golden.json` then `cd ml; .\.venv\Scripts\python.exe -m pytest` | `ml/tests/fixtures/heuristic_golden.json`, `config/heuristic_offline_v1.json`, 169 passing tests | **verified** (2026-07-22) |
 | The refactor did not change product behaviour | SHA-256 of the golden output identical before and after hoisting constants; `analyze_cli` output identical on real audio; `npm run typecheck` clean | see above | verification log in this session | **verified** (2026-07-22) |
@@ -31,7 +31,7 @@ The commands, schemas, splits, labelling loop, validation and statistics all exi
 **No dataset target has been reached.** The pipeline has been exercised only on the repository's
 ~4.6-minute smoke fixtures, and every measured number below is that smoke run.
 
-| Intended claim | Required evidence | Generating command | Artifact | Status |
+| Capability | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
 | A reproducible dataset pipeline exists | Import → probe → normalize → generate → split → validate → stats runs end to end with non-zero exit codes on failure; 379 passing tests | see `ml/README.md` § Dataset workflow | `artifacts/dataset/*.json`, `artifacts/dataset/dataset_summary.md` | **verified** (2026-07-22) |
 | Dataset integrity is checked, not assumed | 26 named checks including duplicate IDs, checksum mismatch, out-of-bounds candidates, split leakage by episode **and** by series, synthetic-eligibility violations, and a test partition with no target-domain audio — each with a test that makes it fail | `dataset validate --deep` | `artifacts/dataset/validation_report.json` | **verified** (2026-07-22) |
@@ -49,7 +49,7 @@ models**. As with Phase 2, it has been exercised only on the repository's
 **partially populated using smoke data** — none of it supports a claim about
 model quality, and Phase 3 trains nothing.
 
-| Intended claim | Required evidence | Generating command | Artifact | Status |
+| Capability | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
 | A reproducible, resumable, CPU-first feature pipeline exists | Transcribe → acoustic → audio embed → text embed → assemble → validate → stats, non-zero exit on integrity failure; 607 passing tests, 89% coverage | `pipeline features --deep` | `artifacts/features/*.json`, `feature_summary.md` | **verified** (2026-07-22) |
 | Expensive outputs are cached and interrupted work resumes | Second identical run: 0 recomputed, 4/4 model stages cache-hit, 102 s → 1.2 s; `partial` ledger entries force reprocessing | `pipeline features` twice | `data/features/state/*.json` | **verified** (2026-07-22) |
@@ -92,7 +92,7 @@ runs. **It has been exercised only on deterministic synthetic fixtures** (see
 below); every training metric here is a synthetic smoke result and supports no
 claim about model quality.
 
-| Intended claim | Required evidence | Generating command | Artifact | Status |
+| Capability | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
 | A genuinely trainable multimodal PyTorch ranker exists | Five variants behind one interface; each forward pass runs on the real Phase 3 records; parameter counts reported; all under 1M params | `slotify-rank models describe --model gated` | `artifacts/training/<run_id>/training_summary.json` | **verified** (2026-07-22, synthetic smoke) |
 | Training is reproducible and CPU-first | Deterministic seeds; content-addressed run id; device/dtype recorded; resume equivalent to uninterrupted within 1e-4; runs on CPU with no GPU | `slotify-rank training run --model-config ml/configs/models/gated_v1.yaml` | `artifacts/training/<run_id>/resolved_config.json`, `environment.json` | **verified** (2026-07-22, synthetic smoke) |
@@ -141,7 +141,7 @@ Classification vocabulary for the rows below (per the Phase 5 brief):
 `not yet supported` → `implemented but not populated` → `supported by
 preliminary real data` → `supported by held-out real evaluation`.
 
-| Intended claim | Required evidence | Generating command | Artifact | Status |
+| Capability | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
 | A real target-domain corpus is registered under clear licences | ≥ 6 public-domain series, all `direct_download` with `license_name`+`license_url`, all target-domain, verified against the IA metadata API | `dataset fetch --sources ml/configs/sources_real_v1.yaml` | `ml/configs/sources_real_v1.yaml`, `data/manifests/episodes.jsonl` | **supported by preliminary real data** |
 | Enough real audio is processed to yield ≥ 300 eligible candidates with complete features | probe → normalize → generate → `pipeline features`; complete multimodal records reported | `dataset stats --split-version v2` | `artifacts/dataset/*.json`, `data/manifests/features.jsonl` | **supported by preliminary real data** (~0.8 h, ~575 real candidates, majority `complete`) |
@@ -168,13 +168,15 @@ Baseline naming, used consistently in every later report:
 
 ---
 
-## Bullet 1 — the model
+## Ranking quality — the model
 
-> Trained a multimodal PyTorch ranker combining waveform features, speech representations, and
-> transcript embeddings to identify natural podcast ad breaks, outperforming a signal-based baseline
-> by **X %** NDCG@3.
+The result this project is built to produce, and the evidence each part of it requires:
 
-| Intended claim | Required evidence | Generating command | Artifact | Status |
+> A multimodal PyTorch ranker combining waveform features, speech representations and transcript
+> embeddings identifies natural podcast ad breaks, outperforming the signal-based baseline by
+> **X %** NDCG@3 — where `X` is whatever the held-out comparison measures.
+
+| Capability | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
 | Multimodal PyTorch ranker exists and is trained | Architecture definition, trained checkpoint, parameter count, per-modality gate values | `slotify-rank training run --model-config ml/configs/models/gated_v1.yaml` | `artifacts/training/{run_id}/best_checkpoint.pt`, `training_summary.md` | **machinery verified on synthetic smoke data (2026-07-22); awaiting real labels** |
 | Three modalities genuinely contribute | 6-model comparison + 6 required ablations × 3 seeds, mean ± std | `slotify-rank ablate --config configs/ablations.yaml --seeds 3` | `artifacts/evaluation/ablation_results.csv` | not started |
@@ -188,21 +190,21 @@ Baseline naming, used consistently in every later report:
 ndcg_improvement_pct = 100 * (model_ndcg_at_3 - baseline_ndcg_at_3) / baseline_ndcg_at_3
 ```
 
-in `ml/src/slotify_rank/eval/report.py`. **If the CI on `X` includes zero, the bullet must say so or
-be dropped.**
+in `ml/src/slotify_rank/eval/report.py`. **If the CI on `X` includes zero, the report must say so
+and no improvement may be reported as a result.**
 
 ---
 
-## Bullet 2 — the dataset and evaluation pipeline
+## Dataset and evaluation pipeline
 
-> Built a dataset and evaluation pipeline spanning **`processed_audio_hours`** hours of audio and
-> **`generated_candidate_count`** candidate breakpoints, evaluated against a held-out
-> human-labelled subset, achieving **Y %** agreement with human-preferred placements and reducing
+> A dataset and evaluation pipeline spans **`processed_audio_hours`** hours of audio and
+> **`generated_candidate_count`** candidate breakpoints, is evaluated against a held-out
+> human-labelled subset, reaches **Y %** agreement with human-preferred placements, and reduces
 > manual editing time by **Z %**.
 
-The wording must make clear that the large corpus is *processed*, not *hand-labelled*. Phrasings such
-as "10,000+ hand-labelled breakpoints" are prohibited: the human-labelled subset is ≈1 500 candidates
-over ≈8–12 hours, and that is the number tied to any labelling claim.
+Any description of the corpus must make clear that it is *processed*, not *hand-labelled*. Phrasings
+such as "10,000+ hand-labelled breakpoints" are prohibited: the human-labelled subset is ≈1 500
+candidates over ≈8–12 hours, and that is the number tied to any labelling statement.
 
 ### The five dataset quantities, tracked and reported separately
 
@@ -220,7 +222,7 @@ artifacts and its own row below.
 | `unlabelled_candidate_count` | generated but never rated | reported as measured |
 | `processed_episode_count` | episodes at status `normalized` | reported as measured |
 
-| Intended claim | Required evidence | Generating command | Artifact | Status |
+| Capability | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
 | **`processed_audio_hours`** (target 50+) | Measured total duration; episode count; breakdown by source, licence and content type; per-split duration | `dataset import-local` / `fetch` → `dataset probe` → `dataset normalize` → `dataset stats` | `artifacts/dataset/dataset_statistics.json` → `processed_audio_hours` | **implemented, smoke-populated** (0.0365 h / 7 episodes) |
 | **`generated_candidate_count`** (target 10 000+) | Measured candidate count; counts by generator source; before/after merge; % from fixed intervals; **separate** totals for human / weak / unlabelled | `candidates generate --config ml/configs/dataset_v1.yaml` then `dataset stats` | `artifacts/dataset/candidate_statistics.json` → `generated_candidate_count` | **implemented, smoke-populated** (20) |
@@ -262,8 +264,8 @@ as median and mean with a bootstrap 95 % CI and the participant/episode counts s
    ground-truth label is not `human`.
 3. **Human preference is never computed from model or heuristic output.** `human-eval` refuses to run
    outside the test split and requires human labels.
-4. **Targets are not results.** 50 hours, 10 000 candidates, and ~80 % are *design targets*. The
-   resume quotes the measured values from the artifacts above, whatever they turn out to be.
+4. **Targets are not results.** 50 hours, 10 000 candidates, and ~80 % are *design targets*. Every
+   report quotes the measured values from the artifacts above, whatever they turn out to be.
 5. **No row is marked `verified` while its command has never been run on the current commit.**
 6. **The headline denominator is credential-free.** `heuristic_offline_v1` needs no API key, no
    network and no GPU, so the NDCG@3 comparison is reproducible by anyone who clones the repo.
@@ -276,7 +278,7 @@ as median and mean with a bootstrap 95 % CI and the participant/episode counts s
 
 ---
 
-# Phase 6 — product inference, evaluation, and the current verdicts
+# Phase 6 — product inference, evaluation, and the current evidence
 
 Phase 6 closed the gap the earlier phases left: a substantial ML package existed,
 and the running product did not use it. It also built the machinery that turns
@@ -285,7 +287,7 @@ may not be quoted."
 
 ## What changed
 
-| Intended claim | Required evidence | Generating command | Artifact | Status |
+| Capability | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
 | The learned ranker is genuinely wired into the product | `/api/insert-sections` scores real uploads with a real checkpoint; every response names the model, its run id and the labels it was trained on | `npm run demo`, then upload audio | live response `provenance.source = learned_ranker` | **verified** (2026-08-18) |
 | Product inference cannot drift from training | The upload is featurised by the *same* Phase 3 stage functions the corpus uses, not a serving-specific reimplementation | `slotify-rank infer rank --audio …` | `ml/src/slotify_rank/inference/episode.py` | **verified** |
@@ -294,7 +296,7 @@ may not be quoted."
 | A ranking score is never presented as a probability | `placement_score` + `raw_score` + `scoreScale` + `isCalibratedProbability: false` on every response | `npm run verify:backend` | `backend/src/lib/placement.ts` | **verified** |
 | Analysis works with no credentials | Server starts and ranks with no `ELEVENLABS_API_KEY`; `GET /api/capabilities` reports `placement: true` | `npm run demo` with no `.env` | `/api/capabilities` | **verified** |
 | A held-out comparison exists and refuses unearned numbers | Four independent gates: non-human ground truth, non-human-trained model, non-test split, episode overlap. Plus: a zero baseline yields `None`, never an infinite improvement | `slotify-rank evaluation compare …` | `artifacts/evaluation/<id>/comparison.json` | **verified**, and correctly **blocked** on current data |
-| The evidence report distinguishes zero from unmeasured | `NOT YET SUPPORTED` vs `0` are different strings all the way to the markdown | `slotify-rank report resume-evidence` | `artifacts/reports/resume_evidence.{json,md}` | **verified** |
+| The evidence report distinguishes zero from unmeasured | `NOT YET AVAILABLE` vs `0` are different strings all the way to the markdown | `slotify-rank report model-evidence` | `artifacts/reports/model_evidence.{json,md}` | **verified** |
 
 ## The bootstrap checkpoint, stated plainly
 
@@ -309,9 +311,10 @@ rubric within each episode. It is a **distillation of the baseline**.
 | `evidence_class` | weakly supervised bootstrap — not a model-quality result |
 | Validation NDCG@3 | 1.0 — **meaningless as quality**: it measures fidelity to its teacher |
 
-It is admissible evidence for Claim A (a multimodal PyTorch ranker exists, is
-trained on real audio features, and is served). It is inadmissible for Claims B
-and C, and four separate mechanisms enforce that:
+It is admissible evidence for **multimodal learned ranking** (a multimodal
+PyTorch ranker exists, is trained on real audio features, and is served). It is
+inadmissible for **human-labelled dataset scale** and **held-out ranking
+improvement**, and four separate mechanisms enforce that:
 
 1. `datasets/labels.py` refuses weak labels unless the source is named on the
    command line;
@@ -322,22 +325,23 @@ and C, and four separate mechanisms enforce that:
 4. `services/ranker.ts` attaches a warning to every product response the model
    produces.
 
-## Current verdicts
+## Current evidence status
 
-Read from `artifacts/reports/resume_evidence.md`. Re-run `npm run evidence` for
+Read from `artifacts/reports/model_evidence.md`. Re-run `npm run evidence` for
 live values; these were the values at the time of writing.
 
-| Claim | Verdict | Why |
+| Capability | Evidence status | Why |
 |---|---|---|
-| **A** — "Built a multimodal PyTorch ranker using audio and transcript features to detect natural podcast ad breaks." | **SUPPORTED** | A 489,477-parameter gated fusion model consumes `openai/whisper-tiny.en` speech representations, `sentence-transformers/all-MiniLM-L6-v2` transcript embeddings and 110 handcrafted scalars, and is served through `/api/insert-sections`. The served checkpoint is weakly supervised, which the report states. |
-| **B** — "Trained on 2,400+ labelled candidates." | **NOT YET SUPPORTED** | `human_labelled_candidate_count = 0`. 595 candidates were *generated*; generated candidates are not labels, and the report keeps the two fields apart precisely so they cannot be conflated. |
-| **C** — "Improving NDCG@3 by 18% over the heuristic baseline." | **NOT YET SUPPORTED** | No publishable held-out comparison exists. One comparison ran and is recorded, blocked, with its real measured numbers visible. |
+| **Multimodal learned ranking** — a multimodal PyTorch ranker consumes audio and transcript features to rank candidate ad breaks, and serves the product. | **SUPPORTED** | A 489,477-parameter gated fusion model consumes `openai/whisper-tiny.en` speech representations, `sentence-transformers/all-MiniLM-L6-v2` transcript embeddings and 110 handcrafted scalars, and is served through `/api/insert-sections`. The served checkpoint is weakly supervised, which the report states. |
+| **Human-labelled dataset scale** — enough human labels, spread widely enough, for the readiness gate to pass. | **NOT YET SUPPORTED** | `human_labelled_candidate_count = 0`. 595 candidates were *generated*; generated candidates are not labels, and the report keeps the two fields apart precisely so they cannot be conflated. |
+| **Held-out ranking improvement** — a measured relative NDCG@3 improvement over `heuristic_offline_v1`. | **NOT YET SUPPORTED** | No publishable held-out comparison exists. One comparison ran and is recorded, blocked, with its real measured numbers visible. |
 
-**Claims B and C must not appear on a resume in their current form.** The
-infrastructure to earn them is complete and tested; what is missing is human
-labelling time, which is human work and cannot be synthesised.
+**Neither the dataset-scale nor the ranking-improvement capability may be
+reported as a result in its current form.** The infrastructure to establish both
+is complete and tested; what is missing is human labelling time, which is human
+work and cannot be synthesised.
 
-## What it would take to earn B and C
+## What would establish the two outstanding capabilities
 
 1. `slotify-rank label serve --queue data/labels/queue_v1.json` and label the
    280-candidate queue. The readiness gate needs at least 200 unique candidates
@@ -346,42 +350,10 @@ labelling time, which is human work and cannot be synthesised.
 3. `experiment freeze --snapshot-version v1` for an immutable label snapshot.
 4. `training run` on human labels, ideally with 3+ seeds, reporting mean and std.
 5. `evaluation compare --split test --require-publishable` must exit 0.
-6. `report resume-evidence` will then fill in the headline automatically.
+6. `report model-evidence` will then fill in the headline automatically.
 
-Note the arithmetic on claim B: the queue is 280 candidates and the plan's own
-target for the full labelling programme is around 1,500. **2,400+ is not a number
-this project's design produces.** If the resume is to quote a labelled-candidate
-count, it should quote whatever `human_labelled_candidate_count` actually reads
-when the round finishes.
-
----
-
-# Recommended stack line
-
-The resume currently lists **TypeScript, React, Node.js, FastAPI**. That line
-omits PyTorch, which is the central technology of the bullet it sits above, and
-over-weights FastAPI, which in this repository hosts the internal labelling tool
-rather than the product API.
-
-**Recommended:**
-
-> Python, PyTorch, TypeScript, React, Node.js
-
-Rationale, in order of how much of the interesting work each represents:
-
-- **Python + PyTorch** — the ranker, the feature pipeline, the dataset system,
-  the training loop and the evaluation harness. This is the majority of the
-  repository and all of the difficulty. A stack line that omits PyTorch under a
-  bullet beginning "Built a multimodal PyTorch ranker" invites the interviewer to
-  wonder which of the two is wrong.
-- **TypeScript + React** — the product UI and the whole product API.
-- **Node.js** — the API runtime, and the boundary that spawns the ranker.
-
-If a fifth slot is available, **Whisper / sentence-transformers** says more about
-the work than FastAPI does. If FastAPI must stay, it is defensible only when
-described as the labelling service — claiming it as the product API would be
-false, and is exactly the kind of detail an interviewer checks by opening the
-repository.
-
-Deliberately not listed: ElevenLabs and OpenAI are optional integrations, not
-stack; ffmpeg is a dependency, not a skill.
+On dataset scale, the arithmetic the programme actually produces: the current
+queue is 280 candidates and the full labelling programme targets around 1,500.
+Any statement about labelled-candidate count quotes whatever
+`human_labelled_candidate_count` reads when the round finishes — the report
+holds no target figure to measure against, only the readiness gate.

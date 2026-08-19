@@ -1,6 +1,6 @@
 # Demo runbook
 
-A 2–3 minute walkthrough for a technical interview, and what to do when
+A 2–3 minute technical walkthrough of the running system, and what to do when
 something breaks. Read the recovery section before you need it.
 
 ---
@@ -16,7 +16,7 @@ optional paid APIs, and the demo is designed to work without them.
 
 Pick your clip. **60–120 seconds of speech.** Longer is worse: Whisper
 transcription is the dominant cost and runs at roughly real time on CPU, so a
-10-minute episode is a 90-second wait in front of an interviewer.
+10-minute episode is a 90-second wait in front of an audience.
 `backend/audio_tests/rogan-test1.mp3` (19 s) is the safe default and is already
 in the repository.
 
@@ -110,8 +110,8 @@ Render, play the merged audio, download.
 npm run evidence
 ```
 
-Show `artifacts/reports/resume_evidence.md`. Every number in it is read from a
-generated artifact; `NOT YET SUPPORTED` means nothing produced that number, and
+Show `artifacts/reports/model_evidence.md`. Every number in it is read from a
+generated artifact; `NOT YET AVAILABLE` means nothing produced that number, and
 a measured zero prints as `0`. The two are deliberately different strings.
 
 **If they ask about architecture**, the README's Mermaid diagram is the fastest

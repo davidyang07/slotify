@@ -255,8 +255,8 @@ class EpisodeTranscript:
         """Total speech covered by segments (not the episode duration).
 
         Reported separately from the episode duration because the gap between
-        them is the silence the model found, which is exactly what the resume
-        claim "transcribed audio hours" must not overstate.
+        them is the silence the model found, which is exactly what the
+        reported "transcribed audio hours" must not overstate.
         """
         return sum(segment.duration_ms for segment in self.segments)
 

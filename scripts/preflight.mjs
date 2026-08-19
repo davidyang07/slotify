@@ -2,8 +2,8 @@
 /**
  * Slotify demo preflight.
  *
- * Answers one question before an interview, not during it: will the demo work,
- * and if something is missing, does it matter?
+ * Answers one question before a demo, not during it: will the demo work, and
+ * if something is missing, does it matter?
  *
  * Every check reports REQUIRED or OPTIONAL. A missing OPTIONAL is a WARN and
  * exits 0 -- the placement demo needs no API keys, and treating an absent

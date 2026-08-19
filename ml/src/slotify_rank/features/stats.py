@@ -1,6 +1,6 @@
 """Machine-readable and Markdown statistics for the feature pipeline.
 
-These reports are the evidence trail behind ``docs/resume-claim-matrix.md``.
+These reports are the evidence trail behind ``docs/evaluation-evidence.md``.
 The rule they follow is the same one Phase 2 established: quantities that mean
 different things are never summed. ``complete`` multimodal records are reported
 separately from ``audio_only`` and ``text_only`` ones; transcribed audio

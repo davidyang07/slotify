@@ -72,7 +72,7 @@ export interface RankerProvenance {
   /**
    * Always false today. `placement_score` is a ranking score, not a calibrated
    * probability, and nothing in this repository has been calibrated against
-   * held-out human labels. See docs/resume-claim-matrix.md.
+   * held-out human labels. See docs/evaluation-evidence.md.
    */
   isCalibratedProbability: false;
 }
