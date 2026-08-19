@@ -1056,7 +1056,7 @@ artifacts/       # gitignored except *.md / *.json / *.csv reports
 docs/
   multimodal-ranking-mvp-plan.md      (this file)
   evaluation-evidence.md
-  architecture.md      dataset-card.md      labeling-guide.md
+  model-inference.md   dataset-card.md      labelling-guide.md
 backend/
   ad_inserter/heuristic_config.py     # NEW: named, versioned heuristic profiles
   src/services/ranker.ts              # NEW
@@ -1105,7 +1105,7 @@ every other route and service.
 
 **Later phases** (created, not in Phase 1): everything else under `ml/src/slotify_rank/`;
 `backend/src/services/ranker.ts` and the `insert-sections.ts` / `App.tsx` edits (Phase 7);
-`docs/architecture.md`, `docs/dataset-card.md`, `artifacts/models/model_card.md` (Phase 7).
+`docs/model-inference.md`, `docs/dataset-card.md`, `artifacts/models/model_card.md` (Phase 7).
 
 **Move / delete: none.** `backend/audio_tests/` stays where it is and becomes the smoke-test fixture
 directory (documented as such, not as a dataset).
@@ -1137,7 +1137,7 @@ Given **no CUDA device** on this machine:
 | Integration | full pipeline on the 13 `audio_tests/` files (`smoke.yaml`): fetch-skip → transcribe → candidates → features → train 2 epochs on synthetic labels → evaluate → report, all under 5 minutes on CPU; FastAPI `TestClient` end-to-end on one 18 s file; Express→FastAPI round trip with the ranker up and, separately, down (fallback path) |
 | Regression | `test_legacy_path` asserts `/api/insert-sections` with `RANKER_ENABLED` unset reproduces the Phase-1 golden outputs |
 | Data | `validate.py` invoked as a pytest case over the real manifest |
-| Manual | labelling UI checklist in `docs/labeling-guide.md`; the human-eval and benchmark protocols |
+| Manual | labelling UI checklist in `docs/labelling-guide.md`; the human-eval and benchmark protocols |
 
 `pytest -m "not slow"` is the default; anything touching real model weights is marked `slow`.
 Coverage target for `ml/src/slotify_rank/{candidates,features,eval,training}`: **≥ 80 %**. Node side
@@ -1194,7 +1194,7 @@ Maintained canonically in `docs/evaluation-evidence.md`. Summary:
 | `held_out_evaluation_candidate_count` | human-labelled candidates in the test split only | `slotify-rank validate` + `dataset-stats` | `artifacts/dataset/split_statistics.json` | not started |
 | Y % human agreement (A1) | blind evaluation, ≥1 non-author evaluator, A1/A2/A3 with definitions | `slotify-rank human-eval --split test` | `artifacts/evaluation/human_preference_results.json` | not started |
 | Editing-time reduction (measured) | timed counterbalanced study, ≥3 participants | `slotify-rank benchmark-report` | `artifacts/benchmarks/editing_time_results.csv` | not started |
-| FastAPI + product integration | end-to-end test upload → rank → preview → export | `pytest ml/tests/integration -m e2e` | test report + `docs/architecture.md` | not started |
+| FastAPI + product integration | end-to-end test upload → rank → preview → export | `pytest ml/tests/integration -m e2e` | test report + `docs/model-inference.md` | not started |
 
 **No claim is marked complete until its command succeeds and its artifact exists in the repo.**
 
@@ -1398,7 +1398,7 @@ pytest ml/tests/integration -m e2e
 cd frontend && npm run lint && npm run build
 ```
 **Acceptance:** upload → ML-ranked points → preview → export works in the browser; with the ranker
-down the legacy path still works and matches the Phase-1 golden; `docs/architecture.md`,
+down the legacy path still works and matches the Phase-1 golden; `docs/model-inference.md`,
 `docs/dataset-card.md`, `artifacts/models/model_card.md`, and an updated README exist; every completed
 row of the evidence matrix links to a real artifact.
 

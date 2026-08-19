@@ -49,7 +49,8 @@ htmlcov/
 *.npy
 
 # Experiment artifacts. Generated reports ARE committed -- they are the
-# evidence trail for the claim matrix -- so only the bulky binaries are ignored.
+# evidence trail for the evaluation matrix -- so only the bulky binaries are
+# ignored.
 artifacts/**
 !artifacts/
 !artifacts/**/
