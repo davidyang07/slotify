@@ -19,6 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { selectCheckpoint } from "./lib/select-checkpoint.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -54,23 +55,28 @@ if (!skipPreflight) {
   }
 }
 
-const defaultCheckpoint = path.join(
-  REPO_ROOT,
-  "artifacts",
-  "training",
-  "gated-d8ed976101aa4c3b",
-  "best_checkpoint.pt",
-);
-
 const env = { ...process.env };
 if (heuristicOnly) {
   env.RANKER_MODE = "heuristic";
 } else {
   env.RANKER_MODE = env.RANKER_MODE ?? "auto";
-  // Point at the committed bootstrap checkpoint unless the operator chose one.
-  // auto still falls back to the heuristic if this file is absent, and says so.
-  if (!env.SLOTIFY_RANKER_CHECKPOINT && fs.existsSync(defaultCheckpoint)) {
-    env.SLOTIFY_RANKER_CHECKPOINT = path.relative(REPO_ROOT, defaultCheckpoint);
+  // Serve a human-trained checkpoint when one exists, and the committed
+  // bootstrap otherwise -- saying which, because the two mean very different
+  // things. An operator's own SLOTIFY_RANKER_CHECKPOINT always wins.
+  if (!env.SLOTIFY_RANKER_CHECKPOINT) {
+    const selected = selectCheckpoint(REPO_ROOT);
+    if (selected.checkpoint) {
+      env.SLOTIFY_RANKER_CHECKPOINT = selected.checkpoint;
+      console.log(`Ranker checkpoint: ${selected.checkpoint}`);
+      console.log(`  label_source=${selected.labelSource} -- ${selected.reason}`);
+      if (!selected.isHumanTrained) {
+        console.log(
+          "  Every /api/insert-sections response will carry that caveat too.",
+        );
+      }
+    } else {
+      console.log(`Ranker checkpoint: none (${selected.reason})`);
+    }
   }
 }
 

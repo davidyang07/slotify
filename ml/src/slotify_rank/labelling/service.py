@@ -356,8 +356,12 @@ def create_app(
     if queue is not None:
         queued_ids = set(queue.unique_candidate_ids)
         eligible = [c for c in eligible if c.candidate_id in queued_ids]
+        # The set is built once. Rebuilding it inside the comprehension would
+        # make this quadratic, which at a few thousand candidates is the
+        # difference between instant startup and a visible stall.
+        served_ids = {candidate.candidate_id for candidate in eligible}
         presentations: list[QueuePresentation] = [
-            p for p in queue.presentations if p.candidate_id in {c.candidate_id for c in eligible}
+            p for p in queue.presentations if p.candidate_id in served_ids
         ]
         queue_version = queue.queue_version
     else:
@@ -496,7 +500,11 @@ def create_app(
     # Presentation ids are the client's handle on everything, including audio, so
     # a repeat's clip URL differs from its original's and the browser cache
     # cannot leak the fact that the two are the same clip.
-    presentation_to_candidate = {p.presentation_id: p.candidate_id for p in presentations}
+    presentation_by_id = {p.presentation_id: p for p in presentations}
+    presentation_to_candidate = {
+        presentation_id: presentation.candidate_id
+        for presentation_id, presentation in presentation_by_id.items()
+    }
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:
@@ -612,9 +620,7 @@ def create_app(
         annotator_id = str(payload.get("annotator_id") or "")
         notes = payload.get("notes")
         elapsed = payload.get("elapsed_ms")
-        presentation = next(
-            p for p in presentations if p.presentation_id == presentation_id
-        )
+        presentation = presentation_by_id[presentation_id]
         try:
             record = database.upsert_label(
                 candidate_id=candidate_id,

@@ -22,6 +22,10 @@ import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  BOOTSTRAP_CHECKPOINT,
+  selectCheckpoint,
+} from "./lib/select-checkpoint.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const asJson = process.argv.includes("--json");
@@ -152,9 +156,11 @@ record(
 
 // -- the learned ranker -----------------------------------------------------
 
+const selectedCheckpoint = selectCheckpoint(REPO_ROOT);
 const checkpoint =
   process.env.SLOTIFY_RANKER_CHECKPOINT ??
-  "artifacts/training/gated-d8ed976101aa4c3b/best_checkpoint.pt";
+  selectedCheckpoint.checkpoint ??
+  BOOTSTRAP_CHECKPOINT;
 const checkpointPath = path.resolve(REPO_ROOT, checkpoint);
 const normalizerPath = path.join(path.dirname(checkpointPath), "normalizer.json");
 const checkpointReady =
@@ -164,7 +170,12 @@ record(
   "OPTIONAL",
   checkpointReady ? "OK" : "WARN",
   checkpointReady
-    ? path.relative(REPO_ROOT, checkpointPath)
+    ? // The label source is the whole difference between a checkpoint that
+      // demonstrates the plumbing and one an evaluation result describes, so it
+      // is on the same line as the path rather than a paragraph away.
+      `${path.relative(REPO_ROOT, checkpointPath)} (label_source=${
+        selectedCheckpoint.labelSource ?? "unknown"
+      })`
     : `${checkpoint} not found -- RANKER_MODE=auto will use the heuristic baseline`,
 );
 
