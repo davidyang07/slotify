@@ -26,6 +26,7 @@ from slotify_rank.data.checksum import atomic_write_bytes
 from slotify_rank.data.paths import DataPaths
 from slotify_rank.data.schema import EpisodeRecord
 from slotify_rank.features.schema import CandidateFeatureRecord
+from slotify_rank.pipeline.identity import library_versions
 from slotify_rank.pipeline.state import STAGE_NAMES, StageLedger
 
 __all__ = ["compute_feature_statistics", "write_feature_statistics"]
@@ -115,6 +116,14 @@ def compute_feature_statistics(
         "feature_pipeline_version": FEATURE_PIPELINE_VERSION,
         "feature_spec_version": FEATURE_SPEC_VERSION,
         "transcription_version": TRANSCRIPTION_VERSION,
+        # Which libraries actually produced these features, read from the
+        # installed distributions rather than declared. `absent` is recorded as
+        # `absent`, so a report can state that a stage ran without a library
+        # rather than implying it was there.
+        "library_versions": library_versions(
+            "librosa", "numpy", "scipy", "torch", "transformers",
+            "sentence-transformers", "soundfile",
+        ),
         "episodes": {
             "selected": len(episodes),
             "with_feature_records": len({record.episode_id for record in records}),

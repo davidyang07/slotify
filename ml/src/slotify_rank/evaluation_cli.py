@@ -69,11 +69,18 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     from slotify_rank.data.splits import read_split_manifest
     from slotify_rank.datasets.loader import EligibilityConfig, build_examples
     from slotify_rank.datasets.labels import read_label_export
+    from slotify_rank.baselines.classical import (
+        ClassicalBaselineConfig,
+        fit_classical_baseline,
+    )
+    from slotify_rank.data.checksum import sha256_file
     from slotify_rank.evaluation.compare import (
+        BootstrapConfig,
         ComparisonInputs,
         compare,
         write_comparison,
     )
+    from slotify_rank.evaluation.metrics import MetricConfig, evaluate_rankings
     from slotify_rank.features.assemble import read_feature_manifest
     from slotify_rank.inference.predictor import RankerPredictor
     from slotify_rank.training.config import git_commit
@@ -114,6 +121,36 @@ def _cmd_compare(args: argparse.Namespace) -> int:
         split_lookup=split_lookup,
     )
     examples = loaded.examples
+
+    # The training split is loaded too, for two reasons that both need it and
+    # neither of which may touch the evaluation split: fitting the classical
+    # comparison point, and reporting how many labels each split actually holds.
+    train_loaded = build_examples(
+        paths=paths,
+        header=header,
+        records=records,
+        labels=labels,
+        config=EligibilityConfig(
+            require_labels=True,
+            require_acceptability_label=False,
+            splits=("train",),
+        ),
+        candidates=candidates,
+        split_lookup=split_lookup,
+    )
+    validation_loaded = build_examples(
+        paths=paths,
+        header=header,
+        records=records,
+        labels=labels,
+        config=EligibilityConfig(
+            require_labels=True,
+            require_acceptability_label=False,
+            splits=("validation",),
+        ),
+        candidates=candidates,
+        split_lookup=split_lookup,
+    )
     if not examples:
         print(
             f"error: no labelled candidate in the {args.split!r} split. "
@@ -157,6 +194,30 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     }
 
     commit = git_commit(paths.repo_root)
+
+    def _hash(path: Path | None) -> str | None:
+        return sha256_file(path) if path and Path(path).is_file() else None
+
+    artifact_hashes = {
+        "label_export": _hash(label_export),
+        "feature_manifest": _hash(paths.features_manifest),
+        "candidate_manifest": _hash(paths.candidates_manifest),
+        "episode_manifest": _hash(paths.episodes_manifest),
+        "split_manifest": _hash(split_manifest),
+        "model_checkpoint": _hash(checkpoint),
+        "baseline_config": _hash(paths.repo_root / "config" / "heuristic_offline_v1.json"),
+    }
+
+    experiment_version = ""
+    experiment_digest = ""
+    if args.experiment_config:
+        from slotify_rank.experiment.canonical import load_experiment_config
+
+        experiment = load_experiment_config(Path(args.experiment_config))
+        experiment_version = experiment.experiment_version
+        experiment_digest = experiment.digest()
+        artifact_hashes["experiment_config"] = _hash(Path(args.experiment_config))
+
     inputs = ComparisonInputs(
         split=args.split,
         label_source=labels.label_source,
@@ -173,6 +234,9 @@ def _cmd_compare(args: argparse.Namespace) -> int:
         git_sha=commit,
         dataset_version=(loaded.schema.dataset_version if loaded.schema else ""),
         seeds=tuple(args.seed or ()),
+        experiment_version=experiment_version,
+        experiment_config_digest=experiment_digest,
+        artifact_hashes=artifact_hashes,
     )
 
     evaluation_id = args.evaluation_id or _evaluation_id(
@@ -186,6 +250,26 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     )
 
     training_episodes = _training_episode_ids(checkpoint)
+
+    episodes = (
+        manifests.read_episodes(paths.episodes_manifest)
+        if paths.episodes_manifest.is_file()
+        else []
+    )
+    series_by_episode = {e.episode_id: e.series_id for e in episodes}
+
+    classical = _classical_block(
+        train_examples=train_loaded.examples,
+        evaluation_examples=examples,
+        relevance_threshold=args.relevance_threshold,
+        seed=args.classical_seed,
+        enabled=not args.skip_classical_baseline,
+        fit=fit_classical_baseline,
+        config_cls=ClassicalBaselineConfig,
+        metric_config_cls=MetricConfig,
+        evaluate=evaluate_rankings,
+    )
+
     result = compare(
         examples=examples,
         baseline_scores=baseline_scores,
@@ -194,6 +278,19 @@ def _cmd_compare(args: argparse.Namespace) -> int:
         evaluation_id=evaluation_id,
         training_episode_ids=training_episodes,
         relevance_threshold=args.relevance_threshold,
+        bootstrap=BootstrapConfig(
+            resamples=args.bootstrap_resamples,
+            confidence=args.bootstrap_confidence,
+            seed=args.bootstrap_seed,
+        ),
+        series_by_episode=series_by_episode,
+        cohort_examples={
+            "train": train_loaded.examples,
+            "validation": validation_loaded.examples,
+            args.split: examples,
+        },
+        classical_baseline=classical,
+        require_metric_crosscheck=not args.allow_missing_crosscheck,
     )
     if not training_episodes:
         result.warnings.append(
@@ -234,6 +331,80 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _classical_block(
+    train_examples,
+    evaluation_examples,
+    relevance_threshold: float,
+    seed: int,
+    enabled: bool,
+    fit,
+    config_cls,
+    metric_config_cls,
+    evaluate,
+) -> dict[str, Any]:
+    """Fit the classical comparison point and score it on the same episodes.
+
+    Returns the recorded block for the comparison artifact. When scikit-learn is
+    absent or the fit cannot run, the block says so with a reason rather than
+    being omitted -- a missing comparison point is a fact about the run.
+    """
+    if not enabled:
+        return {
+            "available": False,
+            "reason": "--skip-classical-baseline was passed",
+        }
+    result = fit(
+        train_examples,
+        evaluation_examples,
+        config_cls(seed=seed),
+    )
+    block = result.to_dict()
+    if not result.available:
+        return block
+
+    from slotify_rank.evaluation.compare import build_judgements, build_predictions
+
+    grouped: dict[str, list] = {}
+    for example in evaluation_examples:
+        grouped.setdefault(example.episode_id, []).append(example)
+    report = evaluate(
+        build_predictions(grouped, result.scores),
+        build_judgements(grouped),
+        metric_config_cls(k=3, relevance_threshold=relevance_threshold),
+    )
+    block["ndcg_at_3"] = report.aggregate["ndcg_at_k"]
+    block["episode_count"] = len(grouped)
+    return block
+
+
+def _volatile_free(text: str) -> str:
+    """A generated report minus the two lines that move on every run.
+
+    The git SHA and the generation timestamp are facts about *when* a report was
+    produced, not claims it makes. Everything else in the markdown is derived
+    from the committed artifacts, so a difference anywhere else means the report
+    and its inputs have genuinely diverged.
+    """
+    return "\n".join(
+        line
+        for line in text.splitlines()
+        if not line.startswith(("- Git SHA:", "- Generated:"))
+    )
+
+
+def _report_is_current(path: Path, expected: str, regenerate_with: str) -> int:
+    actual = path.read_text(encoding="utf-8") if path.is_file() else ""
+    if _volatile_free(actual) == _volatile_free(expected):
+        print(f"{path} agrees with its raw artifacts.")
+        return 0
+    print(
+        f"error: {path} disagrees with what the raw artifacts now produce. "
+        f"Re-run `{regenerate_with}` and commit the result.",
+        file=sys.stderr,
+    )
+    return 1
+
+
 def _cmd_model_evidence(args: argparse.Namespace) -> int:
     from slotify_rank.evaluation.evidence import collect_evidence, write_evidence
 
@@ -247,6 +418,14 @@ def _cmd_model_evidence(args: argparse.Namespace) -> int:
     directory = (
         Path(args.output_dir) if args.output_dir else artifacts_root / "reports"
     )
+    if args.check:
+        from slotify_rank.evaluation.evidence import render_markdown
+
+        return _report_is_current(
+            directory / "model_evidence.md",
+            render_markdown(evidence.to_dict()),
+            "npm run evidence",
+        )
     written = write_evidence(directory, evidence)
 
     print(f"Model evidence at git {evidence.git_sha}")
@@ -263,6 +442,91 @@ def _cmd_model_evidence(args: argparse.Namespace) -> int:
         print(f"  {key}: {evidence.measurements.get(key)}")
     for path in written.values():
         print(f"  wrote {path}")
+    return 0
+
+
+def _cmd_resume_evidence(args: argparse.Namespace) -> int:
+    """Regenerate artifacts/reports/resume_evidence.{md,json} from the artifacts.
+
+    ``--check`` regenerates into memory and compares against what is committed,
+    so CI can prove the published summary still agrees with its raw inputs. That
+    is the guard against the one failure mode a generated report cannot fix by
+    itself: a report that was true when it was written and is not any more.
+    """
+    from slotify_rank.evaluation.resume_evidence import (
+        FAIL,
+        NOT_MEASURED,
+        PASS,
+        collect_resume_evidence,
+        render_markdown,
+        write_resume_evidence,
+    )
+
+    paths = _paths(args)
+    repo_root = paths.repo_root
+    artifacts_root = (
+        Path(args.artifacts_root)
+        if args.artifacts_root
+        else paths.data_root.parent / "artifacts"
+    )
+    evidence = collect_resume_evidence(
+        repo_root=repo_root,
+        artifacts_root=artifacts_root,
+        experiment_config_path=(
+            Path(args.experiment_config) if args.experiment_config else None
+        ),
+    )
+    directory = (
+        Path(args.output_dir) if args.output_dir else artifacts_root / "reports"
+    )
+
+    width = max(len(check.claim) for check in evidence.checks)
+    for check in evidence.checks:
+        print(f"  {check.status:<13} {check.claim:<{width}}")
+    print()
+    for key in (
+        "human_labelled_candidate_count",
+        "generated_candidate_count",
+        "baseline_ndcg_at_3",
+        "model_ndcg_at_3",
+        "relative_improvement_percent",
+        "required_minimum_relative_improvement_percent",
+    ):
+        print(f"  {key}: {evidence.measurements.get(key)}")
+    print()
+
+    if args.check:
+        return _report_is_current(
+            directory / "resume_evidence.md",
+            render_markdown(evidence.to_dict()),
+            "npm run resume-evidence",
+        )
+
+    written = write_resume_evidence(directory, evidence)
+    for path in written.values():
+        print(f"  wrote {path}")
+
+    failures = [c.key for c in evidence.checks if c.status == FAIL]
+    unmeasured = [c.key for c in evidence.checks if c.status == NOT_MEASURED]
+    supported = sum(1 for c in evidence.checks if c.status == PASS)
+    print()
+    print(
+        f"{supported}/{len(evidence.checks)} claim(s) supported; "
+        f"{len(failures)} failing, {len(unmeasured)} not yet measured."
+    )
+    if args.require_all and (failures or unmeasured):
+        print(
+            "error: --require-all set and not every claim is supported "
+            f"(failing: {failures}; unmeasured: {unmeasured}).",
+            file=sys.stderr,
+        )
+        return 1
+    if args.require_no_failures and failures:
+        print(
+            f"error: --require-no-failures set and {failures} failed.",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
@@ -310,6 +574,39 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     compare_parser.add_argument("--evaluation-id", default=None, dest="evaluation_id")
     compare_parser.add_argument("--output-dir", default=None, dest="output_dir")
     compare_parser.add_argument(
+        "--experiment-config",
+        default=None,
+        dest="experiment_config",
+        help="Canonical experiment definition to record on the comparison.",
+    )
+    compare_parser.add_argument(
+        "--bootstrap-resamples", type=int, default=2000, dest="bootstrap_resamples"
+    )
+    compare_parser.add_argument(
+        "--bootstrap-confidence", type=float, default=0.95, dest="bootstrap_confidence"
+    )
+    compare_parser.add_argument(
+        "--bootstrap-seed", type=int, default=20260829, dest="bootstrap_seed"
+    )
+    compare_parser.add_argument(
+        "--classical-seed", type=int, default=42, dest="classical_seed"
+    )
+    compare_parser.add_argument(
+        "--skip-classical-baseline",
+        action="store_true",
+        dest="skip_classical_baseline",
+        help="Do not fit the scikit-learn comparison point (it is reported as absent).",
+    )
+    compare_parser.add_argument(
+        "--allow-missing-crosscheck",
+        action="store_true",
+        dest="allow_missing_crosscheck",
+        help=(
+            "Downgrade a missing independent NDCG cross-check from blocking to a "
+            "warning. Only for environments without scikit-learn."
+        ),
+    )
+    compare_parser.add_argument(
         "--require-publishable",
         action="store_true",
         dest="require_publishable",
@@ -331,4 +628,52 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--artifacts-root", default=None, dest="artifacts_root"
     )
     evidence_parser.add_argument("--output-dir", default=None, dest="output_dir")
+    evidence_parser.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "Regenerate and compare against the committed report instead of "
+            "writing; non-zero exit when they disagree."
+        ),
+    )
     evidence_parser.set_defaults(func=_cmd_model_evidence)
+
+    resume_parser = report_sub.add_parser(
+        "resume-evidence",
+        help=(
+            "PASS/FAIL every resume claim against the artifacts, with the "
+            "thresholds read from the committed experiment definition."
+        ),
+    )
+    resume_parser.add_argument("--data-root", default=None)
+    resume_parser.add_argument(
+        "--artifacts-root", default=None, dest="artifacts_root"
+    )
+    resume_parser.add_argument("--output-dir", default=None, dest="output_dir")
+    resume_parser.add_argument(
+        "--experiment-config", default=None, dest="experiment_config"
+    )
+    resume_parser.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "Regenerate and compare against the committed report instead of "
+            "writing; non-zero exit when they disagree."
+        ),
+    )
+    resume_parser.add_argument(
+        "--require-all",
+        action="store_true",
+        dest="require_all",
+        help="Exit non-zero unless every claim is PASS.",
+    )
+    resume_parser.add_argument(
+        "--require-no-failures",
+        action="store_true",
+        dest="require_no_failures",
+        help=(
+            "Exit non-zero on any FAIL, but tolerate claims that are simply not "
+            "measured yet."
+        ),
+    )
+    resume_parser.set_defaults(func=_cmd_resume_evidence)

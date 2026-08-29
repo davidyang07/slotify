@@ -29,6 +29,25 @@ actually contain episodes that no other split does.
 undefined NDCG. Those episodes are excluded and counted, never scored as zero
 (which would deflate) or as one (which would inflate).
 
+**Uncertainty is reported, not implied.** NDCG@3 is macro-averaged over
+episodes, and a test split has a few dozen of them, so the point estimate has
+real spread. A percentile bootstrap over episodes -- resampling the unit the
+average is taken over -- gives an interval for the baseline, for the model and
+for the relative improvement itself. The improvement's interval is the one that
+matters: a headline of "+21%" whose interval spans zero is not a result.
+
+**A second opinion on the metric.** ``sklearn.metrics.ndcg_score`` recomputes
+the per-episode NDCG independently (:mod:`slotify_rank.evaluation.crosscheck`).
+The headline is a ratio of two NDCG values from the same implementation, so a
+bug in it would move numerator and denominator together and stay invisible to
+any test that checked that implementation against itself.
+
+**A second system to size the result against.** A scikit-learn gradient-boosted
+model on the handcrafted scalars alone
+(:mod:`slotify_rank.baselines.classical`) is scored on the same candidates and
+reported alongside. It is not the denominator; it answers "would a good tabular
+model have done just as well?"
+
 Every number in the output is computed here. Nothing is copied from a previous
 run, and the summary markdown is generated from the same dict the JSON is.
 """
@@ -38,6 +57,7 @@ from __future__ import annotations
 import json
 import math
 import platform
+import random
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -59,9 +79,12 @@ from slotify_rank.evaluation.metrics import (
 __all__ = [
     "EVALUATION_SCHEMA_VERSION",
     "CANONICAL_BASELINE",
+    "BootstrapConfig",
     "ComparisonInputs",
     "ComparisonResult",
+    "CohortCounts",
     "relative_improvement_percent",
+    "bootstrap_interval",
     "compare",
     "write_comparison",
     "render_summary",
@@ -98,6 +121,117 @@ def relative_improvement_percent(
 
 
 @dataclass(frozen=True)
+class BootstrapConfig:
+    """Percentile bootstrap over episodes.
+
+    The episode is the resampling unit because the metric is macro-averaged over
+    episodes; resampling candidates instead would treat one episode's fifty
+    candidates as fifty independent observations and produce an interval several
+    times too narrow.
+    """
+
+    resamples: int = 2000
+    confidence: float = 0.95
+    seed: int = 20260829
+
+    def __post_init__(self) -> None:
+        if self.resamples < 100:
+            raise ValueError("a bootstrap with fewer than 100 resamples is noise")
+        if not 0.5 < self.confidence < 1.0:
+            raise ValueError("confidence must be in (0.5, 1.0)")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "resamples": self.resamples,
+            "confidence": self.confidence,
+            "seed": self.seed,
+            "unit": "episode",
+            "method": "percentile",
+        }
+
+
+def bootstrap_interval(
+    per_episode_baseline: Mapping[str, float],
+    per_episode_model: Mapping[str, float],
+    config: BootstrapConfig,
+) -> dict[str, Any]:
+    """Bootstrap the two macro-averages and their relative improvement.
+
+    Both systems are resampled on the *same* episode draw, which is what makes
+    the improvement's interval meaningful: the two scores are paired
+    observations of one episode, and resampling them independently would throw
+    that pairing away and widen the interval for no reason.
+
+    ``None`` everywhere when there are fewer than two scored episodes -- an
+    interval from one observation is not an interval.
+    """
+    episodes = sorted(set(per_episode_baseline) & set(per_episode_model))
+    if len(episodes) < 2:
+        return {
+            "measured": False,
+            "reason": (
+                f"{len(episodes)} episode(s) have both scores; a bootstrap needs at "
+                "least two"
+            ),
+            "config": config.to_dict(),
+        }
+
+    generator = random.Random(config.seed)
+    baseline_draws: list[float] = []
+    model_draws: list[float] = []
+    improvement_draws: list[float] = []
+    count = len(episodes)
+    for _ in range(config.resamples):
+        sample = [episodes[generator.randrange(count)] for _ in range(count)]
+        baseline_mean = sum(per_episode_baseline[e] for e in sample) / count
+        model_mean = sum(per_episode_model[e] for e in sample) / count
+        baseline_draws.append(baseline_mean)
+        model_draws.append(model_mean)
+        improvement = relative_improvement_percent(model_mean, baseline_mean)
+        if improvement is not None:
+            improvement_draws.append(improvement)
+
+    def percentiles(values: Sequence[float]) -> dict[str, float] | None:
+        if not values:
+            return None
+        ordered = sorted(values)
+        tail = (1.0 - config.confidence) / 2.0
+        low = ordered[min(len(ordered) - 1, int(tail * len(ordered)))]
+        high = ordered[min(len(ordered) - 1, int((1.0 - tail) * len(ordered)))]
+        return {"low": low, "high": high}
+
+    return {
+        "measured": True,
+        "config": config.to_dict(),
+        "episode_count": count,
+        "baseline_ndcg_at_3": percentiles(baseline_draws),
+        "model_ndcg_at_3": percentiles(model_draws),
+        "relative_improvement_percent": percentiles(improvement_draws),
+        "improvement_draws_defined": len(improvement_draws),
+    }
+
+
+@dataclass(frozen=True)
+class CohortCounts:
+    """How much data the number rests on, per split and per grouping level."""
+
+    labelled_candidate_count: int = 0
+    candidates_by_split: Mapping[str, int] = field(default_factory=dict)
+    episodes_by_split: Mapping[str, int] = field(default_factory=dict)
+    series_by_split: Mapping[str, int] = field(default_factory=dict)
+    evaluated_series: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "labelled_candidate_count": self.labelled_candidate_count,
+            "candidates_by_split": dict(self.candidates_by_split),
+            "episodes_by_split": dict(self.episodes_by_split),
+            "series_by_split": dict(self.series_by_split),
+            "evaluated_series": list(self.evaluated_series),
+        }
+
+
+@dataclass(frozen=True)
 class ComparisonInputs:
     """Everything the comparison consumed, recorded for reproducibility."""
 
@@ -116,6 +250,13 @@ class ComparisonInputs:
     git_sha: str
     dataset_version: str
     seeds: tuple[int, ...] = ()
+    #: The canonical experiment this run belongs to, and the digest of its
+    #: committed definition. Empty for an ad-hoc comparison.
+    experiment_version: str = ""
+    experiment_config_digest: str = ""
+    #: SHA-256 of the artifacts the number rests on, so "which data, which
+    #: weights" is answerable from the report alone.
+    artifact_hashes: Mapping[str, str | None] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -134,6 +275,9 @@ class ComparisonInputs:
             "git_sha": self.git_sha,
             "dataset_version": self.dataset_version,
             "seeds": list(self.seeds),
+            "experiment_version": self.experiment_version,
+            "experiment_config_digest": self.experiment_config_digest,
+            "artifact_hashes": dict(self.artifact_hashes),
         }
 
 
@@ -151,6 +295,10 @@ class ComparisonResult:
     blocking_reasons: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     ranked_rows: list[dict[str, Any]] = field(default_factory=list)
+    cohort: CohortCounts = field(default_factory=CohortCounts)
+    bootstrap: Mapping[str, Any] = field(default_factory=dict)
+    metric_crosscheck: Mapping[str, Any] = field(default_factory=dict)
+    classical_baseline: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def publishable(self) -> bool:
@@ -188,6 +336,10 @@ class ComparisonResult:
             "episode_count": self.episode_count,
             "candidate_count": self.candidate_count,
             "relevant_candidate_count": self.relevant_candidate_count,
+            "cohort": self.cohort.to_dict(),
+            "bootstrap": dict(self.bootstrap),
+            "metric_crosscheck": dict(self.metric_crosscheck),
+            "classical_baseline": dict(self.classical_baseline),
             "headline_publishable": self.publishable,
             "blocking_reasons": list(self.blocking_reasons),
             "warnings": list(self.warnings),
@@ -263,6 +415,11 @@ def compare(
     training_episode_ids: Sequence[str] = (),
     relevance_threshold: float = 4.0,
     cutoffs: Sequence[int] = DEFAULT_CUTOFFS,
+    bootstrap: BootstrapConfig | None = None,
+    series_by_episode: Mapping[str, str] | None = None,
+    cohort_examples: Mapping[str, Sequence[TrainingExample]] | None = None,
+    classical_baseline: Mapping[str, Any] | None = None,
+    require_metric_crosscheck: bool = True,
 ) -> ComparisonResult:
     """Score both systems on the same candidates with the same labels."""
     if not examples:
@@ -371,6 +528,82 @@ def compare(
                 }
             )
 
+    # -- uncertainty -------------------------------------------------------
+    headline_k = 3 if 3 in cutoffs else sorted(cutoffs)[0]
+    per_episode_baseline = {
+        entry.episode_id: entry.ndcg_at_k
+        for entry in baseline_reports[headline_k].per_episode
+        if entry.ndcg_at_k is not None
+    }
+    per_episode_model = {
+        entry.episode_id: entry.ndcg_at_k
+        for entry in model_reports[headline_k].per_episode
+        if entry.ndcg_at_k is not None
+    }
+    bootstrap_result = bootstrap_interval(
+        per_episode_baseline, per_episode_model, bootstrap or BootstrapConfig()
+    )
+    interval = (
+        bootstrap_result.get("relative_improvement_percent")
+        if bootstrap_result.get("measured")
+        else None
+    )
+    if interval is not None and interval["low"] <= 0.0 <= interval["high"]:
+        warnings.append(
+            f"the {bootstrap_result['config']['confidence']:.0%} bootstrap interval "
+            f"for the relative improvement is [{interval['low']:.2f}, "
+            f"{interval['high']:.2f}] %, which spans zero: this many episodes cannot "
+            "distinguish the model from the baseline."
+        )
+
+    # -- an independent implementation of the metric ------------------------
+    from slotify_rank.evaluation.crosscheck import cross_check_ndcg
+
+    crosscheck = cross_check_ndcg(
+        model_predictions, judgements, k=headline_k
+    ).to_dict()
+    if not crosscheck["available"]:
+        message = (
+            "the NDCG implementation was not independently verified: "
+            f"{crosscheck['reason']}"
+        )
+        (blocking if require_metric_crosscheck else warnings).append(message)
+    elif crosscheck["disagreements"]:
+        blocking.append(
+            f"this project's NDCG@{headline_k} disagrees with scikit-learn's on "
+            f"{len(crosscheck['disagreements'])} episode(s); the metric itself is "
+            "in question, so no number computed from it may be published."
+        )
+
+    # -- how much data the number rests on ----------------------------------
+    series_lookup = dict(series_by_episode or {})
+    cohorts = dict(cohort_examples or {})
+    cohorts.setdefault(inputs.split, list(examples))
+    cohort = CohortCounts(
+        labelled_candidate_count=sum(len(rows) for rows in cohorts.values()),
+        candidates_by_split={
+            split: len(rows) for split, rows in sorted(cohorts.items())
+        },
+        episodes_by_split={
+            split: len({row.episode_id for row in rows})
+            for split, rows in sorted(cohorts.items())
+        },
+        series_by_split={
+            split: len({series_lookup.get(row.episode_id, row.episode_id) for row in rows})
+            for split, rows in sorted(cohorts.items())
+        },
+        evaluated_series=tuple(
+            sorted({series_lookup.get(episode_id, episode_id) for episode_id in grouped})
+        ),
+    )
+
+    classical = dict(classical_baseline or {})
+    if classical.get("available") is False:
+        warnings.append(
+            "the classical scikit-learn baseline did not run: "
+            f"{classical.get('reason')}"
+        )
+
     return ComparisonResult(
         evaluation_id=evaluation_id,
         inputs=inputs,
@@ -382,6 +615,10 @@ def compare(
         blocking_reasons=blocking,
         warnings=warnings,
         ranked_rows=ranked_rows,
+        cohort=cohort,
+        bootstrap=bootstrap_result,
+        metric_crosscheck=crosscheck,
+        classical_baseline=classical,
     )
 
 
@@ -391,6 +628,118 @@ def _format(value: Any) -> str:
     if isinstance(value, float):
         return f"{value:.4f}"
     return str(value)
+
+
+def _interval(block: Mapping[str, Any] | None, suffix: str = "") -> str:
+    if not block:
+        return "NOT YET AVAILABLE"
+    return f"[{block['low']:.4f}, {block['high']:.4f}]{suffix}"
+
+
+def _render_uncertainty(payload: Mapping[str, Any]) -> list[str]:
+    bootstrap = payload.get("bootstrap") or {}
+    lines = ["## Uncertainty", ""]
+    if not bootstrap.get("measured"):
+        lines += [
+            f"Not measured: {bootstrap.get('reason', 'no bootstrap was run')}.",
+            "",
+        ]
+        return lines
+    config = bootstrap["config"]
+    lines += [
+        f"Percentile bootstrap, {config['resamples']} resamples over "
+        f"{bootstrap['episode_count']} episode(s), seed {config['seed']}. The "
+        "episode is the resampling unit because the metric is macro-averaged over "
+        "episodes.",
+        "",
+        f"- Baseline NDCG@3 {int(config['confidence'] * 100)}% interval: "
+        + _interval(bootstrap.get("baseline_ndcg_at_3")),
+        f"- Model NDCG@3 {int(config['confidence'] * 100)}% interval: "
+        + _interval(bootstrap.get("model_ndcg_at_3")),
+        f"- Relative improvement {int(config['confidence'] * 100)}% interval: "
+        + _interval(bootstrap.get("relative_improvement_percent"), " %"),
+        "",
+    ]
+    return lines
+
+
+def _render_cohort(payload: Mapping[str, Any]) -> list[str]:
+    cohort = payload.get("cohort") or {}
+    if not cohort:
+        return []
+    lines = [
+        "## What the number rests on",
+        "",
+        "| Split | Labelled candidates | Episodes | Series |",
+        "| --- | --- | --- | --- |",
+    ]
+    splits = sorted(cohort.get("candidates_by_split") or {})
+    for split in splits:
+        lines.append(
+            f"| {split} | {cohort['candidates_by_split'][split]} "
+            f"| {cohort['episodes_by_split'].get(split, 0)} "
+            f"| {cohort['series_by_split'].get(split, 0)} |"
+        )
+    lines += [
+        "",
+        f"Total human-labelled candidates across the splits above: "
+        f"{cohort.get('labelled_candidate_count')}.",
+        "",
+    ]
+    return lines
+
+
+def _render_crosscheck(payload: Mapping[str, Any]) -> list[str]:
+    crosscheck = payload.get("metric_crosscheck") or {}
+    lines = ["## Independent metric verification", ""]
+    if not crosscheck.get("available"):
+        lines += [f"Did not run: {crosscheck.get('reason', 'unavailable')}.", ""]
+        return lines
+    lines += [
+        f"`sklearn.metrics.ndcg_score` ({crosscheck.get('sklearn_version')}) "
+        f"recomputed NDCG@{crosscheck.get('k')} on "
+        f"{crosscheck.get('compared_episode_count')} episode(s); "
+        f"{crosscheck.get('skipped_episode_count')} were skipped as undefined for "
+        "one or both implementations.",
+        "",
+        f"- Agreement: {'yes' if crosscheck.get('agrees') else 'NO'}",
+        f"- Largest absolute difference: "
+        f"{_format(crosscheck.get('max_absolute_difference'))}",
+        "",
+    ]
+    for entry in crosscheck.get("disagreements", ()):
+        lines.append(
+            f"- **{entry['episode_id']}**: this project {entry['slotify_ndcg']:.6f} "
+            f"vs scikit-learn {entry['sklearn_ndcg']:.6f}"
+        )
+    if crosscheck.get("disagreements"):
+        lines.append("")
+    return lines
+
+
+def _render_classical(payload: Mapping[str, Any]) -> list[str]:
+    classical = payload.get("classical_baseline") or {}
+    if not classical:
+        return []
+    lines = ["## Classical comparison point", ""]
+    if not classical.get("available"):
+        lines += [f"Did not run: {classical.get('reason', 'unavailable')}.", ""]
+        return lines
+    lines += [
+        "A scikit-learn gradient-boosted model over the handcrafted scalars alone, "
+        "tuned by episode-grouped cross-validation inside the training split. It is "
+        "**not** the denominator of the headline; it is here so a reader can see "
+        "whether the learned modalities earned their inference cost.",
+        "",
+        f"- NDCG@3: {_format(classical.get('ndcg_at_3'))}",
+        f"- Selected hyperparameters: `{classical.get('best_params')}`",
+        f"- Trained on {classical.get('train_example_count')} example(s) across "
+        f"{classical.get('train_episode_count')} episode(s), "
+        f"{classical.get('feature_dimension')} features",
+        f"- scikit-learn {classical.get('sklearn_version')}",
+        "",
+    ]
+    return lines
 
 
 def render_summary(payload: Mapping[str, Any]) -> str:
@@ -434,6 +783,7 @@ def render_summary(payload: Mapping[str, Any]) -> str:
     lines += [
         f"- Baseline NDCG@3: {_format(headline['baseline']['ndcg_at_3'])}",
         f"- Model NDCG@3: {_format(headline['model']['ndcg_at_3'])}",
+        f"- Absolute improvement: {_format(headline['absolute_improvement'])}",
         "- Relative improvement: "
         + (
             "NOT YET AVAILABLE"
@@ -444,6 +794,14 @@ def render_summary(payload: Mapping[str, Any]) -> str:
         "Computed as `100 * (model - baseline) / baseline` in "
         "`slotify_rank.evaluation.compare.relative_improvement_percent`.",
         "",
+    ]
+
+    lines += _render_uncertainty(payload)
+    lines += _render_cohort(payload)
+    lines += _render_crosscheck(payload)
+    lines += _render_classical(payload)
+
+    lines += [
         "## All cutoffs",
         "",
         "| Metric | Baseline | Model |",

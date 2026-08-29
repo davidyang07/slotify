@@ -58,6 +58,26 @@ features = [
     "soundfile>=0.12",
     "scipy>=1.11",
 ]
+# Two things scikit-learn does here that nothing else does, both load-bearing:
+#
+#   * `sklearn.metrics.ndcg_score` independently verifies this project's NDCG
+#     (slotify_rank.evaluation.crosscheck). The headline number is a ratio of two
+#     NDCG values, so a bug in one implementation would move numerator and
+#     denominator together and every test that checked it against itself would
+#     agree. A second implementation nobody here wrote is the only check that
+#     catches that.
+#   * `HistGradientBoostingRegressor` + `GroupKFold` provide the classical
+#     comparison point (slotify_rank.baselines.classical): a strong tabular model
+#     on the handcrafted scalars alone, tuned by episode-grouped cross-validation
+#     inside the training split. Without it, "the multimodal model wins" is not a
+#     claim anyone can size.
+#
+# It is a separate extra rather than part of `features` so the evaluation
+# cross-check can be installed without a gigabyte of torch, and both call sites
+# degrade to a recorded "not available" when it is absent.
+sklearn = [
+    "scikit-learn>=1.4,<2.0",
+]
 
 [project.scripts]
 slotify-rank = "slotify_rank.cli:main"
