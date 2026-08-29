@@ -81,12 +81,38 @@ class StatisticsBundle:
         }
 
 
+#: Corpus design goals. Deliberately NOT results -- see ``targets_note`` in the
+#: emitted statistics. The label figure is read from the committed experiment
+#: definition rather than restated here, so raising the experiment's gate cannot
+#: leave this file quietly disagreeing with it.
+_DEFAULT_TARGETS: dict[str, Any] = {
+    "processed_audio_hours": 50,
+    "generated_candidate_count": 10000,
+}
+
+
+def _label_target(repo_root: Path | None = None) -> tuple[int | None, str]:
+    """``(minimum_human_labels, where it came from)`` for the targets block."""
+    from slotify_rank.config.settings import find_repo_root
+
+    root = repo_root or find_repo_root()
+    config_path = root / "ml" / "configs" / "experiment_resume_v1.yaml"
+    try:
+        from slotify_rank.experiment.canonical import load_experiment_config
+
+        config = load_experiment_config(config_path)
+    except Exception:  # noqa: BLE001 - a missing or unreadable config is not fatal
+        return None, "no experiment definition was readable"
+    return config.minimum_human_labels, config.experiment_version
+
+
 def _dataset_statistics(
     episodes: Sequence[EpisodeRecord],
     split_by_episode: Mapping[str, str],
 ) -> dict[str, Any]:
     processed = [e for e in episodes if e.status in _PROCESSED_STATUSES]
     target = [e for e in processed if _is_target_domain(e)]
+    label_target, label_target_source = _label_target()
 
     duration_by_content: dict[str, float] = defaultdict(float)
     duration_by_source: dict[str, float] = defaultdict(float)
@@ -133,9 +159,11 @@ def _dataset_statistics(
         "episodes_by_status": dict(Counter(e.status for e in episodes).most_common()),
         "target_domain_content_types": sorted(TARGET_DOMAIN_CONTENT_TYPES),
         "targets": {
-            "processed_audio_hours": 50,
-            "generated_candidate_count": 10000,
-            "human_labelled_candidate_count": 1500,
+            **_DEFAULT_TARGETS,
+            "human_labelled_candidate_count": label_target,
+        },
+        "targets_source": {
+            "human_labelled_candidate_count": label_target_source,
         },
         "targets_note": (
             "Targets are design goals, not results. Compare them against the "
@@ -227,7 +255,11 @@ def _label_statistics(
     episode_by_id = {episode.episode_id: episode for episode in episodes}
     real = [c for c in candidates if not c.is_synthetic]
 
+    # A blind consistency repeat is a second judgement of a candidate already
+    # counted, so it changes `human_label_row_count` and never the unique count.
+    # Reporting both, plus the repeat count, is what lets the three reconcile.
     human_ids = {label.candidate_id for label in labels if label.candidate_id in by_id}
+    repeat_rows = sum(1 for label in labels if label.is_repeat)
     weak_ids = {
         candidate.candidate_id
         for candidate in real
@@ -263,6 +295,7 @@ def _label_statistics(
         "package_version": PACKAGE_VERSION,
         "human_labelled_candidate_count": len(human_ids),
         "human_label_row_count": len(labels),
+        "repeat_judgement_row_count": repeat_rows,
         "human_labelled_audio_hours": human_hours,
         "human_labelled_episode_count": len(labelled_episode_ids),
         "weakly_labelled_candidate_count": len(weak_ids),
@@ -408,7 +441,8 @@ def render_markdown_summary(bundle: StatisticsBundle) -> str:
         f"| `processed_audio_hours` | {dataset['processed_audio_hours']} | 50 |",
         f"| `processed_episode_count` | {dataset['processed_episode_count']} | — |",
         f"| `generated_candidate_count` | {candidates['generated_candidate_count']} | 10000 |",
-        f"| `human_labelled_candidate_count` | {labels['human_labelled_candidate_count']} | 1500 |",
+        f"| `human_labelled_candidate_count` | {labels['human_labelled_candidate_count']} "
+        f"| {dataset['targets']['human_labelled_candidate_count']} |",
         f"| `human_labelled_audio_hours` | {labels['human_labelled_audio_hours']} | 8–12 |",
         f"| `weakly_labelled_candidate_count` | {labels['weakly_labelled_candidate_count']} | — |",
         f"| `unlabelled_candidate_count` | {labels['unlabelled_candidate_count']} | — |",

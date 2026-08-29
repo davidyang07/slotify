@@ -357,3 +357,56 @@ def test_summary_reports_a_degraded_split(paths):
     write_statistics(bundle, paths.artifacts_dir)
     summary = (paths.artifacts_dir / "dataset_summary.md").read_text(encoding="utf-8")
     assert "Degraded split" in summary
+
+
+def test_the_label_target_is_read_from_the_experiment_not_restated():
+    """One place declares the gate. Two would eventually disagree."""
+    from slotify_rank.data.stats import _label_target
+    from slotify_rank.experiment.canonical import load_experiment_config
+
+    target, source = _label_target()
+    config = load_experiment_config(
+        Path(__file__).resolve().parents[1] / "configs" / "experiment_resume_v1.yaml"
+    )
+    assert target == config.minimum_human_labels
+    assert source == config.experiment_version
+
+
+def test_a_blind_repeat_changes_the_row_count_and_not_the_unique_count():
+    from slotify_rank.data.stats import compute_statistics
+    from slotify_rank.labelling.database import LabelRecord
+
+    from tests.dataset_fixtures import make_candidate, make_episode
+
+    episode = make_episode(title="Repeats", series_id="s1")
+    candidate = make_candidate(episode.episode_id, timestamp_ms=30_000)
+
+    def label(is_repeat: bool, presentation: str, score: int) -> LabelRecord:
+        return LabelRecord(
+            label_id=1 if not is_repeat else 2,
+            candidate_id=candidate.candidate_id,
+            episode_id=episode.episode_id,
+            annotator_id="a",
+            quality_score=score,
+            is_acceptable=score >= 3,
+            is_unusable=False,
+            notes=None,
+            rubric_version="rubric-v1.0.0",
+            created_at="2026-08-29T00:00:00+00:00",
+            updated_at="2026-08-29T00:00:00+00:00",
+            presentation_id=presentation,
+            is_repeat=is_repeat,
+        )
+
+    bundle = compute_statistics(
+        [episode],
+        [candidate],
+        labels=[
+            label(False, candidate.candidate_id, 4),
+            label(True, f"{candidate.candidate_id}__recheck", 3),
+        ],
+    )
+    labels_block = bundle.labels
+    assert labels_block["human_labelled_candidate_count"] == 1
+    assert labels_block["human_label_row_count"] == 2
+    assert labels_block["repeat_judgement_row_count"] == 1
