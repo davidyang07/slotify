@@ -1,14 +1,19 @@
 # Dataset card — Slotify breakpoint corpus
 
-**Status: workflow implemented, corpus not yet acquired.** As of Phase 2 the repository contains the
-complete pipeline for building this dataset and a ~4.6-minute *smoke* dataset used to test it. The
-measured numbers below are read from `artifacts/dataset/` and are not targets.
-
-Every quantity in this document comes from a generated artifact. Nothing here is typed by hand.
+**Every quantity in this document comes from a generated artifact.** Nothing here is typed by hand;
+the current values live in `artifacts/dataset/dataset_statistics.json` and
+`artifacts/dataset/candidate_statistics.json`, and the counts printed in the README and in
+`artifacts/reports/resume_evidence.md` are read from the same files.
 
 ```powershell
 cd ml
-.\.venv\Scripts\python.exe -m slotify_rank.cli dataset stats
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset stats --split-version v3
+```
+
+The corpus is built by one command from a committed plan:
+
+```powershell
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset prepare-resume-experiment
 ```
 
 ---
@@ -26,8 +31,8 @@ deterministic `heuristic_offline_v1` baseline that ships in the product today.
 
 | Layer | What it is | Target | Fully labelled? |
 |---|---|---|---|
-| **Processed corpus** | Audio decoded, normalized, and turned into a candidate pool | 50+ hours, 10 000+ candidates | No |
-| **Human-reviewed subset** | Candidates a person rated against the rubric | ~1 500 candidates over ~8–12 hours | Yes, by definition |
+| **Processed corpus** | Audio decoded, normalized, and turned into a candidate pool | enough for the queue below | No |
+| **Human-reviewed subset** | Candidates a person rated against the rubric | 2 400 candidates (the resume experiment's gate) | Yes, by definition |
 
 Collapsing these into one "labelled dataset" figure would overstate the human effort by roughly an
 order of magnitude, so the statistics artifacts never do. The eight tracked quantities are:
@@ -47,6 +52,15 @@ held_out_evaluation_candidate_count   human-labelled AND in the test split
 
 Podcasts, interviews, conversational recordings and narrated spoken word.
 
+**What this corpus actually is, stated plainly.** It is one genuine interview podcast, ten
+multi-voice dramatic readings and a set of narrated prose volumes. It is *not* a corpus of
+commercial podcasts, because there is no supply of them that is both openly licensed and legally
+redistributable — see "What was surveyed and rejected" below. The dramatic readings are performed
+dialogue, which gives the turn-taking and interruption structure a single narrator never produces,
+but they are still read from a script. Any result measured here should be read as evidence about
+*spoken-word ad-break placement*, and its transfer to a commercial podcast is an open question this
+corpus cannot settle.
+
 - **Music is out of domain** and is excluded from headline hours and from the test partition, even
   though the product supports a song mode.
 - **Meeting corpora (AMI and similar) are supplemental only.** They may pad the training corpus but
@@ -60,7 +74,48 @@ definition: `podcast`, `interview`, `conversational`, `narrated`.
 
 ## Sources and licensing
 
-Three source types, declared in `ml/configs/sources.yaml`:
+### How the registry is built
+
+`ml/configs/sources_resume_v1.yaml` is **generated, not written**. `dataset discover` resolves the
+committed corpus plan (`ml/configs/corpus_resume_v1.yaml`) against the Internet Archive's public
+metadata API and emits every direct URL, duration, checksum and licence field it found. The plan
+names *shows* with per-show episode caps and duration windows; the registry names files. Both are
+committed, so a clone reproduces the corpus without re-running discovery, and `dataset discover
+--check` re-resolves the plan and fails if the registry has drifted.
+
+Discovery is metadata-only. It downloads no audio, follows no link out of a result, and requires a
+direct file URL — there is no scraping path and there will not be one.
+
+### How a licence is established, per episode
+
+Every generated entry records `provenance.licence_verified_by`, which is one of:
+
+| Value | What it means | Strength |
+|---|---|---|
+| `item_license_url` | The Archive item itself declares a public-domain dedication or the Public Domain Mark. Anything else is dropped. | Machine-checked |
+| `agency_collection` | The item belongs to a named federal agency's own Archive collection, which the item metadata proves. Used for NASA's own uploads. | Machine-checked |
+| `manual_attestation` | The plan asserts the recording is a U.S. Government work (17 U.S.C. §105), naming the agency, the programme and its official URL so the claim can be checked. | An assertion, recorded as one |
+
+An episode whose basis cannot be established at all is **dropped and counted** — "we could not
+license it" never silently becomes "it is fine".
+
+### What was surveyed and rejected
+
+Recorded here so the next person does not repeat the work:
+
+- **SoundCloud-mirrored NASA and DOE podcast feeds** (Gravity Assist, NASA in Silicon Valley, NASA
+  EDGE, Curious Universe, Small Steps Giant Leaps, On a Mission, The Rocket Ranch, Direct Current).
+  Publicly listed, full metadata readable, and every file returns `401` on download: the items carry
+  `access-restricted-item`. Discovery now rejects them at plan time.
+- **NASACast Audio.** Its feed mixes ~100 s bulletins with 60–90 minute specials; nothing sits in a
+  usable episode-length window.
+- **Third-party podcast uploads carrying uploader-applied public-domain marks.** There are tens of
+  thousands. An uploader marking someone else's podcast as public domain does not make it so, and
+  this corpus does not rest on that.
+
+### Source types
+
+Three source types, declared in `ml/configs/sources.yaml` and the generated registries:
 
 | Type | Where it comes from | Licence requirement |
 |---|---|---|
@@ -174,10 +229,16 @@ window and shows the transcript context either side of the break when one exists
 
 ## Known limitations
 
-- **The corpus does not exist yet.** The current dataset is seven repository fixtures totalling
-  ~4.6 minutes. It tests the pipeline; it is not a training corpus and the statistics say so.
-- **No transcripts.** Phase 2 does not generate them. `transcript_segment_end` contributes nothing
-  until you supply timestamped transcripts, and every generation report states this explicitly.
+- **It is not a commercial-podcast corpus.** One real interview podcast, multi-voice dramatic
+  readings and narrated prose. See "Target domain" above; transfer to commercial podcasts is an open
+  question this corpus cannot settle.
+- **One show carries the podcast weight.** Houston We Have a Podcast is a single series, so the
+  series-grouped split places all of it in one partition. Whichever partition that is, the other two
+  contain no true podcast audio.
+- **`transcript_segment_end` contributes nothing at generation time.** Candidates are generated
+  before transcription runs, so that generator only fires when a timestamped transcript is supplied
+  up front. Every generation report states this explicitly. Transcripts *are* produced by the
+  feature pipeline and are used for features and for the labelling UI's context.
 - **Silence detection is an independent reimplementation** of pydub's semantics against the same
   canonical thresholds — not a bit-exact port. Bit-exact parity is asserted for the *scorer*, which
   is the part that must match the product.
@@ -189,6 +250,6 @@ window and shows the transcript context either side of the break when one exists
 
 | Committed | Ignored |
 |---|---|
-| `ml/configs/*.yaml` (source registry, generation, split settings) | `data/` — all audio, manifests, databases, exports |
+| `ml/configs/*.yaml` (corpus plan, generated source registries, generation, split and queue settings) | `data/` — all audio, manifests, databases, exports |
 | `artifacts/dataset/*.json` and `dataset_summary.md` | normalized renders, clip cache |
 | the code and tests | `.venv`, coverage, caches |

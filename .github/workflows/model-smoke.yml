@@ -37,7 +37,21 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -e ".[dev,label,features]"
+          pip install -e ".[dev,label,features,sklearn]"
       - name: Run the model smoke tests
         working-directory: ml
         run: python -m pytest -m model_smoke -o addopts=""
+
+      - name: Re-resolve the corpus registry against the Internet Archive
+        # The committed registry was generated from the committed plan by
+        # reading the Archive's metadata API. If an item is withdrawn, made
+        # access-restricted or re-encoded, the registry stops describing what is
+        # actually fetchable -- and the corpus stops being reproducible from a
+        # clean clone. Weekly, not per-pull-request: an Archive outage must not
+        # turn an unrelated change red.
+        working-directory: ml
+        run: |
+          python -m slotify_rank.cli dataset discover \
+            --plan configs/corpus_resume_v1.yaml \
+            --output configs/sources_resume_v1.yaml \
+            --check

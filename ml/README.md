@@ -33,10 +33,14 @@ uv venv --python 3.12.13 .venv
 # [dev]      pytest + coverage + httpx
 # [label]    FastAPI + uvicorn for the labelling UI
 # [features] torch, transformers, sentence-transformers, librosa (Phase 3)
+# [sklearn]  scikit-learn: the independent NDCG cross-check and the classical
+#            comparison point (evaluation/crosscheck.py, baselines/classical.py)
 #
 # [features] is ~1 GB of wheels. Omit it and the Phase 1 baseline and the whole
-# Phase 2 dataset pipeline still install in seconds.
-uv pip install --python .\.venv\Scripts\python.exe -e ".[dev,label,features]"
+# Phase 2 dataset pipeline still install in seconds. [sklearn] is small and is
+# needed to publish a headline: a comparison whose metric was not independently
+# verified is blocked.
+uv pip install --python .\.venv\Scripts\python.exe -e ".[dev,label,features,sklearn]"
 
 # Verify
 .\.venv\Scripts\python.exe -m slotify_rank.cli version

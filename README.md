@@ -7,7 +7,8 @@ learned model that reads both the waveform and the transcript, and — if you gi
 it an ElevenLabs key — writes and voices a sponsor read and stitches it in with
 loudness matching and crossfades.
 
-UofTHacks 13 winner (MLH Best Use of ElevenLabs).
+UofTHacks 13 — MLH Best Use of ElevenLabs. (A sponsor prize, not the overall
+hackathon award.)
 [Video demo of the original hackathon build.](https://www.youtube.com/watch?v=S4m1lpipni0)
 
 ---
@@ -30,7 +31,7 @@ sentence and drew breath. So the system:
 
 The second thing that makes this repository unusual is that it is built to make
 a false quantitative claim hard to state. See
-[Evidence and honesty](#evidence-and-honesty).
+[Evaluation status](#evaluation-status).
 
 ---
 
@@ -96,7 +97,7 @@ heuristic, and every response says which.
 | `frontend/` | React 19, TypeScript, Vite | Upload → analyze → select → generate → export |
 | `backend/src/` | Node, Express, TypeScript (`tsx`, no build step) | Product API, ffmpeg muxing, ElevenLabs calls |
 | `backend/ad_inserter/` | Python | Audio analysis and the insertion/mixing pipeline |
-| `ml/src/slotify_rank/` | Python, PyTorch, transformers, sentence-transformers, librosa | Dataset, features, model, training, evaluation, inference |
+| `ml/src/slotify_rank/` | Python, PyTorch, transformers, sentence-transformers, librosa, scikit-learn | Dataset, features, model, training, evaluation, inference |
 | `ml/src/slotify_rank/labelling/` | **FastAPI** + SQLite | The local human-labelling UI — *this* is where FastAPI is used |
 
 **FastAPI does not serve the product API.** It hosts the local labelling tool
@@ -117,8 +118,8 @@ npm run install:all
 
 # 2) The ML package (CPU-only; ~1 GB of wheels for the learned extras)
 cd ml && python -m venv .venv
-.venv/Scripts/pip install -e ".[dev,label,features]"   # Windows
-# .venv/bin/pip install -e ".[dev,label,features]"     # macOS / Linux
+.venv/Scripts/pip install -e ".[dev,label,features,sklearn]"   # Windows
+# .venv/bin/pip install -e ".[dev,label,features,sklearn]"     # macOS / Linux
 cd ..
 
 # 3) Check everything before you need it
@@ -204,25 +205,28 @@ comparison denominator is reproducible by anyone.
 ## Evaluation status
 
 This repository is deliberately built so that an unsupported number is hard to
-state. The generated report is the authority:
+state. Two generated reports are the authority; neither is written by hand.
 
 ```bash
-npm run evidence     # regenerates every artifact, prints each capability's status
+npm run evidence          # what each capability's artifacts currently establish
+npm run resume-evidence   # PASS / FAIL / NOT MEASURED for every headline claim
+
 cat artifacts/reports/model_evidence.md
+cat artifacts/reports/resume_evidence.md
 ```
 
-**What is measured today** (read from
-[`artifacts/reports/model_evidence.md`](artifacts/reports/model_evidence.md),
-not typed here — re-run the command for current values):
+Re-run those for current values. **Every number in this section is read from
+those files, not typed here**, and the four quantities below are tracked
+separately because collapsing them would overstate the work by an order of
+magnitude:
 
-- a real multimodal PyTorch ranker exists, is trained, and is served through the
-  product API;
-- the corpus is real, public-domain and licence-registered: ~0.84 h processed,
-  595 generated candidates, 583 with complete multimodal features;
-- **zero human labels exist.** The Phase 5B experiment gate is blocked and says
-  so;
-- therefore **no ranking-quality result is available**, and the report says
-  `NOT YET AVAILABLE` rather than `0`.
+| Quantity | What it is |
+| --- | --- |
+| **Generated candidates** | Timestamps the deterministic rules proposed. Not labels. |
+| **Weak labels** | Targets derived from the baseline's own score. Circular as evidence. |
+| **Human labels** | Someone listened and rated 1–5. The only supervised source the experiment accepts. |
+| **Validation metrics** | Measured during development. Model selection may use them. Not the result. |
+| **Held-out test metrics** | Measured once, at the end. This is the result. |
 
 The checkpoint that ships is a **weakly supervised bootstrap**: its targets come
 from `heuristic_offline_v1`'s own score, so it is a distillation of the baseline.
@@ -240,15 +244,42 @@ The guard rails, all tested:
 | Guard | Where |
 | --- | --- |
 | Weak labels are refused unless named on the command line | `datasets/labels.py` |
+| The canonical experiment may declare `human` and nothing else as a label source | `experiment/canonical.py` |
 | A headline improvement requires human ground truth, a human-trained model, the test split, the canonical baseline, and no episode overlap | `evaluation/compare.py` |
+| The headline metric must agree with an independent implementation (`sklearn.metrics.ndcg_score`) or publication is blocked | `evaluation/crosscheck.py` |
 | A zero baseline yields `None`, never an infinite improvement | `evaluation/compare.py` |
-| An unmeasured metric renders `NOT YET AVAILABLE`, a measured zero renders `0` | `evaluation/evidence.py` |
+| An unmeasured metric renders `NOT YET AVAILABLE`; a measured zero renders `0` | `evaluation/evidence.py` |
+| An unmeasured claim renders `NOT MEASURED`, which is not `PASS` and not `FAIL` | `evaluation/resume_evidence.py` |
+| A claimed library needs a declaration, a real import and an artifact recording it ran | `evaluation/resume_evidence.py` |
+| Blind consistency repeats are excluded from the label export, so a quality control cannot become supervision | `labelling/export.py` |
 | Synthetic candidates can never be labelled, featurised or evaluated | `data/schema.py`, `pipeline/stages.py` |
 | Normalization statistics are fitted on the train split only, and refuse others | `datasets/normalizer.py` |
 | The product never invents a recommendation, a score or a reason | `backend/src/lib/`, `frontend/src/lib/` |
 
+CI regenerates both reports from the committed artifacts and fails if either has
+drifted — the one failure a generated report cannot catch by itself is being
+true when written and not any more.
+
 See [`docs/evaluation-evidence.md`](docs/evaluation-evidence.md) for the full
-capability-to-artifact mapping.
+capability-to-artifact mapping and
+[`docs/resume-experiment.md`](docs/resume-experiment.md) for the experiment those
+claims are measured by.
+
+### Running the experiment
+
+```bash
+cd ml
+python -m slotify_rank.cli dataset prepare-resume-experiment   # acquire → featurise → queue
+python -m slotify_rank.cli label resume-experiment             # the only manual step
+```
+
+The first command does everything mechanical and ends with a *measured*
+readiness summary. The second pre-cuts every clip, says how many labels remain,
+and opens the labelling UI; after it prints its banner the only remaining work is
+human judgement. The protocol — split, seeds, baseline, metric, thresholds — is
+fixed in advance in
+[`ml/configs/experiment_resume_v1.yaml`](ml/configs/experiment_resume_v1.yaml)
+and hashed into a manifest before the test split is read.
 
 ---
 
@@ -289,9 +320,10 @@ CI runs all of the above except model-smoke on every push, with no credentials.
 │   │   ├── models/      # Five ranker variants behind one interface
 │   │   ├── training/    # Trainer, checkpoints, reporting
 │   │   ├── inference/   # Product-facing scoring (this is what the API calls)
-│   │   ├── evaluation/  # Metrics, held-out comparison, evidence report
+│   │   ├── baselines/   # The scikit-learn classical comparison point
+│   │   ├── evaluation/  # Metrics, held-out comparison, evidence reports
 │   │   ├── labelling/   # FastAPI labelling UI + weak-label bootstrap
-│   │   └── experiment/  # Readiness gate and label freeze
+│   │   └── experiment/  # Canonical experiment, readiness gate, label freeze
 │   └── tests/
 └── scripts/             # preflight, demo, evidence
 ```
@@ -307,6 +339,7 @@ CI runs all of the above except model-smoke on every push, with no credentials.
 | [`docs/model-inference.md`](docs/model-inference.md) | How a request becomes a learned ranking |
 | [`docs/model-training.md`](docs/model-training.md) | The training system |
 | [`docs/feature-pipeline.md`](docs/feature-pipeline.md) | The multimodal feature pipeline |
+| [`docs/resume-experiment.md`](docs/resume-experiment.md) | The experiment: protocol, labelling, what "supported" means |
 | [`docs/dataset-card.md`](docs/dataset-card.md) | Corpus, licences, splits |
 | [`docs/human-labelling-workflow.md`](docs/human-labelling-workflow.md) | The FastAPI labelling loop |
 | [`ml/README.md`](ml/README.md) | Every ML command |

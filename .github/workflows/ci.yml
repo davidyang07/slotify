@@ -70,13 +70,46 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -e ".[dev,label,features]"
+          pip install -e ".[dev,label,features,sklearn]"
       - name: Run the default suite
         # The default addopts deselect model_smoke, so nothing here downloads a
         # model. Failing on a warning would make a dependency's deprecation
         # notice break an unrelated change, so warnings stay warnings.
         working-directory: ml
         run: python -m pytest
+
+      - name: Assert the published evidence agrees with its raw artifacts
+        # The one failure mode a generated report cannot catch by itself: a
+        # report that was true when it was written and is not any more. Both
+        # summaries are regenerated from the committed artifacts and compared.
+        # Nothing is recomputed first -- recomputing the artifacts would quietly
+        # repair the very disagreement this step exists to find.
+        working-directory: ml
+        run: |
+          python -m slotify_rank.cli report model-evidence --check
+          python -m slotify_rank.cli report resume-evidence --check
+
+  corpus-registry:
+    # The committed source registry is generated from the committed corpus plan.
+    # Re-resolving it needs the Internet Archive, so it is NOT on the pull-request
+    # path: an Archive outage must not turn an unrelated change red. This job
+    # proves the plan and the registry still parse, offline, on every push, and
+    # the networked `dataset discover --check` runs on the weekly schedule.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install the package
+        working-directory: ml
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Validate the corpus plan and the generated registry
+        working-directory: ml
+        run: python -m pytest tests/test_discover.py -q
 
   parity:
     # The TypeScript scorer is the source of truth for heuristic_offline_v1 and

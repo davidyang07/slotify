@@ -20,7 +20,7 @@ cd ml
 # OneDrive-synced checkouts reject hardlinks (os error 396), so uv must copy.
 $env:UV_LINK_MODE = "copy"
 uv venv --python 3.12.13 .venv
-uv pip install --python .\.venv\Scripts\python.exe -e ".[dev,label,features]"
+uv pip install --python .\.venv\Scripts\python.exe -e ".[dev,label,features,sklearn]"
 ```
 
 `features` is an optional extra and is deliberately heavy (~1 GB of wheels), so
