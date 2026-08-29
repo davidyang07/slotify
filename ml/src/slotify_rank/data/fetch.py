@@ -156,6 +156,7 @@ def fetch_source(
         status="fetched",
         is_target_domain=entry.is_target_domain,
         notes=entry.notes,
+        provenance=dict(entry.provenance),
     )
     previous = (existing or {}).get(episode_id)
     if previous is not None:
@@ -165,5 +166,7 @@ def fetch_source(
             license_url=episode.license_url,
             attribution=episode.attribution,
             original_path=episode.original_path,
+            provenance=episode.provenance,
+            schema_version=episode.schema_version,
         )
     return FetchResult(episode=episode, downloaded=downloaded, bytes_written=written)

@@ -1,0 +1,336 @@
+# Corpus plan for the resume experiment.
+#
+# WHAT THIS FILE IS. A declarative statement of which shows the corpus is built
+# from, how many episodes each may contribute, and under what licence. It is the
+# input to `slotify-rank dataset discover`, which reads the Internet Archive's
+# public metadata API and writes the concrete source registry
+# (ml/configs/sources_resume_v1.yaml). That generated file is what
+# `dataset fetch` reads, and it is committed, so a clone reproduces exactly this
+# corpus without re-running discovery.
+#
+# WHY IT IS SHAPED LIKE THIS.
+#
+# * **Series are shows, and no show may dominate.** The split groups on
+#   series_id, so a show that supplied half the audio would land entirely in one
+#   partition and take half the corpus with it. Every show is therefore capped,
+#   and the caps are chosen so no series holds much more than a third of the
+#   total duration.
+# * **Conversation, not only narration.** The product ranks ad breaks in
+#   podcasts, and a single voice reading an essay has a different pause
+#   structure from two people talking. Houston We Have a Podcast is a genuine
+#   interview programme; the LibriVox *dramatic readings* are multi-voice casts
+#   performing dialogue. Together they carry the conversational weight, and the
+#   narrated volumes supply series breadth. docs/dataset-card.md states the
+#   measured mix and is explicit that this is not a corpus of commercial
+#   podcasts.
+# * **Episode length is bounded on both sides.** Below roughly four minutes an
+#   episode yields too few candidates to form within-episode ranking pairs;
+#   above roughly thirty minutes one episode starts to dominate its own show.
+#
+# WHAT WAS SURVEYED AND REJECTED, so the next person does not repeat it:
+#
+# * **SoundCloud-mirrored NASA and DOE podcast feeds** (Gravity Assist, NASA in
+#   Silicon Valley, NASA EDGE, Curious Universe, Small Steps Giant Leaps, On a
+#   Mission, The Rocket Ranch, Direct Current). Publicly listed, metadata fully
+#   readable, and every file returns 401 on download: the items carry
+#   `access-restricted-item`. Discovery now rejects those with reason
+#   `access_restricted` rather than letting the failure surface mid-fetch.
+# * **NASACast Audio.** Its feed mixes ~100 s bulletins with 60-90 minute
+#   specials; nothing sits in the window above.
+# * **Third-party podcast uploads carrying uploader-applied public-domain
+#   marks.** There are tens of thousands, but an uploader marking someone else's
+#   podcast as public domain does not make it so, and this corpus does not rest
+#   on that.
+#
+# LICENSING. Two bases, and discovery records which one applied to each episode
+# (`provenance.licence_verified_by` in the generated registry):
+#
+#   declared_public_domain
+#       The Internet Archive item itself declares a public-domain dedication or
+#       the Public Domain Mark. Discovery checks the item's `licenseurl` and
+#       drops anything that does not match. Used for LibriVox.
+#
+#   us_government_work
+#       The recording is a work of the United States federal government and is
+#       therefore in the public domain in the US under 17 U.S.C. Sec. 105. Here
+#       it is proved by the item's membership of NASA's own Internet Archive
+#       collection, which the metadata establishes -- not by an assertion.
+#
+# Nothing here is a guessed URL: discovery resolves every download link from the
+# item's own file table.
+
+plan_version: corpus-plan-v1.0.0
+corpus_version: corpus-resume-v1
+
+# A `search` show declares BOTH a query and an exact `creator`. The Archive's
+# scrape endpoint tokenizes a quoted `creator:"..."` phrase, so the query alone
+# returns every item sharing a word with the show name. The query is the recall
+# filter; `creator` is the precision filter applied to what comes back.
+#
+# scrape_page_size must exceed that superset so the exact-creator filter runs
+# over the whole result set rather than over an arbitrary first page, which is
+# what makes discovery reproducible. search_scan_limit then bounds how many
+# surviving items are opened with a metadata call. No show below uses `search`
+# today -- every survivor of the survey above is a single Archive item -- but
+# both settings stay so a future feed-backed show behaves reproducibly.
+scrape_page_size: 2000
+search_scan_limit: 60
+
+defaults:
+  source_name: "Internet Archive"
+  language: en
+  min_duration_seconds: 300
+  max_duration_seconds: 900
+
+licences:
+  librivox_public_domain:
+    basis: declared_public_domain
+    name: "Public domain (LibriVox dedication / Public Domain Mark 1.0)"
+    url: https://creativecommons.org/publicdomain/mark/1.0/
+    attribution: "Read for LibriVox and released into the public domain; hosted by the Internet Archive."
+
+  nasa_official_upload:
+    basis: us_government_work
+    name: "U.S. Government work (17 U.S.C. Sec. 105) - public domain in the United States"
+    url: https://www.usa.gov/government-works
+    agency: "National Aeronautics and Space Administration"
+    official_url: https://www.nasa.gov/podcasts/houston-we-have-a-podcast/
+    # Machine-checkable: the item is in NASA's own Internet Archive collection,
+    # uploaded by NASA. No attestation is needed and none is offered.
+    agency_collections: [nasaaudiocollection, nasa]
+    attribution: "Produced by NASA. Public domain; uploaded by NASA to the Internet Archive."
+
+shows:
+  # -- A real podcast: interviews with two or three speakers ------------------
+
+  - series_id: houston-we-have-a-podcast
+    title: "Houston We Have a Podcast"
+    content_type: podcast
+    licence: nasa_official_upload
+    selection:
+      kind: item_files
+      identifier: Houston-We-Have-a-Podcast
+      max_episodes: 6
+    min_duration_seconds: 900
+    max_duration_seconds: 1800
+    notes: >-
+      NASA Johnson Space Center's interview podcast, uploaded by NASA itself.
+      The only genuine podcast-format programme found that is both openly
+      licensed and actually downloadable.
+
+  # -- Multi-voice dramatic readings: performed dialogue, one book per series --
+  #
+  # A cast reading a novel's dialogue is not a podcast, but it is two or more
+  # people speaking in turn, which is the structure the ranker has to read. Each
+  # book is its own series: different casts, different recording chains.
+
+  - series_id: librivox-dramatic-tom-sawyer
+    title: "The Adventures of Tom Sawyer (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: adventures_of_tom_sawyer_1402_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-agnes-grey
+    title: "Agnes Grey (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: agnes_grey_1208_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-alice-in-wonderland
+    title: "Alice's Adventures in Wonderland (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: aliceinwonderland_1102_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-anne-of-green-gables
+    title: "Anne of Green Gables (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: anneofgreengables_1102_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-black-beauty
+    title: "Black Beauty (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: blackbeautydramatic_1703_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-christmas-carol
+    title: "A Christmas Carol (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: christmascarol_1104_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-daisy-miller
+    title: "Daisy Miller (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: daisy_miller_dramatic_reading_1308_librivox
+      max_episodes: 2
+    min_duration_seconds: 180
+    max_duration_seconds: 1500
+
+  - series_id: librivox-dramatic-doctor-dolittle
+    title: "The Story of Doctor Dolittle (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: doctordolittledramatic_1511_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-jekyll-and-hyde
+    title: "The Strange Case of Jekyll and Hyde (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: drjekyllandmrhydedr_1505_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-scene-and-story-002
+    title: "Dramatic Reading Scene and Story Collection Vol. 002"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: dramaticreadingsceneandstorycollectionvolume002_2005_librivox
+      max_episodes: 2
+    min_duration_seconds: 180
+    max_duration_seconds: 1500
+
+  # -- LibriVox narrated prose: series breadth --------------------------------
+  #
+  # Each collection volume is its own series: the volumes share a publisher but
+  # not a reader, a topic or a recording chain, which is exactly the
+  # independence the split needs. Volumes already registered by
+  # configs/sources_real_v1.yaml (013, 064, 067, 072) are deliberately absent.
+
+  - series_id: librivox-short-nonfiction-030
+    title: "LibriVox Short Nonfiction Collection Vol. 030"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: nonfiction030_1308_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-036
+    title: "LibriVox Short Nonfiction Collection Vol. 036"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: nonfiction036_1501_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-042
+    title: "LibriVox Short Nonfiction Collection Vol. 042"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: nonfiction042_1604_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-048
+    title: "LibriVox Short Nonfiction Collection Vol. 048"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: nonfiction048_1705_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-054
+    title: "LibriVox Short Nonfiction Collection Vol. 054"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: nonfiction054_1801_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-060
+    title: "LibriVox Short Nonfiction Collection Vol. 060"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: nonfiction060_1810_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-066
+    title: "LibriVox Short Nonfiction Collection Vol. 066"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: nonfiction066_1907_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-079
+    title: "LibriVox Short Nonfiction Collection Vol. 079"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: snf079_2101_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-083
+    title: "LibriVox Short Nonfiction Collection Vol. 083"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: snf083_2106_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-103
+    title: "LibriVox Short Nonfiction Collection Vol. 103"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: snf103_2406a_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480

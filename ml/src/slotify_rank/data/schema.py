@@ -188,6 +188,11 @@ class EpisodeRecord:
     transcript_path: str | None = None
     is_target_domain: bool = True
     notes: str | None = None
+    #: Where this episode came from upstream and how its licence was
+    #: established, copied verbatim from the source registry entry that fetched
+    #: it (see :mod:`slotify_rank.data.discover`). Empty for locally imported
+    #: files and repository fixtures, which are private and not redistributed.
+    provenance: Mapping[str, Any] = field(default_factory=dict)
     source_manifest_version: str = SOURCE_MANIFEST_VERSION
     preprocessing_version: str | None = None
     schema_version: str = EPISODE_SCHEMA_VERSION

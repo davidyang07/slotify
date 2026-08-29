@@ -86,6 +86,62 @@ def _write_json(path: Path, payload: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _cmd_discover(args: argparse.Namespace) -> int:
+    """Resolve a corpus plan into a committed source registry."""
+    from slotify_rank.data.discover import (
+        DiscoveryError,
+        InternetArchiveClient,
+        discover,
+        load_corpus_plan,
+        render_sources_yaml,
+        summarise,
+        write_sources_yaml,
+    )
+
+    plan_path = Path(args.plan)
+    try:
+        plan = load_corpus_plan(plan_path)
+    except DiscoveryError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    client = InternetArchiveClient(timeout=args.timeout)
+    try:
+        report = discover(plan, client)
+    except DiscoveryError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    for line in summarise(report):
+        print(line)
+
+    destination = Path(args.output)
+    rendered = render_sources_yaml(report, plan_path.as_posix())
+    if args.check:
+        # CI mode: prove the committed registry still matches what the plan and
+        # the upstream metadata produce, without writing.
+        existing = (
+            destination.read_text(encoding="utf-8") if destination.is_file() else ""
+        )
+        if existing == rendered:
+            print(f"{destination} is up to date.")
+            return 0
+        print(
+            f"error: {destination} differs from what the plan now discovers. "
+            "Re-run without --check to regenerate it.",
+            file=sys.stderr,
+        )
+        return 1
+
+    write_sources_yaml(destination, report, plan_path.as_posix())
+    print(f"Wrote {destination}")
+
+    if args.report:
+        _write_json(Path(args.report), report.to_dict())
+        print(f"Wrote {args.report}")
+    return 0
+
+
 def _cmd_import_local(args: argparse.Namespace) -> int:
     paths = _paths(args)
     registry = load_sources(args.sources)
@@ -714,6 +770,34 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "dataset", help="Build and validate the offline dataset."
     )
     dataset_sub = dataset.add_subparsers(dest="dataset_command", required=True)
+
+    discover_parser = dataset_sub.add_parser(
+        "discover",
+        help=(
+            "Resolve a corpus plan into a committed source registry by reading "
+            "the Internet Archive's public metadata API."
+        ),
+    )
+    discover_parser.add_argument(
+        "--plan",
+        default="ml/configs/corpus_resume_v1.yaml",
+        help="Corpus plan to resolve.",
+    )
+    discover_parser.add_argument(
+        "--output",
+        default="ml/configs/sources_resume_v1.yaml",
+        help="Source registry to write (committed).",
+    )
+    discover_parser.add_argument(
+        "--report", default=None, help="Optional JSON discovery report."
+    )
+    discover_parser.add_argument("--timeout", type=float, default=60.0)
+    discover_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Fail instead of writing when the registry would change.",
+    )
+    discover_parser.set_defaults(func=_cmd_discover)
 
     import_parser = dataset_sub.add_parser(
         "import-local", help="Register local files and repository fixtures."

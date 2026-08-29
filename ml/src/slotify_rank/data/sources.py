@@ -83,6 +83,11 @@ class SourceEntry:
     attribution: str | None = None
     transcript_path: str | None = None
     notes: str | None = None
+    #: Free-form provenance recorded by the generator that produced this entry
+    #: (see :mod:`slotify_rank.data.discover`): the upstream item identifier, the
+    #: file it came from, and how its licence was established. Flat, scalar-only
+    #: and secret-checked, so it stays reviewable in a diff and safe to commit.
+    provenance: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def is_target_domain(self) -> bool:
@@ -120,6 +125,7 @@ class SourceEntry:
             "attribution": self.attribution,
             "transcript_path": self.transcript_path,
             "notes": self.notes,
+            "provenance": dict(self.provenance),
         }
 
 
@@ -266,6 +272,8 @@ def _entry_from_mapping(
             None if merged.get(key) is None else str(merged[key]), f"{where}.{key}"
         )
 
+    provenance = _validate_provenance(merged.get("provenance"), where)
+
     series_id = str(merged.get("series_id") or "").strip()
     if series_id and slugify(series_id, max_length=128) != series_id:
         raise SourceConfigError(
@@ -293,7 +301,43 @@ def _entry_from_mapping(
             else str(merged["transcript_path"]).replace("\\", "/")
         ),
         notes=_optional_str(merged.get("notes")),
+        provenance=provenance,
     )
+
+
+def _validate_provenance(value: Any, where: str) -> dict[str, Any]:
+    """Accept a flat mapping of scalars (and lists of scalars), or nothing.
+
+    Nesting is refused rather than flattened: provenance is written into every
+    episode's audit trail and read back by the dataset card, and a nested blob
+    would turn a reviewable field into an opaque one.
+    """
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise SourceConfigError(f"{where}.provenance must be a mapping")
+    cleaned: dict[str, Any] = {}
+    for key, item in value.items():
+        name = str(key)
+        if isinstance(item, (str, int, float, bool)) or item is None:
+            _check_no_secret(None if item is None else str(item), f"{where}.provenance.{name}")
+            cleaned[name] = item
+            continue
+        if isinstance(item, Sequence) and not isinstance(item, (str, bytes)):
+            entries = list(item)
+            if any(not isinstance(entry, (str, int, float, bool)) for entry in entries):
+                raise SourceConfigError(
+                    f"{where}.provenance.{name} may only contain scalars"
+                )
+            for entry in entries:
+                _check_no_secret(str(entry), f"{where}.provenance.{name}")
+            cleaned[name] = entries
+            continue
+        raise SourceConfigError(
+            f"{where}.provenance.{name} must be a scalar or a list of scalars, "
+            f"got {type(item).__name__}"
+        )
+    return cleaned
 
 
 def _optional_str(value: Any) -> str | None:

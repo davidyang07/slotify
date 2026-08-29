@@ -41,6 +41,11 @@ rules are:
     The 1-5 naturalness rubric in ``docs/labelling-guide.md``. Stored on every
     label so labels collected under different rubrics are never pooled.
 
+``LABEL_SCHEMA_VERSION``
+    Shape of a stored and exported label row. Independent of the rubric: the
+    same judgement can be recorded in a richer row without the judgement itself
+    meaning anything different.
+
 ``TRANSCRIPTION_VERSION``
     Shape of a stored transcript artifact plus the segment-derivation rules in
     :mod:`slotify_rank.transcription.segments`. The *model* is not part of this
@@ -78,13 +83,22 @@ PACKAGE_VERSION = "0.2.0"
 CANDIDATE_SCHEMA_VERSION = "candidate-schema-v1.0.0"
 
 # Phase 2 (dataset foundation).
-EPISODE_SCHEMA_VERSION = "episode-schema-v1.0.0"
+# v1.1.0 added the optional `provenance` mapping: where a fetched episode came
+# from upstream and how its licence was established. Additive and optional, so
+# v1.0.0 records still read (they simply carry no provenance).
+EPISODE_SCHEMA_VERSION = "episode-schema-v1.1.0"
 DATASET_CANDIDATE_SCHEMA_VERSION = "dataset-candidate-schema-v1.0.0"
 SOURCE_MANIFEST_VERSION = "source-manifest-v1.0.0"
 PREPROCESSING_VERSION = "preprocess-v1.0.0"
 CANDIDATE_GENERATION_VERSION = "candgen-v1.0.0"
 SPLIT_ALGORITHM_VERSION = "split-grouped-greedy-v1.0.0"
 LABEL_RUBRIC_VERSION = "rubric-v1.0.0"
+#: Shape of one stored judgement (:mod:`slotify_rank.labelling.database`) and
+#: of one exported label row. v1.1.0 keys a judgement on the *presentation*
+#: rather than the candidate, so a blind repeat of the same candidate is a
+#: second row instead of an overwrite, and records the split, series, stage,
+#: queue version and time-on-item alongside the score.
+LABEL_SCHEMA_VERSION = "label-schema-v1.1.0"
 
 # Phase 3 (multimodal features and embeddings).
 TRANSCRIPTION_VERSION = "transcript-v1.0.0"
@@ -134,7 +148,9 @@ EXPERIMENT_MANIFEST_VERSION = "experiment-v1.0.0"
 #: Schema versions this build is able to read. Anything else is a hard failure
 #: rather than a best-effort parse, because a silently mis-read manifest would
 #: corrupt every number downstream of it.
-SUPPORTED_EPISODE_SCHEMA_VERSIONS = frozenset({EPISODE_SCHEMA_VERSION})
+SUPPORTED_EPISODE_SCHEMA_VERSIONS = frozenset(
+    {EPISODE_SCHEMA_VERSION, "episode-schema-v1.0.0"}
+)
 SUPPORTED_DATASET_CANDIDATE_SCHEMA_VERSIONS = frozenset(
     {DATASET_CANDIDATE_SCHEMA_VERSION}
 )
@@ -156,6 +172,7 @@ __all__ = [
     "CANDIDATE_GENERATION_VERSION",
     "SPLIT_ALGORITHM_VERSION",
     "LABEL_RUBRIC_VERSION",
+    "LABEL_SCHEMA_VERSION",
     "TRANSCRIPTION_VERSION",
     "FEATURE_SPEC_VERSION",
     "FEATURE_PIPELINE_VERSION",
