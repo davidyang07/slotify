@@ -35,6 +35,11 @@ const state = {
   shownAt: 0,
   loading: false,
   inflight: 0,
+  /* Presentations this session has acted on but whose POST has not landed yet.
+   * Advancing does not wait for the save, so a refill fired in that window asks
+   * a server that still believes the item is unjudged -- and would hand it back
+   * to be rated a second time. */
+  settled: new Set(),
 };
 
 const setStatus = (message, isError = false) => {
@@ -150,6 +155,7 @@ const refill = async () => {
     const seen = new Set();
     state.queue = payload.items.filter((item) => {
       if (seen.has(item.presentation_id)) return false;
+      if (state.settled.has(item.presentation_id)) return false;
       seen.add(item.presentation_id);
       return item.presentation_id !== state.current?.presentation_id;
     });
@@ -189,6 +195,7 @@ const submit = async (score) => {
   };
   selectScore(score);
   setStatus("");
+  state.settled.add(item.presentation_id);
   await advance();
 
   state.inflight += 1;
@@ -202,6 +209,7 @@ const submit = async (score) => {
   } catch (error) {
     /* A judgement that did not persist must not be silently dropped: put the
      * item back at the front and say so. */
+    state.settled.delete(item.presentation_id);
     state.queue.unshift(item);
     setStatus(
       `Could not save that rating (${error.message}). It has been put back — re-rate it.`,
@@ -215,6 +223,7 @@ const submit = async (score) => {
 const skip = async () => {
   const item = state.current;
   if (!item) return;
+  state.settled.add(item.presentation_id);
   await advance();
   try {
     const payload = await request("/api/skip", {
@@ -229,6 +238,7 @@ const skip = async () => {
     renderProgress(payload.progress);
     setStatus("Skipped — it stays unjudged and comes back when you clear skips.");
   } catch (error) {
+    state.settled.delete(item.presentation_id);
     setStatus(`Could not skip: ${error.message}`, true);
   }
 };
@@ -255,6 +265,7 @@ const start = async () => {
   state.annotator = annotator;
   localStorage.setItem("slotify.annotator", annotator);
   state.queue = [];
+  state.settled.clear();
   setStatus("");
   try {
     await refill();

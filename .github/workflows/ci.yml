@@ -37,6 +37,19 @@ jobs:
       - run: npm run build
         working-directory: frontend
 
+  scripts:
+    # The demo and preflight entry points choose which checkpoint the product
+    # serves. Getting that wrong means shipping a distillation of the baseline
+    # while a human-trained model sits unused, so the selection has its own
+    # tests and they run on every push.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm run test:scripts
+
   backend:
     runs-on: ubuntu-latest
     steps:
