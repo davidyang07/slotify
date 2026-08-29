@@ -91,7 +91,7 @@ baseline — a distillation. It proves the architecture and the serving path. It
 is not evidence of ranking quality, and the system won't let me pretend
 otherwise: the API attaches that warning to every response, and the evaluation
 command refuses to publish an improvement against the baseline, because the
-baseline is its teacher. I have zero human labels so far, and the readiness gate
+baseline is its teacher. Until enough human labels exist the readiness gate
 is blocked, correctly."
 
 **01:40 — Selection and generation.**

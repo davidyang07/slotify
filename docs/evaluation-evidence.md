@@ -135,9 +135,9 @@ implied in Phase 4.
 ## Phase 5A — real corpus bootstrap and labelling machinery (complete; awaiting human labels)
 
 A real, public-domain, target-domain corpus is registered and processed, a
-deterministic stratified labelling queue is built, and the Phase 5B readiness
+deterministic stratified labelling queue is built, and the readiness
 gate is implemented and reports honestly. **Zero human labels exist**, so the
-gate is blocked and Phase 5B has not run. See
+gate reports what is missing rather than proceeding. See
 [`docs/human-labelling-workflow.md`](human-labelling-workflow.md).
 
 Classification vocabulary for the rows below (per the Phase 5 brief):
@@ -148,10 +148,10 @@ preliminary real data` → `supported by held-out real evaluation`.
 |---|---|---|---|---|
 | A real target-domain corpus is registered under clear licences | ≥ 6 public-domain series, all `direct_download` with `license_name`+`license_url`, all target-domain, verified against the IA metadata API | `dataset fetch --sources ml/configs/sources_real_v1.yaml` | `ml/configs/sources_real_v1.yaml`, `data/manifests/episodes.jsonl` | **supported by preliminary real data** |
 | Enough real audio is processed to yield ≥ 300 eligible candidates with complete features | probe → normalize → generate → `pipeline features`; complete multimodal records reported | `dataset stats --split-version v2` | `artifacts/dataset/*.json`, `data/manifests/features.jsonl` | **supported by preliminary real data** (~0.8 h, ~575 real candidates, majority `complete`) |
-| A deterministic, stratified 250–300-candidate labelling queue exists | balanced (split × score-tertile) strata, round-robin episode/series spread, per-episode cap, pilot/primary/overlap/consistency stages, byte-identical on re-run | `label queue --config ml/configs/labelling_queue_v1.yaml --split-version v2` | `data/labels/queue_v1.json` (git-ignored) | **implemented, verified on real candidates** (280 unique) |
+| A deterministic, stratified labelling queue exists | balanced (split × score-tertile) strata, round-robin episode/series spread, per-episode cap, pilot/primary/overlap/consistency stages, byte-identical on re-run | `label queue --config ml/configs/labelling_queue_resume_v1.yaml --split-version v3` | `data/labels/queue_resume-v1.json` (git-ignored) | **implemented, verified on real candidates** |
 | Synthetic product fallbacks never enter the queue | `is_synthetic` / non-eligible excluded from the pool by construction; tested | `label queue …` | queue coverage + `test_labelling_queue.py` | **verified** |
 | The labelling UI hides bias signals and sessions save/resume | reveal-hints off by default; served candidate carries no heuristic score; save → resume preserves labels; export is clean; transcript context resolved from the cache; `--stage pilot` runs a controlled 24-candidate session and rejects out-of-stage labels | `label serve --queue … --stage pilot` → `label export` | pilot service smoke, `test_labelling.py`, `test_labelling_queue.py` | **verified** (round-trip on the real queue) |
-| The readiness gate reports Phase 5B blocked when labels are insufficient | every gate condition checked; blocking reasons listed; `--require-ready` exits non-zero | `experiment readiness --queue … --split-version v2` | `artifacts/experiments/readiness_report.json` | **implemented but not populated** (0 labels → blocked) |
+| The readiness gate blocks when labels are insufficient | every gate condition checked; blocking reasons listed; `--require-ready` exits non-zero | `experiment readiness --queue … --split-version v3` | `artifacts/experiments/readiness_report.json` | **implemented**; whether it passes depends on the label count, which the report reads |
 | An immutable frozen label snapshot can be produced before training | hashes of label/candidate/feature/split manifests, distribution, exclusions, version-immutability | `experiment freeze --snapshot-version v1` | `data/labels/label_snapshot_v1.json` (git-ignored) | **implemented but not populated** |
 | `human_labelled_candidate_count` (round 1: 250–300) | resumable per-annotator SQLite store; versioned export; quality controls | `label serve` → `label export` → `label check` | `data/labels/labels_v1.jsonl`, `label_statistics.json` | **not yet supported** (0 human labels; the terminal Phase 5A action is human work) |
 
@@ -336,7 +336,7 @@ live values; these were the values at the time of writing.
 | Capability | Evidence status | Why |
 |---|---|---|
 | **Multimodal learned ranking** — a multimodal PyTorch ranker consumes audio and transcript features to rank candidate ad breaks, and serves the product. | **SUPPORTED** | A 489,477-parameter gated fusion model consumes `openai/whisper-tiny.en` speech representations, `sentence-transformers/all-MiniLM-L6-v2` transcript embeddings and 110 handcrafted scalars, and is served through `/api/insert-sections`. The served checkpoint is weakly supervised, which the report states. |
-| **Human-labelled dataset scale** — enough human labels, spread widely enough, for the readiness gate to pass. | **NOT YET SUPPORTED** | `human_labelled_candidate_count = 0`. 595 candidates were *generated*; generated candidates are not labels, and the report keeps the two fields apart precisely so they cannot be conflated. |
+| **Human-labelled dataset scale** — enough human labels, spread widely enough, for the readiness gate to pass. | read `human_labelled_candidate_count` from the report | Generated candidates are **not** labels, and the report keeps the two fields apart precisely so they cannot be conflated. Whatever the generated count is, it says nothing about this row. |
 | **Held-out ranking improvement** — a measured relative NDCG@3 improvement over `heuristic_offline_v1`. | **NOT YET SUPPORTED** | No publishable held-out comparison exists. One comparison ran and is recorded, blocked, with its real measured numbers visible. |
 
 **Neither the dataset-scale nor the ranking-improvement capability may be

@@ -21,8 +21,11 @@ without a training run, which is what makes the demo reproducible.
 - `data_provenance`: `weak_supervision`
 - Targets: `heuristic_offline_v1`'s own score, binned into the 1–5 rubric within
   each episode by `slotify_rank.labelling.weak`.
-- Training data: the real 13-episode corpus (0.84 h), 260 train candidates over
-  11 episodes, validated on 1 held-out episode.
+- Training data: the corpus as it stood when it was produced -- 13 episodes,
+  0.84 h, 260 train candidates over 11 episodes, one held-out validation
+  episode. The corpus has since grown; this checkpoint was not retrained,
+  because retraining a distillation of the baseline on more data would still be
+  a distillation of the baseline.
 
 What it proves: a 489,477-parameter multimodal PyTorch ranker consuming Whisper
 speech representations, MiniLM transcript embeddings and 110 handcrafted
@@ -55,7 +58,22 @@ and are not measurements of anything.
 
 ## What replaces all of this
 
-A run whose `label_source` is `human`, trained on the labelling round the
-readiness gate is waiting for. Until one exists,
-`artifacts/reports/model_evidence.md` reports ranking quality as
-`NOT YET SUPPORTED`, which is accurate.
+A run whose `label_source` is `human`, from the labelling round the readiness
+gate is waiting for:
+
+```bash
+cd ml
+python -m slotify_rank.cli experiment train   --labels ../data/labels/labels_resume-v1.jsonl --split-version v3
+```
+
+That writes one directory per (variant, seed) cell and a matrix summary next to
+them, and it refuses to nominate a run whose label source is anything but
+`human`.
+
+Two things then change automatically. `scripts/lib/select-checkpoint.mjs` starts
+serving the human-trained checkpoint instead of the bootstrap -- `npm run
+demo` and `npm run preflight` both print which one they picked and its label
+source -- and `artifacts/reports/resume_evidence.md` moves the
+`human_trained_checkpoint` row from FAIL to PASS.
+
+Until then, both reports say so, which is accurate.

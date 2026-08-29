@@ -296,7 +296,7 @@ recording collapse into one episode.
 
 # Restrict to a queue, or to just its pilot stage for a controlled first pass:
 .\.venv\Scripts\python.exe -m slotify_rank.cli label serve `
-    --queue ..\data\labels\queue_v1.json --stage pilot --port 8000
+    --queue ..\data\labels\queue_resume-v1.json --stage pilot --port 8000
 
 .\.venv\Scripts\python.exe -m slotify_rank.cli label export
 ```
