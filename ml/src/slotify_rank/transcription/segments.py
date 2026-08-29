@@ -221,6 +221,14 @@ def reconcile_overlapping_segments(
     the later one is trimmed to start where the earlier one ended. That case is
     a genuine model disagreement, not a duplicate, and silently discarding one
     side would delete speech.
+
+    Ordering is re-established once at the end rather than assumed during the
+    walk. Preferring a nearer-centre duplicate replaces an already-kept
+    segment's span in place, which can push its end past the start of a segment
+    kept after it -- so a trim applied only as each segment arrives leaves an
+    overlap behind, and ``build_segments`` then rejects the whole episode. This
+    is not hypothetical: it is what made a 22-minute dramatic reading fail with
+    a 360 ms overlap after the rest of the corpus transcribed cleanly.
     """
     ordered = sorted(candidates, key=lambda item: (item[0], item[1]))
     kept: list[list] = []
@@ -250,14 +258,34 @@ def reconcile_overlapping_segments(
                 ]
             continue
 
-        if kept and start_ms < kept[-1][1]:
-            # Genuine disagreement in an overlap region: keep both, but do not
-            # let them overlap, or the schema's ordering invariant fails.
-            start_ms = kept[-1][1]
-            end_ms = max(start_ms, end_ms)
         kept.append([start_ms, end_ms, text, words, _chunk_index, chunk_centre])
 
-    return [(item[0], item[1], item[2], item[3]) for item in kept]
+    return _enforce_ordering(kept)
+
+
+def _enforce_ordering(
+    kept: Sequence[Sequence],
+) -> list[tuple[int, int, str, tuple[TranscriptWord, ...]]]:
+    """Sort by start and trim each span to begin where the previous one ended.
+
+    A span trimmed to nothing is dropped: it was wholly inside its predecessor,
+    so its text is already covered, and emitting a zero-length segment would
+    only move the failure downstream. Text is never edited -- only the span --
+    because a timestamp that is 200 ms generous is a smaller error than a
+    sentence that disappears.
+    """
+    resolved: list[tuple[int, int, str, tuple[TranscriptWord, ...]]] = []
+    previous_end = 0
+    for start_ms, end_ms, text, words, *_ in sorted(
+        kept, key=lambda item: (item[0], item[1])
+    ):
+        start = max(int(start_ms), previous_end)
+        end = max(int(end_ms), start)
+        if end <= start:
+            continue
+        resolved.append((start, end, text, words))
+        previous_end = end
+    return resolved
 
 
 def build_segments(

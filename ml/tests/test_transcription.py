@@ -417,3 +417,48 @@ def test_transcript_round_trips_through_disk(tmp_path: Path):
     path = tmp_path / "t.json"
     write_transcript(path, transcript)
     assert read_transcript(path).to_dict() == transcript.to_dict()
+
+
+def test_preferring_a_nearer_duplicate_cannot_leave_an_overlap_behind():
+    """The regression that failed a whole 22-minute episode.
+
+    Replacing an already-kept segment with a nearer-centre duplicate widens it
+    in place, which can push its end past the start of a segment kept after it.
+    A trim applied only as each segment arrives never sees that, so the overlap
+    survives to `build_segments`, which rejects the entire episode.
+    """
+    from slotify_rank.transcription.segments import reconcile_overlapping_segments
+
+    # (start, end, text, words, chunk_index, chunk_centre)
+    candidates = [
+        # Kept first, transcribed near the edge of chunk 0.
+        (955_000, 955_100, "he said quietly", (), 0, 940_000),
+        # A different sentence, kept after it with no overlap at this point.
+        (955_150, 955_400, "and then she left", (), 0, 940_000),
+        # The same first sentence from chunk 1, whose centre is much nearer, and
+        # whose span is wider -- it ends at 955_360, past the second segment's
+        # start of 955_150.
+        (955_000, 955_360, "he said quietly", (), 1, 955_100),
+    ]
+    resolved = reconcile_overlapping_segments(candidates)
+
+    assert resolved, "reconciliation must not drop every segment"
+    for previous, following in zip(resolved, resolved[1:]):
+        assert following[0] >= previous[1], (
+            f"segment starting at {following[0]} overlaps the previous one "
+            f"ending at {previous[1]}"
+        )
+    # The nearer-centre version won, and nothing was silently deleted.
+    assert resolved[0][:2] == (955_000, 955_360)
+    assert "and then she left" in [segment[2] for segment in resolved]
+
+
+def test_a_span_wholly_swallowed_by_its_predecessor_is_dropped_not_zero_length():
+    from slotify_rank.transcription.segments import reconcile_overlapping_segments
+
+    candidates = [
+        (1_000, 5_000, "a long stretch of speech", (), 0, 3_000),
+        (2_000, 3_000, "something else entirely", (), 0, 3_000),
+    ]
+    resolved = reconcile_overlapping_segments(candidates)
+    assert all(end > start for start, end, _text, _words in resolved)
