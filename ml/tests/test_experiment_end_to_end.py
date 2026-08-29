@@ -216,3 +216,51 @@ def test_the_resume_report_reads_a_comparison_it_is_pointed_at(trained):
     # ...but the report still read the run and reported what it found there.
     assert statuses["multimodal_ranker_exists"] == "PASS"
     assert (reports / "resume_evidence.md").is_file()
+
+
+def test_the_training_matrix_command_runs_a_cell_and_summarises_it(trained):
+    """`experiment train` is the command a person runs once labels exist.
+
+    One cell only: the point is that the command wires up, selects and reports,
+    not that a synthetic corpus produces a good model.
+    """
+    directory, labels, _ = trained
+    summary_path = directory / "matrix.json"
+    code = main(
+        [
+            "experiment",
+            "train",
+            "--data-root",
+            str(directory / "data"),
+            "--config",
+            str(REPO_ROOT / "ml" / "configs" / "experiment_resume_v1.yaml"),
+            "--labels",
+            str(labels),
+            "--output-root",
+            str(directory / "matrix-runs"),
+            "--summary",
+            str(summary_path),
+            "--variant",
+            "handcrafted",
+            "--seed",
+            "42",
+        ]
+    )
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert payload["seed_selection"] == "median_validation_ndcg_at_3"
+    assert len(payload["runs"]) == 1
+    run = payload["runs"][0]
+    assert run["variant"] == "handcrafted"
+    assert run["seed"] == 42
+    assert run["exit_code"] == 0
+
+    # Two independent reasons this matrix is not quotable, both named:
+    # the corpus is synthetic (the training summary stamps label_source
+    # accordingly), and `handcrafted` is not the declared headline variant. It
+    # reports the run it has rather than quoting it.
+    assert code == 1
+    assert run["label_source"] == "synthetic"
+    reasons = payload["blocking_reasons"]
+    assert any("label_source=['synthetic']" in reason for reason in reasons), reasons
+    assert any("headline variant" in reason for reason in reasons), reasons
+    assert payload["by_variant"]["handcrafted"]["seed_count"] == 1

@@ -210,6 +210,131 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_train(args: argparse.Namespace) -> int:
+    """Train every declared ablation at every declared seed, then pick one.
+
+    The picking is the part worth reading: the reported run is the *median* seed
+    by validation NDCG@3, not the best. Reporting the best of several seeds
+    reports the upper tail of a distribution as if it were its centre, and every
+    run's score is written out so a reader can see the spread rather than take it
+    on trust.
+    """
+    from slotify_rank.experiment.canonical import (
+        ExperimentConfigError,
+        load_experiment_config,
+    )
+    from slotify_rank.experiment.matrix import (
+        plan_runs,
+        read_outcome,
+        summarise_matrix,
+        write_matrix_summary,
+    )
+    from slotify_rank.training_cli import _cmd_run
+
+    paths = _paths(args)
+    try:
+        config = load_experiment_config(Path(args.config))
+    except ExperimentConfigError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    variants = (
+        [args.variant] if args.variant else list(config.model["ablations"])
+    )
+    seeds = [args.seed] if args.seed is not None else list(config.seeds)
+    output_root = Path(args.output_root or (paths.data_root.parent / "artifacts" / "training"))
+    runs = plan_runs(variants, seeds, output_root)
+
+    print(
+        f"Training matrix for {config.experiment_version}: "
+        f"{len(variants)} variant(s) x {len(seeds)} seed(s) = {len(runs)} run(s)."
+    )
+    print(f"  labels : {args.labels}")
+    print(f"  output : {output_root}")
+
+    outcomes = []
+    for index, run in enumerate(runs, start=1):
+        print()
+        print(f"[{index}/{len(runs)}] {run.name}")
+        print("-" * 72)
+        if run.run_dir.joinpath("training_summary.json").is_file() and not args.force:
+            print("  already trained; reading its summary (pass --force to retrain)")
+            outcomes.append(read_outcome(run, 0))
+            continue
+        # The same namespace `training run` would build. Label source is left
+        # unset on purpose: this experiment trains on human labels only, and the
+        # loader's default allowlist is human-only, so a weak export fails here
+        # rather than being trained on and caught later.
+        run_args = argparse.Namespace(
+            data_root=args.data_root,
+            labels=args.labels,
+            allow_label_source=None,
+            training_config=args.training_config,
+            split_version=args.split_version,
+            output=None,
+            epochs=None,
+            seed=run.seed,
+            device=None,
+            batch_size=None,
+            learning_rate=None,
+            max_episodes=None,
+            max_candidates=None,
+            max_pairs=None,
+            num_threads=None,
+            smoke=False,
+            model=run.variant,
+            model_config=None,
+            run_dir=str(run.run_dir),
+        )
+        try:
+            code = int(_cmd_run(run_args))
+        except Exception as error:  # noqa: BLE001 - recorded, not swallowed
+            code = 1
+            print(f"  run raised: {type(error).__name__}: {error}")
+        outcomes.append(read_outcome(run, code))
+
+    summary = summarise_matrix(
+        experiment_version=config.experiment_version,
+        headline_variant=str(config.model["headline_variant"]),
+        seeds=seeds,
+        outcomes=outcomes,
+        allowed_label_sources=tuple(config.labels["allowed_label_sources"]),
+    )
+    destination = (
+        Path(args.summary)
+        if args.summary
+        else paths.data_root.parent
+        / "artifacts"
+        / "experiments"
+        / f"{config.experiment_version}-training-matrix.json"
+    )
+    write_matrix_summary(destination, summary)
+
+    print()
+    print("=" * 72)
+    print("Validation NDCG@3 by variant (median over seeds)")
+    for variant, block in summary.by_variant().items():
+        print(
+            f"  {variant:<14} {block['validation_ndcg_at_3_median']:.4f}  "
+            f"[{block['validation_ndcg_at_3_min']:.4f}, "
+            f"{block['validation_ndcg_at_3_max']:.4f}]  "
+            f"({block['seed_count']} seed(s), {block['model_parameter_count']} params)"
+        )
+    print()
+    if summary.reported:
+        print(
+            f"Reported run: {summary.reported.variant} seed {summary.reported.seed} "
+            f"(median), validation NDCG@3 "
+            f"{summary.reported.validation_ndcg_at_3:.4f}"
+        )
+        print(f"  checkpoint: {Path(summary.reported.run_dir) / 'best_checkpoint.pt'}")
+    for reason in summary.blocking_reasons:
+        print(f"  blocked: {reason}")
+    print("=" * 72)
+    print(f"Wrote {destination}")
+    return 0 if summary.ok else 1
+
+
 def _cmd_freeze(args: argparse.Namespace) -> int:
     from slotify_rank.experiment.freeze import build_snapshot, write_snapshot
 
@@ -320,6 +445,49 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Exit non-zero when the experiment cannot yet be resolved.",
     )
     manifest.set_defaults(func=_cmd_manifest)
+
+    train = experiment_sub.add_parser(
+        "train",
+        help=(
+            "Train every declared ablation at every declared seed and select the "
+            "median seed by validation NDCG@3."
+        ),
+    )
+    train.add_argument("--data-root", default=None)
+    train.add_argument(
+        "--config", default="ml/configs/experiment_resume_v1.yaml"
+    )
+    train.add_argument(
+        "--labels", required=True, help="Human label export to train on."
+    )
+    train.add_argument(
+        "--training-config", default=None, dest="training_config"
+    )
+    train.add_argument("--split-version", default="v3", dest="split_version")
+    train.add_argument(
+        "--output-root",
+        default=None,
+        dest="output_root",
+        help="Where run directories go (default artifacts/training).",
+    )
+    train.add_argument("--summary", default=None)
+    train.add_argument(
+        "--variant",
+        default=None,
+        help="Train only this variant instead of every declared ablation.",
+    )
+    train.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Train only this seed instead of every declared seed.",
+    )
+    train.add_argument(
+        "--force",
+        action="store_true",
+        help="Retrain cells that already have a training_summary.json.",
+    )
+    train.set_defaults(func=_cmd_train)
 
     freeze = experiment_sub.add_parser(
         "freeze", help="Freeze an immutable label snapshot for the experiment."
