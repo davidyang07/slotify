@@ -208,3 +208,56 @@ def test_unknown_split_setting_is_rejected(tmp_path: Path):
     path.write_text("split:\n  nonsense: 1\n", encoding="utf-8")
     with pytest.raises(ValueError, match="unknown split setting"):
         load_split_config(path)
+
+
+def test_every_committed_split_config_loads_and_groups_on_series():
+    """A split that grouped on the episode would let one show span partitions."""
+    configs = sorted(
+        (find_repo_root() / "ml" / "configs").glob("splits_v*.yaml")
+    )
+    assert len(configs) >= 3, "expected at least v1, v2 and v3"
+    for path in configs:
+        config = load_split_config(path)
+        assert config.group_by == "series", path.name
+        assert config.require_target_domain_test is True, path.name
+        assert (config.train, config.validation, config.test) == (0.70, 0.15, 0.15)
+
+
+def test_the_experiments_split_config_matches_what_the_experiment_declares():
+    """Two files describe this split. They must not disagree."""
+    from slotify_rank.experiment.canonical import load_experiment_config
+
+    experiment = load_experiment_config(
+        find_repo_root() / "ml" / "configs" / "experiment_resume_v1.yaml"
+    )
+    config = load_split_config(find_repo_root() / str(experiment.split["config"]))
+    assert config.version == experiment.split_version
+    assert config.group_by == experiment.split["group_by"]
+    assert config.seed == experiment.split["seed"]
+    for name, ratio in experiment.split["ratios"].items():
+        assert getattr(config, name) == ratio
+
+
+def test_regenerating_a_split_from_the_committed_config_is_byte_identical(
+    tmp_path: Path,
+):
+    """Determinism the experiment manifest's split hash depends on."""
+    config = load_split_config(find_repo_root() / "ml" / "configs" / "splits_v3.yaml")
+    episodes = [
+        make_episode(
+            title=f"Episode {index}",
+            series_id=f"series-{index % 9}",
+            sha_seed=chr(ord("a") + index),
+            duration_ms=300_000 + index * 11_000,
+        )
+        for index in range(18)
+    ]
+    first = compute_splits(episodes, config)
+    second = compute_splits(list(reversed(episodes)), config)
+    assert first.to_dict() == second.to_dict()
+
+    path = tmp_path / "splits_v3.json"
+    write_split_manifest(path, first)
+    before = path.read_bytes()
+    write_split_manifest(path, second)  # identical content is a no-op, not an error
+    assert path.read_bytes() == before

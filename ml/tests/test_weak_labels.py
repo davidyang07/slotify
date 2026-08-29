@@ -172,3 +172,93 @@ def test_a_mixed_export_reports_both_sources() -> None:
 def test_an_empty_allowlist_is_rejected() -> None:
     with pytest.raises(ValueError, match="at least one source"):
         aggregate_labels([], acceptable_threshold=4.0, allowed_label_sources=())
+
+
+# ---------------------------------------------------------------------------
+# The weak-label firewall, from every side that could breach it
+# ---------------------------------------------------------------------------
+
+
+def test_the_canonical_experiment_cannot_name_a_weak_source(tmp_path: Path) -> None:
+    """A weak run is a different experiment; it must not borrow this one's name."""
+    from slotify_rank.experiment.canonical import (
+        ExperimentConfigError,
+        load_experiment_config,
+    )
+    from slotify_rank.config.settings import find_repo_root
+
+    committed = (
+        find_repo_root() / "ml" / "configs" / "experiment_resume_v1.yaml"
+    )
+    assert list(
+        load_experiment_config(committed).labels["allowed_label_sources"]
+    ) == ["human"]
+
+    relaxed = tmp_path / "relaxed.yaml"
+    relaxed.write_text(
+        committed.read_text(encoding="utf-8").replace(
+            "allowed_label_sources: [human]",
+            "allowed_label_sources: [human, weak_heuristic]",
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ExperimentConfigError, match=r"only be \['human'\]"):
+        load_experiment_config(relaxed)
+
+
+def test_a_weakly_trained_run_cannot_be_nominated_by_the_matrix() -> None:
+    from slotify_rank.experiment.matrix import RunOutcome, summarise_matrix
+
+    def outcome(label_source: str) -> RunOutcome:
+        return RunOutcome(
+            variant="gated",
+            seed=42,
+            run_dir="artifacts/training/gated-seed42",
+            exit_code=0,
+            label_source=label_source,
+            validation_ndcg_at_3=0.9,
+        )
+
+    human = summarise_matrix("exp", "gated", [42], [outcome("human")])
+    weak = summarise_matrix("exp", "gated", [42], [outcome("weak_heuristic")])
+    assert human.ok is True
+    assert weak.ok is False
+    assert any("weak_heuristic" in reason for reason in weak.blocking_reasons)
+
+
+def test_a_weakly_trained_model_cannot_reach_the_resume_report(tmp_path: Path) -> None:
+    """Even with a comparison present, the checkpoint row must fail."""
+    import json
+
+    from slotify_rank.evaluation.resume_evidence import (
+        FAIL,
+        collect_resume_evidence,
+    )
+    from slotify_rank.config.settings import find_repo_root
+
+    artifacts = tmp_path / "artifacts"
+    run = artifacts / "training" / "run-1"
+    run.mkdir(parents=True)
+    (run / "training_summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run-1",
+                "generated_at": "2026-08-29T00:00:00+00:00",
+                "model_variant": "gated",
+                "model_parameter_count": 489477,
+                "label_source": "weak_heuristic",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "README.md").write_text(
+        "UofTHacks 13 - MLH Best Use of ElevenLabs\n", encoding="utf-8"
+    )
+    evidence = collect_resume_evidence(
+        repo_root=tmp_path,
+        artifacts_root=artifacts,
+        experiment_config_path=(
+            find_repo_root() / "ml" / "configs" / "experiment_resume_v1.yaml"
+        ),
+    )
+    assert evidence.check("human_trained_checkpoint").status == FAIL
