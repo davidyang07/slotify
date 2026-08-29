@@ -43,6 +43,7 @@ __all__ = [
     "RunOutcome",
     "MatrixSummary",
     "plan_runs",
+    "read_outcome",
     "select_reported_seed",
     "summarise_matrix",
     "write_matrix_summary",

@@ -396,24 +396,21 @@ def summarise_readiness(
     if Path(queue_path).is_file():
         queued = len(read_queue(Path(queue_path)).unique_candidate_ids)
 
-    episodes_by_split: dict[str, int] = {}
+    # One pass: an episode's split is whichever split its candidates carry, and
+    # a candidate's split is stamped onto it by `dataset split`.
+    episodes_in_split: dict[str, set[str]] = {}
     series_by_split: dict[str, set[str]] = {}
     for candidate in labellable:
         episode = episode_by_id[candidate.episode_id]
         series_by_split.setdefault(candidate.dataset_split, set()).add(
             episode.series_id
         )
-    for episode in episodes:
-        split = next(
-            (
-                candidate.dataset_split
-                for candidate in labellable
-                if candidate.episode_id == episode.episode_id
-            ),
-            None,
+        episodes_in_split.setdefault(candidate.dataset_split, set()).add(
+            candidate.episode_id
         )
-        if split is not None:
-            episodes_by_split[split] = episodes_by_split.get(split, 0) + 1
+    episodes_by_split = {
+        split: len(members) for split, members in sorted(episodes_in_split.items())
+    }
 
     hours = sum(
         (episode.normalized_duration_ms or episode.duration_ms or 0)
