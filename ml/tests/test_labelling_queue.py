@@ -218,3 +218,57 @@ def test_stage_candidate_ids_restricts_a_serve_session():
     assert len(pilot) < len(every)
     with pytest.raises(ValueError):
         stage_candidate_ids(queue, "bogus")
+
+
+def test_require_complete_features_excludes_unfeaturisable_candidates():
+    """A candidate the model cannot consume must not cost human attention.
+
+    The readiness gate refuses a labelled set containing one, so queuing it
+    guarantees the judgement is wasted.
+    """
+    from slotify_rank.labelling.queue import QueueConfig, build_candidate_views
+
+    from tests.dataset_fixtures import make_candidate, make_episode
+
+    class _Record:
+        def __init__(self, status: str):
+            self.feature_status = status
+            self.transcript_available = status == "complete"
+            self.audio_embedding_available = True
+            self.text_embedding_available = status == "complete"
+
+    episode = make_episode(title="Featurised", series_id="s1")
+    candidates = [
+        make_candidate(episode.episode_id, timestamp_ms=30_000 + i * 20_000)
+        for i in range(4)
+    ]
+    features = {
+        candidates[0].candidate_id: _Record("complete"),
+        candidates[1].candidate_id: _Record("audio_only"),
+        candidates[2].candidate_id: _Record("failed"),
+        # candidates[3] has no feature record at all.
+    }
+
+    permissive = build_candidate_views(
+        candidates, [episode], QueueConfig(include_fixtures=True), features
+    )
+    assert len(permissive) == 4
+
+    strict = build_candidate_views(
+        candidates,
+        [episode],
+        QueueConfig(include_fixtures=True, require_complete_features=True),
+        features,
+    )
+    assert [view.candidate_id for view in strict] == [candidates[0].candidate_id]
+    assert strict[0].feature_status == "complete"
+
+
+def test_the_setting_is_recorded_in_the_queue_config_digest():
+    """Two queues that filtered differently must not share a config hash."""
+    from slotify_rank.labelling.queue import QueueConfig
+
+    permissive = QueueConfig()
+    strict = QueueConfig(require_complete_features=True)
+    assert permissive.digest() != strict.digest()
+    assert strict.to_dict()["require_complete_features"] is True

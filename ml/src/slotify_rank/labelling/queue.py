@@ -26,6 +26,11 @@ What "stratified" means here, stated precisely so the report can be checked:
   position, silence duration, sentence-boundary status, transcript availability
   and content type are measured across the selected set and written into the
   artifact, so a skew is visible even when it is not a hard constraint.
+* **Optionally, only featurisable candidates are queued.**
+  ``require_complete_features`` excludes candidates whose multimodal feature
+  record is missing or failed. They cannot enter training, and the readiness
+  gate refuses a labelled set containing them -- so queuing one spends human
+  attention on a judgement no model will ever see.
 
 Determinism: every ordering and every sample is keyed on a SHA-256 of the queue
 seed and the candidate id, never on manifest order or wall-clock time, so the
@@ -165,6 +170,10 @@ class QueueConfig:
         default_factory=lambda: {"train": 0.66, "validation": 0.17, "test": 0.17}
     )
     include_fixtures: bool = False
+    #: Queue only candidates with a ``complete`` multimodal feature record.
+    #: Off by default so a queue can be built before the feature pipeline has
+    #: run; on for any round whose labels are meant to train a model.
+    require_complete_features: bool = False
     eligible_content_types: tuple[str, ...] = tuple(sorted(TARGET_DOMAIN_CONTENT_TYPES))
     position_buckets: int = 5
     #: Ascending millisecond boundaries defining the silence-duration buckets
@@ -208,6 +217,7 @@ class QueueConfig:
             "max_per_episode": self.max_per_episode,
             "allocation": dict(self.allocation),
             "include_fixtures": self.include_fixtures,
+            "require_complete_features": self.require_complete_features,
             "eligible_content_types": list(self.eligible_content_types),
             "position_buckets": self.position_buckets,
             "silence_bucket_edges_ms": list(self.silence_bucket_edges_ms),
@@ -272,6 +282,8 @@ class CandidateView:
     transcript_available: bool
     audio_available: bool
     text_available: bool
+    feature_status: str = ""
+
     #: Acoustic and transcript signals point opposite ways. Only ever True when a
     #: transcript exists: a long pause with no sentence boundary (acoustic says
     #: "break", transcript says "mid-sentence"), or a sentence boundary with
@@ -324,6 +336,9 @@ def build_candidate_views(
             continue
 
         record = features.get(candidate.candidate_id)
+        feature_status = str(getattr(record, "feature_status", "") or "")
+        if config.require_complete_features and feature_status != "complete":
+            continue
         transcript_available = bool(
             getattr(record, "transcript_available", False)
         )
@@ -362,6 +377,7 @@ def build_candidate_views(
                 audio_available=audio_available,
                 text_available=text_available,
                 is_disagreement=disagreement,
+                feature_status=feature_status,
             )
         )
     return views
@@ -827,6 +843,7 @@ def _coverage(
                 "unknown" if v.sentence_end is None else str(bool(v.sentence_end))
             )
         ),
+        "by_feature_status": counts(lambda v: v.feature_status or "unknown"),
         "transcript_available": sum(1 for v in selected if v.transcript_available),
         "audio_available": sum(1 for v in selected if v.audio_available),
         "text_available": sum(1 for v in selected if v.text_available),

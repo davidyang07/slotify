@@ -57,6 +57,12 @@ queue:
   # Only real target-domain audio is queued; repository fixtures and music are
   # excluded so no smoke clip is ever shown to an annotator.
   include_fixtures: false
+
+  # And only candidates the model could actually consume. A candidate whose
+  # multimodal feature record is missing or failed cannot enter training, and
+  # the readiness gate refuses a labelled set containing one -- so queuing it
+  # would spend human attention on a judgement no model will ever see.
+  require_complete_features: true
   eligible_content_types: [podcast, interview, conversational, narrated]
 
   # Coverage bucketing.
