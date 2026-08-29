@@ -358,7 +358,8 @@ cd ml
 .\.venv\Scripts\python.exe -m slotify_rank.cli label resume-experiment
 
 # 3. Gate, export, freeze, pin.
-.\.venv\Scripts\python.exe -m slotify_rank.cli experiment readiness --split-version v3 --require-ready
+.\.venv\Scripts\python.exe -m slotify_rank.cli experiment readiness --split-version v3 `
+    --experiment-config configs\experiment_resume_v1.yaml --require-ready
 .\.venv\Scripts\python.exe -m slotify_rank.cli label export --dataset-version resume-v1
 .\.venv\Scripts\python.exe -m slotify_rank.cli experiment freeze --snapshot-version resume-v1 --split-version v3
 .\.venv\Scripts\python.exe -m slotify_rank.cli experiment manifest --require-ready

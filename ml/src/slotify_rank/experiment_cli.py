@@ -10,6 +10,7 @@ when the gate is not met, so a training entry point can gate on it directly.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -81,6 +82,23 @@ def _cmd_readiness(args: argparse.Namespace) -> int:
             sha256_file(split_path) if split_path.is_file() else None
         ),
     )
+    # The generic gate is the floor for *any* held-out comparison. A named
+    # experiment raises it: pointing at one makes the readiness check answer the
+    # question the operator actually has, rather than passing at 200 labels when
+    # the experiment needs 2,400 and only saying so two commands later.
+    gate = ReadinessGate()
+    if args.experiment_config:
+        from slotify_rank.experiment.canonical import load_experiment_config
+
+        experiment = load_experiment_config(Path(args.experiment_config))
+        gate = dataclasses.replace(
+            gate, min_unique_candidates=experiment.minimum_human_labels
+        )
+        print(
+            f"Gate raised to {gate.min_unique_candidates} unique candidates by "
+            f"{experiment.experiment_version}."
+        )
+
     report = compute_readiness(
         aggregated,
         raw,
@@ -88,7 +106,7 @@ def _cmd_readiness(args: argparse.Namespace) -> int:
         episodes,
         quality,
         feature_status_by_id=_feature_status_by_id(paths),
-        gate=ReadinessGate(),
+        gate=gate,
     )
 
     destination = (
@@ -411,6 +429,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     readiness.add_argument("--data-root", default=None)
     readiness.add_argument("--queue", default=None, help="Assigned queue artifact.")
     readiness.add_argument("--split-version", default="v2")
+    readiness.add_argument(
+        "--experiment-config",
+        default=None,
+        dest="experiment_config",
+        help=(
+            "Raise the minimum-label gate to the one this experiment declares "
+            "(e.g. ml/configs/experiment_resume_v1.yaml)."
+        ),
+    )
     readiness.add_argument("--output", default=None)
     readiness.add_argument(
         "--acceptable-threshold", type=int, default=DEFAULT_ACCEPTABLE_THRESHOLD

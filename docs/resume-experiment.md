@@ -131,7 +131,8 @@ equivalent 0–4 grade is `quality_score - 1`.
 
 ```bash
 # Gate: does what exists support the experiment?
-python -m slotify_rank.cli experiment readiness --split-version v3 --require-ready
+python -m slotify_rank.cli experiment readiness --split-version v3 \
+    --experiment-config configs/experiment_resume_v1.yaml --require-ready
 python -m slotify_rank.cli label export --dataset-version resume-v1
 python -m slotify_rank.cli experiment freeze --snapshot-version resume-v1 --split-version v3
 python -m slotify_rank.cli experiment manifest --require-ready

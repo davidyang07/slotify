@@ -171,3 +171,28 @@ def test_snapshot_read_rejects_wrong_schema(tmp_path):
     )
     with pytest.raises(ValueError):
         read_snapshot(path)
+
+
+def test_the_gate_can_be_raised_by_a_named_experiment(tmp_path):
+    """The generic gate is a floor, not the resume experiment's bar.
+
+    Passing at 200 labels and only revealing the real requirement two commands
+    later would send someone away thinking they were done.
+    """
+    import dataclasses
+    from pathlib import Path
+
+    from slotify_rank.experiment.canonical import load_experiment_config
+    from slotify_rank.experiment.readiness import ReadinessGate
+
+    config = load_experiment_config(
+        Path(__file__).resolve().parents[1] / "configs" / "experiment_resume_v1.yaml"
+    )
+    raised = dataclasses.replace(
+        ReadinessGate(), min_unique_candidates=config.minimum_human_labels
+    )
+    assert ReadinessGate().min_unique_candidates < raised.min_unique_candidates
+    assert raised.min_unique_candidates == 2400
+    # Everything else the generic gate requires is unchanged.
+    assert raised.min_series == ReadinessGate().min_series
+    assert raised.relevance_threshold == ReadinessGate().relevance_threshold
