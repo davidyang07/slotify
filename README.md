@@ -216,7 +216,7 @@ cat artifacts/reports/resume_evidence.md
 ```
 
 Re-run those for current values. **Every number in this section is read from
-those files, not typed here**, and the four quantities below are tracked
+those files, not typed here**, and the five quantities below are tracked
 separately because collapsing them would overstate the work by an order of
 magnitude:
 
@@ -286,7 +286,8 @@ and hashed into a manifest before the test split is read.
 ## Reproducing the tests
 
 ```bash
-npm run verify                    # frontend lint + tests + build, backend typecheck + tests
+npm run verify                    # frontend lint + tests + build, backend typecheck + tests,
+                                  # and the checkpoint-selection tests in scripts/
 
 cd ml && python -m pytest         # the ML suite, network-free, no model downloads
 cd ml && python -m pytest -m model_smoke -o addopts=""   # opt-in: downloads real weights

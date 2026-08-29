@@ -13,12 +13,18 @@ checking, train-only normalization, within-episode pair generation, five model
 variants behind one interface, a pairwise ranking objective plus an auxiliary
 acceptability head, episode-grouped validation, checkpointing, and resume.
 
-**What Phase 4 is not.** It is not the final model comparison, the ablation
-matrix, the human-preference study, or the editing-time benchmark — those are
-Phase 5, and they require real human labels. **No Phase 4 metric is evidence of
-model quality.** The smoke runs train on deterministic synthetic fixtures (see
-[Smoke training](#smoke-training)); a validation NDCG of 1.0 on that data means
-the loop learns a signal that was planted to be learnable, nothing more.
+**What Phase 4 is not.** It is not the held-out comparison against
+`heuristic_offline_v1` — that is `evaluation compare`, it runs once on the test
+split, and it requires real human labels. **A metric measured on synthetic
+fixtures is never evidence of model quality.** The smoke runs train on
+deterministic synthetic data (see [Smoke training](#smoke-training)); a
+validation NDCG of 1.0 there means the loop learns a signal that was planted to
+be learnable, nothing more.
+
+The ablation matrix *is* built here, by `experiment train` — see
+[Real training](#real-training-once-the-human-labels-exist) — but which of its
+runs may be quoted, and against what, is decided by
+[`resume-experiment.md`](resume-experiment.md).
 
 ---
 
@@ -318,45 +324,50 @@ checkpoints git-ignored). See also the
 
 ---
 
-## Real training (once 200–300 human labels exist)
+## Real training (once the human labels exist)
 
-The commands are identical; only the label source changes. Once
-`data/labels/labels_v1.jsonl` holds 200–300+ human labels spanning at least a few
-series:
+The commands are identical; only the label source changes. Do not hand-roll the
+loop — `experiment train` runs the whole matrix and, more importantly, applies
+the selection rule:
 
 ```bash
-# 1. Export the human labels (Phase 2 labelling loop).
-python -m slotify_rank.cli label export
+cd ml
 
-# 2. Regenerate the split now that there are enough series to split (Phase 2).
-python -m slotify_rank.cli dataset split --config configs/splits_v1.yaml
-python -m slotify_rank.cli dataset validate --deep
+# 1. Export the human labels and confirm the gate the experiment declares.
+python -m slotify_rank.cli label export --dataset-version resume-v1
+python -m slotify_rank.cli experiment readiness --split-version v3 \
+    --experiment-config configs/experiment_resume_v1.yaml --require-ready
 
-# 3. Confirm the features are current (Phase 3), recomputing nothing already cached.
+# 2. Confirm the features are current, recomputing nothing already cached.
 python -m slotify_rank.cli pipeline features
 
-# 4. Train each variant. Real labels, real splits, no --smoke, full epoch budget.
-for m in handcrafted text_only audio_only concat gated; do
-  python -m slotify_rank.cli training run \
-      --labels data/labels/labels_v1.jsonl \
-      --model-config configs/models/${m}_v1.yaml
-done
-
-# 5. Validate the best gated checkpoint on the held-out split.
-python -m slotify_rank.cli training validate \
-    --labels data/labels/labels_v1.jsonl \
-    --checkpoint artifacts/training/<gated_run_id>/best_checkpoint.pt \
-    --output artifacts/training/<gated_run_id>/validation_real.json
+# 3. Every declared ablation at every declared seed, in one command.
+python -m slotify_rank.cli experiment train \
+    --labels ../data/labels/labels_resume-v1.jsonl --split-version v3
 ```
 
+That writes one run directory per (variant, seed) cell plus
+`artifacts/experiments/experiment-resume-v1-training-matrix.json`, which carries
+every run's validation NDCG@3, the per-variant spread, and the run it nominates.
+
+**The nominated run is the median seed by validation NDCG@3, not the best.**
+Training one configuration under three seeds and reporting the best of them
+reports the upper tail of a distribution as if it were its centre — while
+staying entirely within the letter of "we used a held-out test set". The matrix
+records all three so the spread is visible rather than taken on trust, and it
+refuses to nominate anything when a cell failed, when a cell trained on a label
+source the experiment does not allow, or when the headline variant is missing.
+
 The resulting `training_summary.json` files carry `data_provenance: real` and
-`label_source: human`, and their metrics are the first that may be quoted — but
-the **comparison against `heuristic_offline_v1`, the ablation matrix, and the
-headline NDCG improvement all belong to Phase 5**, not here.
+`label_source: human`, and their **validation** metrics are the first that may
+be quoted as measurements of this system. The comparison against
+`heuristic_offline_v1` and the headline NDCG improvement belong to
+`evaluation compare`, on the test split, once — see
+[`resume-experiment.md`](resume-experiment.md).
 
-## How Phase 4 differs from Phase 5
+## How training differs from evaluation
 
-| | Phase 4 (this system) | Phase 5 (not built) |
+| | Training (this system) | Evaluation |
 |---|---|---|
 | Goal | prove the training machinery works | measure whether the model is good |
 | Data | synthetic fixtures (+ real forward pass) | real human labels only |
