@@ -4,11 +4,14 @@ Every capability below is **unverified until its generating command succeeds and
 in this repository**. No number in this file may be typed by hand — each is read from the artifact
 named in its row.
 
-> **Start here.** The authoritative, machine-generated answer is
-> [`artifacts/reports/model_evidence.md`](../artifacts/reports/model_evidence.md), produced by
-> `slotify-rank report model-evidence` (or `npm run evidence`). This document explains the
-> *reasoning*; that report carries the *numbers*, and it is regenerated from the artifacts on
-> every run. Where the two disagree, the report is right and this file is stale.
+> **Start here.** The authoritative, machine-generated answers are
+> [`artifacts/reports/model_evidence.md`](../artifacts/reports/model_evidence.md) (what each
+> capability's artifacts establish) and
+> [`artifacts/reports/resume_evidence.md`](../artifacts/reports/resume_evidence.md) (PASS / FAIL /
+> NOT MEASURED per headline claim), produced by `npm run evidence` and `npm run resume-evidence`.
+> This document explains the *reasoning*; those reports carry the *numbers*, and both are
+> regenerated from the artifacts on every run. Where they disagree with this file, they are right
+> and this file is stale — and CI fails if either report disagrees with its own inputs.
 
 Status vocabulary: `not started` → `in progress` → `evidence generated` → `verified`
 (`verified` = artifact exists, was produced by the current `git_sha`, and the plan's acceptance
@@ -343,17 +346,77 @@ work and cannot be synthesised.
 
 ## What would establish the two outstanding capabilities
 
-1. `slotify-rank label serve --queue data/labels/queue_v1.json` and label the
-   280-candidate queue. The readiness gate needs at least 200 unique candidates
-   across at least 8 episodes and 6 series.
-2. `label export`, then `experiment readiness --require-ready` must exit 0.
-3. `experiment freeze --snapshot-version v1` for an immutable label snapshot.
-4. `training run` on human labels, ideally with 3+ seeds, reporting mean and std.
-5. `evaluation compare --split test --require-publishable` must exit 0.
-6. `report model-evidence` will then fill in the headline automatically.
+The infrastructure for both is complete and tested. What is missing is human
+labelling time, which is human work and cannot be synthesised.
 
-On dataset scale, the arithmetic the programme actually produces: the current
-queue is 280 candidates and the full labelling programme targets around 1,500.
-Any statement about labelled-candidate count quotes whatever
-`human_labelled_candidate_count` reads when the round finishes — the report
-holds no target figure to measure against, only the readiness gate.
+```powershell
+cd ml
+# 1. Everything mechanical: acquire, generate, featurise, split, queue.
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset prepare-resume-experiment
+
+# 2. The only manual step. 2,400 unique candidates is the experiment's gate.
+.\.venv\Scripts\python.exe -m slotify_rank.cli label resume-experiment
+
+# 3. Gate, export, freeze, pin.
+.\.venv\Scripts\python.exe -m slotify_rank.cli experiment readiness --split-version v3 --require-ready
+.\.venv\Scripts\python.exe -m slotify_rank.cli label export --dataset-version resume-v1
+.\.venv\Scripts\python.exe -m slotify_rank.cli experiment freeze --snapshot-version resume-v1 --split-version v3
+.\.venv\Scripts\python.exe -m slotify_rank.cli experiment manifest --require-ready
+
+# 4. Five ablations x three seeds; the MEDIAN seed by validation NDCG@3 is reported.
+.\.venv\Scripts\python.exe -m slotify_rank.cli experiment train --labels ..\data\labels\labels_resume-v1.jsonl --split-version v3
+
+# 5. Once, at the end, on the frozen test split.
+.\.venv\Scripts\python.exe -m slotify_rank.cli evaluation compare --split test --split-version v3 --require-publishable
+
+# 6. Both reports then fill themselves in.
+npm run evidence
+npm run resume-evidence
+```
+
+Every number that comes out of step 5 is whatever it is. The claim threshold
+lives in `ml/configs/experiment_resume_v1.yaml`, the measured improvement comes
+from the comparison artifact, and `resume_evidence.md` compares the two. If the
+measured value is below the threshold the report says **FAIL** and prints the
+measured number; there is no code path in this repository that can do anything
+else, and a test asserts the threshold is not a literal in the checker.
+
+---
+
+## The resume claims and what each one requires
+
+`artifacts/reports/resume_evidence.md` is generated from the rows below.
+
+| Claim | What establishes it | Where the verdict is read from |
+|---|---|---|
+| A multimodal PyTorch ranker exists | a training run summary naming a variant and a parameter count | `artifacts/training/*/training_summary.json` |
+| It uses audio *and* transcript | both encoders named in the embedding statistics; handcrafted count from the feature statistics | `artifacts/features/*.json` |
+| ≥ 2,400 human-labelled candidates | the label count against the gate in the experiment definition | `artifacts/dataset/label_statistics.json` |
+| The checkpoint is human-trained | a run recording `label_source: human` | `artifacts/training/*/training_summary.json` |
+| A frozen held-out test set | a non-degraded, series-grouped split whose test groups appear in no other partition | `artifacts/experiments/experiment-resume-v1.json` |
+| The canonical baseline was used | the comparison's baseline matches the one the experiment declares | `artifacts/evaluation/*/comparison.json` |
+| Measured baseline / model NDCG@3, and the improvement | a **publishable** comparison; a blocked one is never treated as a result | `artifacts/evaluation/*/comparison.json` |
+| Improvement ≥ the claimed threshold | measured value vs the committed threshold | both of the above |
+| PyTorch / transformers / librosa / scikit-learn | declared in `pyproject.toml`, imported by a committed module (AST, not grep), **and** recorded as having run by a named artifact field | `ml/pyproject.toml`, feature statistics, comparison |
+| Award wording | the precise string present in the README, and no stronger claim present | `README.md` |
+
+### Why scikit-learn's bar is the highest
+
+It would be the easiest of the four to fake: add a line to `pyproject.toml` and
+the claim "the stack includes scikit-learn" is true in a trivial sense. So it
+requires a published comparison recording **both** an independent NDCG
+cross-check that agreed *and* a fitted classical baseline. Its two jobs are:
+
+- `sklearn.metrics.ndcg_score` independently recomputes the headline metric. The
+  result is a ratio of two NDCG values from one implementation, so a bug there
+  moves numerator and denominator together and every test checking that
+  implementation against itself still passes. A disagreement blocks publication.
+- `HistGradientBoostingRegressor` with `GroupKFold` provides the classical
+  comparison point — a strong tabular model on the handcrafted scalars alone,
+  tuned inside the training split with the episode as the group. It answers
+  "would a good tabular model have done just as well?", which is the question a
+  reader should ask about any multimodal result.
+
+If either were removed, the claim would drop to NOT MEASURED and the honest
+action would be to remove scikit-learn from the resume. That is the behaviour
+the check is designed to produce.

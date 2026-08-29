@@ -136,8 +136,10 @@ python -m slotify_rank.cli label export --dataset-version resume-v1
 python -m slotify_rank.cli experiment freeze --snapshot-version resume-v1 --split-version v3
 python -m slotify_rank.cli experiment manifest --require-ready
 
-# Train the headline variant and the four ablations, on human labels only.
-python -m slotify_rank.cli training run --model configs/models/gated_v1.yaml --seed 42
+# Five ablations x three seeds, on human labels only. Reports the MEDIAN seed
+# by validation NDCG@3 and writes the whole matrix, so the spread is visible.
+python -m slotify_rank.cli experiment train \
+    --labels ../data/labels/labels_resume-v1.jsonl --split-version v3
 
 # Once, at the end, on the frozen test split.
 python -m slotify_rank.cli evaluation compare \

@@ -179,15 +179,58 @@ cd ..\ml
 If parity fails, the Python port or the TypeScript scorer has drifted. **Diagnose
 the difference — never regenerate the fixture to make a failing test pass.**
 
+## The resume experiment, in two commands
+
+Everything mechanical, then the one step that is not:
+
+```powershell
+cd ml
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset prepare-resume-experiment
+.\.venv\Scripts\python.exe -m slotify_rank.cli label resume-experiment
+```
+
+The first acquires, generates, featurises, splits, validates, counts and queues,
+then prints a *measured* readiness summary. The second pre-cuts every clip,
+reports how many labels remain, and opens the labelling UI.
+
+Once the labels exist:
+
+```powershell
+.\.venv\Scripts\python.exe -m slotify_rank.cli experiment readiness --split-version v3 --require-ready
+.\.venv\Scripts\python.exe -m slotify_rank.cli label export --dataset-version resume-v1
+.\.venv\Scripts\python.exe -m slotify_rank.cli experiment freeze --snapshot-version resume-v1 --split-version v3
+.\.venv\Scripts\python.exe -m slotify_rank.cli experiment manifest --require-ready
+
+# Five ablations x three seeds; reports the MEDIAN seed by validation NDCG@3.
+.\.venv\Scripts\python.exe -m slotify_rank.cli experiment train `
+    --labels ..\data\labels\labels_resume-v1.jsonl --split-version v3
+
+# Once, at the end, on the frozen test split.
+.\.venv\Scripts\python.exe -m slotify_rank.cli evaluation compare `
+    --labels ..\data\labels\labels_resume-v1.jsonl `
+    --model ..\artifacts\training\<run>\best_checkpoint.pt `
+    --split test --split-version v3 `
+    --experiment-config configs\experiment_resume_v1.yaml --require-publishable
+```
+
+See [`../docs/resume-experiment.md`](../docs/resume-experiment.md) for what each
+of those is for and what is frozen when.
+
 ## Dataset workflow
 
-The full loop, in order. Every command is resumable: re-running a completed
-stage is a cheap no-op, so an interrupted run costs only the work actually lost.
+The individual stages, in order -- this is what `prepare-resume-experiment`
+runs. Every command is resumable: re-running a completed stage is a cheap no-op,
+so an interrupted run costs only the work actually lost.
 
 ```powershell
 cd ml
 
-# 1. Declare where audio comes from and under what licence.
+# 0. Resolve the committed corpus plan into a source registry (networked,
+#    metadata only). --check re-resolves and fails instead of writing.
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset discover `
+    --plan configs/corpus_resume_v1.yaml --output configs/sources_resume_v1.yaml
+
+# 1. Declare where local audio comes from and under what licence.
 #    Edit configs/sources.yaml first -- see "Adding your own audio" below.
 .\.venv\Scripts\python.exe -m slotify_rank.cli dataset import-local --sources configs/sources.yaml
 
@@ -203,8 +246,10 @@ cd ml
 # 5. Generate the candidate pool.
 .\.venv\Scripts\python.exe -m slotify_rank.cli candidates generate --config configs/dataset_v1.yaml
 
-# 6. Deterministic, series-grouped, leakage-safe splits.
-.\.venv\Scripts\python.exe -m slotify_rank.cli dataset split --config configs/splits_v1.yaml
+# 6. Deterministic, series-grouped, leakage-safe splits. A manifest is
+#    immutable per version: v1 was the smoke corpus, v2 the first six real
+#    series, v3 the current one.
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset split --config configs/splits_v3.yaml
 
 # 7. Integrity gate. Non-zero exit on any error; --deep re-verifies every SHA-256.
 .\.venv\Scripts\python.exe -m slotify_rank.cli dataset validate --deep
@@ -534,12 +579,22 @@ publishable** — and `--require-publishable` exits 1 — when any of these hold
 
 A zero baseline returns `None`, never an infinite improvement.
 
-## The evidence report
+## The evidence reports
+
+Two of them. `model-evidence` says what each capability's artifacts establish;
+`resume-evidence` says PASS, FAIL or NOT MEASURED for each headline claim,
+against thresholds read from the committed experiment definition.
 
 ```bash
 python -m slotify_rank.cli report model-evidence
+python -m slotify_rank.cli report resume-evidence
+
 # or, from the repository root, regenerating every upstream artifact first:
 npm run evidence
+npm run resume-evidence
+
+# CI mode for either: regenerate and fail if the committed report has drifted.
+python -m slotify_rank.cli report resume-evidence --check
 ```
 
 Reads every generated artifact and writes
