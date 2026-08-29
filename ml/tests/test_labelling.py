@@ -117,18 +117,99 @@ def test_synthetic_candidates_cannot_be_registered(tmp_path: Path):
 def test_progress_tracks_completion(database, candidates):
     assert database.progress("a") == {
         "total_candidates": 4,
+        "target": 4,
         "labelled": 0,
+        "judgements": 0,
+        "repeat_judgements": 0,
         "remaining": 4,
         "marked_unusable": 0,
+        "skipped": 0,
     }
     database.upsert_label(candidates[0].candidate_id, "a", 3)
     database.upsert_label(candidates[1].candidate_id, "a", 1, is_unusable=True)
     assert database.progress("a") == {
         "total_candidates": 4,
+        "target": 4,
         "labelled": 2,
+        "judgements": 2,
+        "repeat_judgements": 0,
         "remaining": 2,
         "marked_unusable": 1,
+        "skipped": 0,
     }
+
+
+def test_progress_counts_against_an_explicit_target(database, candidates):
+    """The UI shows "n / 2400", not "n / everything generated"."""
+    database.upsert_label(candidates[0].candidate_id, "a", 3)
+    progress = database.progress("a", target=2400)
+    assert progress["target"] == 2400
+    assert progress["labelled"] == 1
+    assert progress["remaining"] == 2399
+
+
+def test_a_blind_repeat_is_a_second_row_not_an_overwrite(database, candidates):
+    """The measurement this schema exists for: the same candidate, judged twice."""
+    candidate_id = candidates[0].candidate_id
+    database.upsert_label(candidate_id, "a", 4)
+    database.upsert_label(
+        candidate_id,
+        "a",
+        2,
+        presentation_id=f"{candidate_id}__recheck",
+        is_repeat=True,
+        stage="consistency",
+    )
+    labels = database.all_labels()
+    assert len(labels) == 2
+    # ...but the candidate has been labelled once, not twice.
+    assert database.labelled_candidate_ids("a") == {candidate_id}
+    assert database.progress("a")["labelled"] == 1
+    assert database.progress("a")["repeat_judgements"] == 1
+    first, repeat = database.repeat_pairs()[0]
+    assert (first.quality_score, repeat.quality_score) == (4, 2)
+
+
+def test_repeats_are_excluded_from_the_export(tmp_path: Path, database, candidates):
+    """A quality control must never become extra supervision."""
+    candidate_id = candidates[0].candidate_id
+    database.upsert_label(candidate_id, "a", 4)
+    database.upsert_label(
+        candidate_id,
+        "a",
+        2,
+        presentation_id=f"{candidate_id}__recheck",
+        is_repeat=True,
+        stage="consistency",
+    )
+    result = export_labels(database, candidates, tmp_path / "labels_v1.jsonl")
+    assert result.row_count == 1
+    assert result.repeat_count == 1
+
+    import json
+
+    row = json.loads(result.path.read_text(encoding="utf-8").strip())
+    assert row["quality_score"] == 4
+    assert row["is_repeat"] is False
+    assert row["graded_relevance"] == 3.0
+
+
+def test_skipping_is_not_a_judgement(database, candidates):
+    candidate_id = candidates[0].candidate_id
+    database.skip(candidate_id, "a", reason="phone rang")
+    assert database.skipped_presentation_ids("a") == {candidate_id}
+    assert database.progress("a")["labelled"] == 0
+    assert database.all_labels() == []
+    # Labelling it later resolves the deferral.
+    database.upsert_label(candidate_id, "a", 3)
+    assert database.skipped_presentation_ids("a") == set()
+
+
+def test_clearing_skips_puts_items_back(database, candidates):
+    database.skip(candidates[0].candidate_id, "a")
+    database.skip(candidates[1].candidate_id, "a")
+    assert database.clear_skips("a") == 2
+    assert database.skipped_presentation_ids("a") == set()
 
 
 def test_progress_is_per_annotator(database, candidates):
@@ -286,7 +367,7 @@ def test_posting_a_label_persists_and_advances(client):
     response = http.post(
         "/api/label",
         json={
-            "candidate_id": first["candidate_id"],
+            "presentation_id": first["presentation_id"],
             "annotator_id": "a",
             "quality_score": 4,
             "is_unusable": False,
@@ -307,7 +388,11 @@ def test_a_session_resumes_where_it_stopped(client):
     first = http.get("/api/next", params={"annotator_id": "a"}).json()["candidate"]
     http.post(
         "/api/label",
-        json={"candidate_id": first["candidate_id"], "annotator_id": "a", "quality_score": 3},
+        json={
+            "presentation_id": first["presentation_id"],
+            "annotator_id": "a",
+            "quality_score": 3,
+        },
     )
     resumed = http.get("/api/next", params={"annotator_id": "a"}).json()
     assert resumed["candidate"]["candidate_id"] != first["candidate_id"]
@@ -323,7 +408,7 @@ def test_exhausting_the_pool_returns_no_candidate(client):
         http.post(
             "/api/label",
             json={
-                "candidate_id": candidate.candidate_id,
+                "presentation_id": candidate.candidate_id,
                 "annotator_id": "a",
                 "quality_score": 3,
             },
@@ -336,7 +421,7 @@ def test_invalid_score_is_rejected_by_the_endpoint(client):
     response = http.post(
         "/api/label",
         json={
-            "candidate_id": candidate_list[0].candidate_id,
+            "presentation_id": candidate_list[0].candidate_id,
             "annotator_id": "a",
             "quality_score": 9,
         },
@@ -348,7 +433,11 @@ def test_unknown_candidate_is_rejected_by_the_endpoint(client):
     http, _, _ = client
     response = http.post(
         "/api/label",
-        json={"candidate_id": "nope:000000001", "annotator_id": "a", "quality_score": 3},
+        json={
+            "presentation_id": "nope:000000001",
+            "annotator_id": "a",
+            "quality_score": 3,
+        },
     )
     assert response.status_code == 404
 

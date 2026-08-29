@@ -1,0 +1,65 @@
+# Labelling queue for the resume experiment.
+#
+# A queue built from this file is deterministic: the same candidate manifest, the
+# same split and this config produce a byte-identical queue on any machine. Bump
+# `version` when changing any value, so a new queue never quietly replaces one an
+# annotator has already worked through.
+#
+# WHAT THE NUMBERS ARE FOR.
+#
+# target_unique: 2400
+#     The experiment's stated goal is at least 2,400 human-labelled candidates.
+#     This is the queue's size, not a promise that they will all be labelled --
+#     the readiness gate counts what actually exists, and the evidence report
+#     prints the measured count.
+#
+# allocation
+#     Matches the 70/15/15 split so the test partition receives roughly 360
+#     labels. NDCG@3 is macro-averaged over test episodes, so the test share has
+#     to be large enough for each episode to hold a rankable list; too small a
+#     share and the headline metric is noise regardless of how good the model is.
+#
+# consistency_size: 60
+#     Sixty candidates are shown a second time, later in the session, under a
+#     different presentation id and with nothing in the payload marking them as
+#     repeats. That is the intra-annotator agreement measurement, and 60 pairs is
+#     enough to separate "consistent" from "coin flip" without spending more than
+#     2.5% of the session on it. These repeats are never exported as labels and
+#     never counted toward target_unique.
+#
+# overlap_size: 60
+#     Sixty candidates flagged for a *second* annotator, so inter-annotator
+#     agreement is measurable if a second person is ever available. With one
+#     annotator this is inert; it costs nothing to reserve.
+#
+# max_per_episode: 90
+#     Roughly fifty episodes carry the target, so the average episode supplies
+#     about fifty candidates. The cap leaves room for a long episode to supply
+#     more without letting any one of them dominate the labelled set.
+
+queue:
+  version: resume-v1
+  seed: 20260829
+
+  target_unique: 2400
+
+  pilot_size: 30
+  overlap_size: 60
+  consistency_size: 60
+
+  max_per_episode: 90
+
+  allocation:
+    train: 0.70
+    validation: 0.15
+    test: 0.15
+
+  # Only real target-domain audio is queued; repository fixtures and music are
+  # excluded so no smoke clip is ever shown to an annotator.
+  include_fixtures: false
+  eligible_content_types: [podcast, interview, conversational, narrated]
+
+  # Coverage bucketing.
+  position_buckets: 5
+  silence_bucket_edges_ms: [500, 1000, 2000]
+  long_silence_ms: 1500

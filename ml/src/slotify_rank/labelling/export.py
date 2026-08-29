@@ -21,6 +21,7 @@ from typing import Any, Mapping, Sequence
 from slotify_rank.config.versions import (
     DATASET_CANDIDATE_SCHEMA_VERSION,
     LABEL_RUBRIC_VERSION,
+    LABEL_SCHEMA_VERSION,
     PACKAGE_VERSION,
 )
 from slotify_rank.data.checksum import atomic_write_bytes
@@ -37,6 +38,7 @@ class ExportResult:
     row_count: int
     annotator_count: int
     orphan_count: int
+    repeat_count: int = 0
 
 
 def build_export_rows(
@@ -49,10 +51,19 @@ def build_export_rows(
     reported, not dropped silently and not exported. A label with no candidate
     cannot be trained on and its existence usually means a manifest was
     regenerated with different parameters.
+
+    **Consistency repeats are excluded.** A repeat is the same annotator judging
+    the same candidate a second time to measure whether they agree with
+    themselves. Exporting it would make the pooling step average the two
+    judgements and quietly turn a quality control into extra supervision, so the
+    repeats stay in the database and are read by
+    :func:`slotify_rank.labelling.quality.check_label_quality` instead.
     """
     rows: list[dict[str, Any]] = []
     orphans: list[str] = []
     for label in labels:
+        if label.is_repeat:
+            continue
         candidate = candidates.get(label.candidate_id)
         if candidate is None:
             orphans.append(label.candidate_id)
@@ -85,6 +96,7 @@ def export_labels(
     by_id = {candidate.candidate_id: candidate for candidate in candidates}
     labels = database.all_labels()
     rows, orphans = build_export_rows(labels, by_id)
+    repeats = sum(1 for label in labels if label.is_repeat)
 
     body = "".join(
         json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows
@@ -96,6 +108,8 @@ def export_labels(
         "dataset_version": dataset_version,
         "package_version": PACKAGE_VERSION,
         "rubric_version": LABEL_RUBRIC_VERSION,
+        "label_schema_version": LABEL_SCHEMA_VERSION,
+        "graded_relevance_rule": "graded_relevance = quality_score - 1 (0-4)",
         "candidate_schema_version": DATASET_CANDIDATE_SCHEMA_VERSION,
         "acceptable_threshold": database.acceptable_threshold,
         "acceptable_rule": f"quality_score >= {database.acceptable_threshold}",
@@ -103,10 +117,13 @@ def export_labels(
         "row_count": len(rows),
         "annotators": sorted({row["annotator_id"] for row in rows}),
         "orphan_label_candidate_ids": orphans,
+        "excluded_repeat_judgement_count": repeats,
         "label_source": "human",
         "note": (
             "Every row here is a human judgement. Weak or heuristic labels are "
-            "never written to this file; see docs/evaluation-evidence.md."
+            "never written to this file, and blind consistency repeats are "
+            "excluded so a quality control cannot become extra supervision; see "
+            "docs/evaluation-evidence.md."
         ),
     }
     metadata_path = destination.with_suffix(destination.suffix + ".meta.json")
@@ -121,4 +138,5 @@ def export_labels(
         row_count=len(rows),
         annotator_count=len(metadata["annotators"]),
         orphan_count=len(orphans),
+        repeat_count=repeats,
     )

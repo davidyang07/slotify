@@ -6,12 +6,13 @@ regenerated, so a quality control that "fixed" a value would destroy evidence.
 Every finding is a warning or an error for a person to act on, and the label
 store is opened read-only.
 
-What is checkable from the current single-label store, and what is not, is
-stated explicitly. The store keeps one active label per (annotator, candidate),
-so intra-annotator *repeat* consistency -- the same person judging the same clip
-twice under different presentation ids -- cannot be measured until a
-presentation-aware log exists. Rather than silently pass that check, it is
-reported as ``not_measurable`` so the gap is visible.
+Intra-annotator consistency is measured here rather than assumed. The queue
+shows a small blind subset a second time under a different presentation id, the
+store keys a judgement on the presentation, and this module pairs the two
+showings up and reports the exact and within-one agreement rates plus the mean
+absolute difference. When no repeat has been judged yet the check reports that
+it is not measurable and why, which is different from reporting agreement it
+never measured.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ __all__ = [
     "QualityFinding",
     "QualityReport",
     "check_label_quality",
+    "measure_repeat_consistency",
 ]
 
 
@@ -60,6 +62,9 @@ class QualityReport:
     checks_run: tuple[str, ...]
     label_count: int
     annotator_count: int
+    #: Measured intra-annotator repeat agreement, or ``None`` when no repeat has
+    #: been judged. Never a default value standing in for an absent measurement.
+    consistency: Mapping[str, Any] | None = None
 
     @property
     def errors(self) -> list[QualityFinding]:
@@ -81,6 +86,9 @@ class QualityReport:
             "checks_run": list(self.checks_run),
             "error_count": len(self.errors),
             "warning_count": len(self.warnings),
+            "intra_annotator_consistency": (
+                dict(self.consistency) if self.consistency else None
+            ),
             "findings": [f.to_dict() for f in self.findings],
         }
 
@@ -159,19 +167,21 @@ def check_label_quality(
                 )
             )
 
-    # 3. duplicate active labels (same annotator + candidate more than once).
+    # 3. duplicate active labels (same annotator + presentation more than once).
+    #    Keyed on the presentation, not the candidate: a blind repeat is a second
+    #    presentation of the same candidate and is expected, not a duplicate.
     seen: Counter[tuple[str, str]] = Counter(
-        (label.annotator_id, label.candidate_id) for label in labels
+        (label.annotator_id, label.presentation_id) for label in labels
     )
-    for (annotator, candidate_id), count in seen.items():
+    for (annotator, presentation_id), count in seen.items():
         if count > 1:
             findings.append(
                 QualityFinding(
                     "duplicate_active_label",
                     "error",
                     f"annotator {annotator!r} has {count} active labels for this "
-                    "candidate; there must be at most one",
-                    candidate_id,
+                    "presentation; there must be at most one",
+                    presentation_id,
                 )
             )
 
@@ -279,17 +289,33 @@ def check_label_quality(
         )
     )
 
-    # 11. repeated-item (intra-annotator) consistency.
-    findings.append(
-        QualityFinding(
-            "repeated_item_consistency",
-            "info",
-            "not measurable from the single-label store: it keeps one label per "
-            "(annotator, candidate), so a re-presented consistency item overwrites "
-            "the first. A presentation-aware log is required to score this.",
-            None,
+    # 11. repeated-item (intra-annotator) consistency, measured from the blind
+    #     repeats the queue interleaved.
+    consistency = measure_repeat_consistency(labels)
+    if consistency["measured"]:
+        findings.append(
+            QualityFinding(
+                "repeated_item_consistency",
+                "warning" if consistency["exact_agreement"] < 0.5 else "info",
+                f"{consistency['pair_count']} blind repeat(s): "
+                f"{consistency['exact_agreement']:.0%} exact agreement, "
+                f"{consistency['within_one_agreement']:.0%} within one point, "
+                f"mean absolute difference "
+                f"{consistency['mean_absolute_difference']:.2f}",
+                None,
+            )
         )
-    )
+    else:
+        findings.append(
+            QualityFinding(
+                "repeated_item_consistency",
+                "info",
+                "not measurable yet: no candidate has been judged under both a "
+                "first showing and its blind repeat. The queue interleaves the "
+                "repeats, so this becomes measurable once a session reaches them.",
+                None,
+            )
+        )
 
     # 12. inter-annotator overlap leakage / completion.
     if queue is not None and queue.overlap_candidate_ids:
@@ -318,4 +344,60 @@ def check_label_quality(
         checks_run=tuple(checks),
         label_count=len(labels),
         annotator_count=len({label.annotator_id for label in labels}),
+        consistency=consistency,
     )
+
+
+def measure_repeat_consistency(labels: Sequence[LabelRecord]) -> dict[str, Any]:
+    """Pair each blind repeat with its first showing and score the agreement.
+
+    A pair exists only where one annotator judged one candidate under both a
+    non-repeat and a repeat presentation. Nothing is inferred from a candidate
+    with a single judgement, and an absent measurement is reported as absent
+    rather than as perfect agreement.
+    """
+    firsts: dict[tuple[str, str], LabelRecord] = {}
+    repeats: dict[tuple[str, str], LabelRecord] = {}
+    for label in labels:
+        key = (label.annotator_id, label.candidate_id)
+        target = repeats if label.is_repeat else firsts
+        existing = target.get(key)
+        if existing is None or label.created_at < existing.created_at:
+            target[key] = label
+
+    differences: list[int] = []
+    per_annotator: dict[str, list[int]] = {}
+    for key, repeat in sorted(repeats.items()):
+        first = firsts.get(key)
+        if first is None:
+            continue
+        delta = abs(int(repeat.quality_score) - int(first.quality_score))
+        differences.append(delta)
+        per_annotator.setdefault(key[0], []).append(delta)
+
+    if not differences:
+        return {
+            "measured": False,
+            "pair_count": 0,
+            "reason": (
+                "no candidate has been judged under both a first showing and its "
+                "blind repeat"
+            ),
+        }
+
+    def summarise(values: Sequence[int]) -> dict[str, Any]:
+        return {
+            "pair_count": len(values),
+            "exact_agreement": sum(1 for v in values if v == 0) / len(values),
+            "within_one_agreement": sum(1 for v in values if v <= 1) / len(values),
+            "mean_absolute_difference": sum(values) / len(values),
+        }
+
+    return {
+        "measured": True,
+        **summarise(differences),
+        "by_annotator": {
+            annotator: summarise(values)
+            for annotator, values in sorted(per_annotator.items())
+        },
+    }

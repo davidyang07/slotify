@@ -565,7 +565,8 @@ def stage_candidate_ids(queue: Any, stage: str) -> set[str]:
     raise ValueError(f"Unknown serve stage {stage!r}")
 
 
-def _cmd_label_serve(args: argparse.Namespace) -> int:
+def _load_serve_inputs(args: argparse.Namespace):
+    """Resolve the candidates, episodes and queue one serve session will use."""
     paths = _paths(args)
     episodes = manifests.read_episodes(paths.episodes_manifest)
     candidates = manifests.read_candidates(paths.candidates_manifest)
@@ -574,6 +575,7 @@ def _cmd_label_serve(args: argparse.Namespace) -> int:
         for candidate in candidates
         if candidate.eligible_for_labelling and not candidate.is_synthetic
     ]
+    queue = None
     if getattr(args, "queue", None):
         queue = read_queue(Path(args.queue))
         stage = getattr(args, "stage", "all")
@@ -584,14 +586,17 @@ def _cmd_label_serve(args: argparse.Namespace) -> int:
             f"Restricted to labelling queue {queue.queue_version}{stage_label}: "
             f"{len(eligible)} of {len(wanted)} queued candidate(s) present."
         )
-    if not eligible:
-        print(
-            "error: no candidates eligible for labelling. Run "
-            "`candidates generate` first.",
-            file=sys.stderr,
-        )
-        return 1
+    return paths, episodes, eligible, queue
 
+
+def _serve_labelling_app(
+    args: argparse.Namespace,
+    paths: DataPaths,
+    episodes,
+    eligible,
+    queue,
+    target_unique: int | None = None,
+) -> int:
     from slotify_rank.labelling.service import LabellingSettings, create_app
 
     database = LabelDatabase(paths.label_database, args.acceptable_threshold)
@@ -604,7 +609,9 @@ def _cmd_label_serve(args: argparse.Namespace) -> int:
             context_before_ms=args.context_before_ms,
             context_after_ms=args.context_after_ms,
             reveal_hints=args.reveal_hints,
+            target_unique=target_unique,
         ),
+        queue=queue,
     )
 
     try:
@@ -621,6 +628,96 @@ def _cmd_label_serve(args: argparse.Namespace) -> int:
     print(f"Open http://{args.host}:{args.port}/ and enter an annotator id.")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
+
+
+def _cmd_label_serve(args: argparse.Namespace) -> int:
+    paths, episodes, eligible, queue = _load_serve_inputs(args)
+    if not eligible:
+        print(
+            "error: no candidates eligible for labelling. Run "
+            "`candidates generate` first.",
+            file=sys.stderr,
+        )
+        return 1
+    return _serve_labelling_app(args, paths, episodes, eligible, queue)
+
+
+def _cmd_label_resume_experiment(args: argparse.Namespace) -> int:
+    """One command that leaves nothing to do but the labelling itself.
+
+    Everything that can be prepared mechanically is prepared here -- the queue is
+    read, every clip is cut, the readiness of the corpus is checked -- and then
+    the server starts. The only step left afterwards is a human forming
+    judgements, which is the one step no command can do.
+    """
+    from slotify_rank.labelling.service import LabellingSettings, prerender_clips
+
+    paths, episodes, eligible, queue = _load_serve_inputs(args)
+    if queue is None:
+        print(
+            f"error: --queue is required. Build one with:\n"
+            f"    slotify-rank label queue --config ml/configs/labelling_queue_v1.yaml",
+            file=sys.stderr,
+        )
+        return 1
+    if not eligible:
+        print(
+            "error: the queue names no candidate present in the manifest. Run "
+            "`dataset prepare-resume-experiment` first.",
+            file=sys.stderr,
+        )
+        return 1
+
+    target = args.target or len(queue.unique_candidate_ids)
+    database = LabelDatabase(paths.label_database, args.acceptable_threshold)
+    already = len(database.labelled_candidate_ids())
+
+    print("Preparing the labelling session")
+    print(f"  queue            : {args.queue} ({queue.queue_version})")
+    print(f"  unique candidates: {len(queue.unique_candidate_ids)}")
+    print(
+        f"  blind repeats    : {len(queue.consistency_candidate_ids)} "
+        "(interleaved; they measure whether you agree with yourself and are "
+        "never exported as labels)"
+    )
+    print(f"  target           : {target}")
+    print()
+    print("Pre-cutting every clip so no rating waits on FFmpeg...")
+    counts = prerender_clips(
+        eligible,
+        episodes,
+        paths,
+        LabellingSettings(
+            context_before_ms=args.context_before_ms,
+            context_after_ms=args.context_after_ms,
+        ),
+    )
+    print(
+        f"  clips: {counts['rendered']} rendered, {counts['cached']} already cached, "
+        f"{counts['skipped']} skipped, {counts['failed']} failed"
+    )
+    transcribed = sum(
+        1
+        for episode in episodes
+        if (paths.transcripts_dir / f"{episode.episode_id}.json").is_file()
+    )
+    print(f"  transcripts: {transcribed}/{len(episodes)} episode(s) have one")
+    print()
+    remaining = max(0, target - already)
+    print("=" * 72)
+    print("EVERYTHING ELSE IS READY. The only remaining task is labelling.")
+    print(f"  human labels so far : {already}")
+    print(f"  still to label      : {remaining}")
+    print(f"  open                : http://{args.host}:{args.port}/")
+    print("  keys                : 1-5 rates and advances, S skips, U marks broken")
+    print("=" * 72)
+    print()
+
+    if args.no_serve:
+        return 0
+    return _serve_labelling_app(
+        args, paths, episodes, eligible, queue, target_unique=target
+    )
 
 
 def _cmd_label_check(args: argparse.Namespace) -> int:
@@ -934,6 +1031,47 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     serve_parser.set_defaults(func=_cmd_label_serve)
+
+    resume_parser = label_sub.add_parser(
+        "resume-experiment",
+        help=(
+            "Prepare and open the labelling session for the resume experiment: "
+            "pre-cut every clip, report what is left, and serve the UI."
+        ),
+    )
+    _add_common(resume_parser)
+    resume_parser.add_argument("--host", default="127.0.0.1")
+    resume_parser.add_argument("--port", type=int, default=8000)
+    resume_parser.add_argument("--context-before-ms", type=int, default=10_000)
+    resume_parser.add_argument("--context-after-ms", type=int, default=10_000)
+    resume_parser.add_argument(
+        "--acceptable-threshold", type=int, default=DEFAULT_ACCEPTABLE_THRESHOLD
+    )
+    resume_parser.add_argument(
+        "--queue",
+        default="data/labels/queue_resume_v1.json",
+        help="The labelling queue to work through.",
+    )
+    resume_parser.add_argument(
+        "--stage", choices=("all", "pilot", "primary"), default="all"
+    )
+    resume_parser.add_argument(
+        "--target",
+        type=int,
+        default=None,
+        help="Unique human labels this round is aiming for (default: the queue size).",
+    )
+    resume_parser.add_argument(
+        "--reveal-hints",
+        action="store_true",
+        help="Show the heuristic score and candidate sources (biases the annotator).",
+    )
+    resume_parser.add_argument(
+        "--no-serve",
+        action="store_true",
+        help="Prepare everything and report readiness without starting the server.",
+    )
+    resume_parser.set_defaults(func=_cmd_label_resume_experiment)
 
     queue_parser = label_sub.add_parser(
         "queue", help="Build a deterministic, stratified labelling queue."

@@ -124,3 +124,17 @@ kbd {
   .scores { grid-template-columns: repeat(2, 1fr); }
   .transcript { grid-template-columns: 1fr; }
 }
+
+/* Progress counter in the header. Tabular figures so the number does not jitter
+   as it climbs -- it updates after every keystroke for hours. */
+.counter {
+  margin: 0;
+  font: 600 1.05rem/1 ui-monospace, "Cascadia Code", monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.keys { margin-top: 1.5rem; color: var(--muted); font-size: 0.85rem; }
+.keys summary { cursor: pointer; }
+.keys ul { margin: 0.6rem 0 0; padding-left: 1.1rem; }
+.keys li { margin: 0.2rem 0; }
