@@ -251,6 +251,20 @@ def _cmd_compare(args: argparse.Namespace) -> int:
 
     training_episodes = _training_episode_ids(checkpoint)
 
+    # The synthetic fixture corpus is stamped `synthetic: true` on both its label
+    # export and its feature manifest. It is the one input that would otherwise
+    # produce a publishable-looking headline out of generated numbers.
+    synthetic_inputs: list[str] = []
+    label_meta_path = label_export.with_suffix(label_export.suffix + ".meta.json")
+    if label_meta_path.is_file():
+        try:
+            if json.loads(label_meta_path.read_text(encoding="utf-8")).get("synthetic"):
+                synthetic_inputs.append("label export")
+        except (json.JSONDecodeError, OSError):
+            pass
+    if header.get("synthetic"):
+        synthetic_inputs.append("feature manifest")
+
     episodes = (
         manifests.read_episodes(paths.episodes_manifest)
         if paths.episodes_manifest.is_file()
@@ -291,6 +305,7 @@ def _cmd_compare(args: argparse.Namespace) -> int:
         },
         classical_baseline=classical,
         require_metric_crosscheck=not args.allow_missing_crosscheck,
+        synthetic_inputs=synthetic_inputs,
     )
     if not training_episodes:
         result.warnings.append(

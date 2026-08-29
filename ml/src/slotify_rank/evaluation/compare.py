@@ -29,6 +29,12 @@ actually contain episodes that no other split does.
 undefined NDCG. Those episodes are excluded and counted, never scored as zero
 (which would deflate) or as one (which would inflate).
 
+**The inputs must be real.** The synthetic fixture corpus carries
+``label_source: human`` on purpose, so it exercises the whole training and
+evaluation path. That makes it exactly the thing that could produce a
+publishable-looking result from generated numbers, so a synthetic label export
+or feature manifest blocks the headline outright.
+
 **Uncertainty is reported, not implied.** NDCG@3 is macro-averaged over
 episodes, and a test split has a few dozen of them, so the point estimate has
 real spread. A percentile bootstrap over episodes -- resampling the unit the
@@ -420,6 +426,7 @@ def compare(
     cohort_examples: Mapping[str, Sequence[TrainingExample]] | None = None,
     classical_baseline: Mapping[str, Any] | None = None,
     require_metric_crosscheck: bool = True,
+    synthetic_inputs: Sequence[str] = (),
 ) -> ComparisonResult:
     """Score both systems on the same candidates with the same labels."""
     if not examples:
@@ -477,6 +484,12 @@ def compare(
         blocking.append(
             f"the evaluation ran on the {inputs.split!r} split; a headline number "
             "requires the held-out test split."
+        )
+    if synthetic_inputs:
+        blocking.append(
+            f"{sorted(synthetic_inputs)} declare themselves synthetic. The fixture "
+            "corpus carries label_source=human so it can exercise this path; a "
+            "number measured on generated data is not a result."
         )
 
     leaked = sorted(set(training_episode_ids) & set(grouped))

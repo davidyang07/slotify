@@ -13,6 +13,12 @@ Why not just mock the tensors: because the failures worth catching live in the
 joins -- a row id that does not resolve, a split that leaks, a feature column
 that shifts. A mock skips exactly the code that breaks.
 
+For the same reason the fixture writes an **episode and candidate manifest**
+alongside the features, carrying a heuristic score per candidate. Without them
+the held-out comparison cannot run at all -- it reads the baseline's score off
+the candidate record rather than recomputing it -- so the path a person runs
+after labelling could not be exercised before they had labelled anything.
+
 The generated targets are a deterministic function of a handful of the
 generated features plus seeded noise, so a working model *can* fit them. That
 makes the smoke run able to fail: a training loop that does not learn a signal
@@ -35,8 +41,10 @@ from slotify_rank.config.versions import (
     FEATURE_SPEC_VERSION,
     LABEL_RUBRIC_VERSION,
 )
+from slotify_rank.data import manifests
 from slotify_rank.data.checksum import atomic_write_bytes
 from slotify_rank.data.paths import DataPaths
+from slotify_rank.data.schema import DatasetCandidate, EpisodeRecord
 from slotify_rank.datasets.schema import NATIVE_EMBEDDING_DIMENSION
 from slotify_rank.embeddings.store import EmbeddingMetadata, write_embeddings
 from slotify_rank.features.assemble import write_feature_manifest
@@ -152,6 +160,8 @@ def build_synthetic_corpus(
     label_rows: list[dict[str, Any]] = []
     episode_ids: list[str] = []
     splits: dict[str, str] = {}
+    episode_records: list[EpisodeRecord] = []
+    candidate_records: list[DatasetCandidate] = []
 
     for episode_index in range(config.episode_count):
         episode_id = f"synthetic-episode-{episode_index:03d}"
@@ -162,6 +172,38 @@ def build_synthetic_corpus(
         text_available = not (
             config.text_missing_episode_stride
             and episode_index % config.text_missing_episode_stride == 0
+        )
+
+        # One series per episode: the fixture has no real show structure, and
+        # inventing shared series ids would fabricate a grouping the split would
+        # then honour.
+        digest = f"{episode_index:02d}" * 32
+        episode_records.append(
+            EpisodeRecord(
+                episode_id=episode_id,
+                series_id=f"synthetic-series-{episode_index:03d}",
+                title=f"Synthetic episode {episode_index:03d}",
+                source_type="local_file",
+                source_uri=f"synthetic://{episode_id}",
+                source_name="Synthetic fixture",
+                license_name=None,
+                license_url=None,
+                attribution=None,
+                language="en",
+                content_type="podcast",
+                original_path=f"data/raw/{episode_id}.wav",
+                sha256=digest[:64],
+                status="normalized",
+                normalized_path=f"data/normalized/{episode_id}.wav",
+                normalized_sha256=digest[:64],
+                normalized_duration_ms=30_000
+                + config.candidates_per_episode * 17_000,
+                duration_ms=30_000 + config.candidates_per_episode * 17_000,
+                sample_rate_hz=16_000,
+                channels=1,
+                file_format="wav",
+                notes="Synthetic fixture episode. Not real audio.",
+            )
         )
 
         audio_path = paths.audio_embeddings_dir / f"{episode_id}.audio.npy"
@@ -208,6 +250,25 @@ def build_synthetic_corpus(
                 for side, vector in (("before", text_before), ("after", text_after)):
                     text_rows.append(f"{candidate_id}#{side}")
                     text_vectors.append(vector.astype(np.float32))
+
+            candidate_records.append(
+                DatasetCandidate(
+                    episode_id=episode_id,
+                    candidate_id=candidate_id,
+                    timestamp_ms=timestamp_ms,
+                    candidate_sources=("silence",),
+                    pause_duration_ms=int(values.get("pause_duration_ms", 0.0)),
+                    silence_duration_ms=int(values.get("pause_duration_ms", 0.0)),
+                    # The baseline's opinion of this candidate, carried on the
+                    # record exactly as the real generator carries it, so the
+                    # comparison reads a denominator rather than recomputing one.
+                    heuristic_score=float(values["heuristic_total_score"]),
+                    baseline_version="heuristic_offline_v1",
+                    config_version="heuristic-config-v1.0.0",
+                    candidate_generation_version=CANDIDATE_GENERATION_VERSION,
+                    dataset_split=split,
+                )
+            )
 
             vector, mask = spec.vectorize(values, missing)
             audio_reference = {
@@ -288,6 +349,9 @@ def build_synthetic_corpus(
                 "text_embedding",
                 config.native_dimension,
             )
+
+    manifests.write_episodes(paths.episodes_manifest, episode_records)
+    manifests.write_candidates(paths.candidates_manifest, candidate_records)
 
     write_feature_manifest(
         paths.features_manifest,
