@@ -174,6 +174,7 @@ def build_steps(
     skip_fetch: bool,
     skip_features: bool,
     force_split: bool,
+    force_queue: bool,
     limit: int | None,
 ) -> list[PreparationStep]:
     """The ordered stages, each bound to the namespace it runs under."""
@@ -301,7 +302,12 @@ def build_steps(
                 config=queue_config,
                 split_version=split_version,
                 output=queue_output,
-                force=True,
+                # Not forced. A queue is a commitment: annotators work through
+                # it and their labels are keyed to its presentations. Silently
+                # replacing one mid-round would orphan every label already
+                # collected against it, so a byte-different queue of the same
+                # version stops the run and says to bump the version.
+                force=force_queue,
             ),
         ),
     ]

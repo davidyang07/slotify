@@ -156,8 +156,11 @@ def _cmd_prepare_resume_experiment(args: argparse.Namespace) -> int:
     )
 
     paths = _paths(args)
+    # The queue file is named after the queue CONFIG's version, not this
+    # command's arguments, so `label resume-experiment` looks in the same place
+    # `label queue` wrote to. Passing --queue-output overrides both.
     queue_output = args.queue_output or str(
-        paths.labels_dir / "queue_resume_v1.json"
+        paths.labels_dir / f"queue_{args.queue_version}.json"
     )
     steps = build_steps(
         data_root=args.data_root,
@@ -174,6 +177,7 @@ def _cmd_prepare_resume_experiment(args: argparse.Namespace) -> int:
         skip_fetch=args.skip_fetch,
         skip_features=args.skip_features,
         force_split=args.force_split,
+        force_queue=args.force_queue,
         limit=args.limit,
     )
 
@@ -740,13 +744,26 @@ def _cmd_label_resume_experiment(args: argparse.Namespace) -> int:
     """
     from slotify_rank.labelling.service import LabellingSettings, prerender_clips
 
-    paths, episodes, eligible, queue = _load_serve_inputs(args)
-    if queue is None:
+    # The default queue lives under the data root, which moves with --data-root
+    # and is not the working directory. Resolving it here rather than as an
+    # argparse default means running from ml/ finds the same file as running
+    # from the repository root.
+    if not args.queue:
+        args.queue = str(_paths(args).labels_dir / f"queue_{args.queue_version}.json")
+    if not Path(args.queue).is_file():
         print(
-            f"error: --queue is required. Build one with:\n"
-            f"    slotify-rank label queue --config ml/configs/labelling_queue_v1.yaml",
+            f"error: no labelling queue at {args.queue}. Build the corpus with:\n"
+            "    slotify-rank dataset prepare-resume-experiment\n"
+            "or, if it is already prepared, just the queue:\n"
+            "    slotify-rank label queue "
+            "--config ml/configs/labelling_queue_resume_v1.yaml --split-version v3",
             file=sys.stderr,
         )
+        return 1
+
+    paths, episodes, eligible, queue = _load_serve_inputs(args)
+    if queue is None:
+        print(f"error: {args.queue} is not a labelling queue.", file=sys.stderr)
         return 1
     if not eligible:
         print(
@@ -1015,6 +1032,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--queue-config", default="ml/configs/labelling_queue_resume_v1.yaml"
     )
     prepare_parser.add_argument("--queue-output", default=None)
+    prepare_parser.add_argument(
+        "--queue-version",
+        default="resume-v1",
+        dest="queue_version",
+        help=(
+            "Must match `queue.version` in the queue config; it names the queue "
+            "file that `label resume-experiment` then opens."
+        ),
+    )
     prepare_parser.add_argument("--corpus-version", default="corpus-resume-v1")
     prepare_parser.add_argument(
         "--target-labels",
@@ -1040,6 +1066,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--force-split",
         action="store_true",
         help="Overwrite an existing split manifest of this version.",
+    )
+    prepare_parser.add_argument(
+        "--force-queue",
+        action="store_true",
+        help=(
+            "Overwrite an existing labelling queue of this version. Orphans every "
+            "label already collected against it; prefer bumping queue.version."
+        ),
     )
     prepare_parser.add_argument("--report", default=None)
     prepare_parser.add_argument(
@@ -1208,8 +1242,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     resume_parser.add_argument(
         "--queue",
-        default="data/labels/queue_resume_v1.json",
-        help="The labelling queue to work through.",
+        default=None,
+        help=(
+            "The labelling queue to work through. Defaults to "
+            "<data-root>/labels/queue_<queue-version>.json."
+        ),
+    )
+    resume_parser.add_argument(
+        "--queue-version", default="resume-v1", dest="queue_version"
     )
     resume_parser.add_argument(
         "--stage", choices=("all", "pilot", "primary"), default="all"

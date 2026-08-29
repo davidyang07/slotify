@@ -81,6 +81,7 @@ def test_the_default_step_list_is_in_dependency_order():
         skip_fetch=False,
         skip_features=False,
         force_split=False,
+        force_queue=False,
         limit=None,
     )
     names = [step.name for step in steps]
@@ -112,6 +113,7 @@ def test_fetching_and_featurising_can_be_skipped_independently():
         fixtures_registry=None,
         fetch_timeout=60.0,
         force_split=False,
+        force_queue=False,
         limit=None,
     )
     without_fetch = [
