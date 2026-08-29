@@ -1,0 +1,42 @@
+# Split configuration v3 -- the resume-experiment corpus.
+#
+# WHY A NEW VERSION. A split manifest is IMMUTABLE for a given version: models
+# are trained against it and results are reported against it, so changing one in
+# place would invalidate every number already produced. v2 was frozen over the
+# six-series Phase 5A corpus. The resume experiment adds the government podcast
+# shows and ten more LibriVox volumes (ml/configs/corpus_resume_v1.yaml), which
+# changes corpus composition materially, so it gets its own version rather than
+# overwriting v2.
+#
+# Everything else is unchanged from v2, deliberately: the same seed, the same
+# series grouping, the same target-domain-only test partition. The only thing
+# that moved is the corpus.
+#
+# GROUPING. `group_by: series` means the unit of assignment is the show, never
+# the episode and never the candidate. Two episodes of one podcast share hosts,
+# room, mic chain and editing rhythm; a model that saw one in training and the
+# other in test would be graded partly on memorisation. Series grouping implies
+# episode grouping, so the weaker guarantee comes free.
+#
+# The corpus plan caps every show's episode count so no series can take a whole
+# partition with it -- see the "no show may dominate" note there.
+
+split:
+  version: v3
+  seed: 42
+  group_by: series
+
+  ratios:
+    train: 0.70
+    validation: 0.15
+    test: 0.15
+
+  # Music and any supplemental out-of-domain material stay out of the test
+  # partition entirely, so the headline number is always measured on
+  # podcast-like audio.
+  require_target_domain_test: true
+
+  # Below this many independent series a three-way split is a fiction and the
+  # splitter degrades to a single 'development' partition rather than producing a
+  # "test set" of one show.
+  min_groups_for_split: 6

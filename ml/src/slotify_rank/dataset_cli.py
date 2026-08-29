@@ -142,6 +142,94 @@ def _cmd_discover(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_prepare_resume_experiment(args: argparse.Namespace) -> int:
+    """Take the committed corpus plan all the way to "ready to label".
+
+    Fetch, probe, normalize, generate, split, transcribe, featurise, embed,
+    assemble, validate, count, queue -- then measure whether what came out is
+    enough for the labelling target and say so plainly either way.
+    """
+    from slotify_rank.experiment.orchestrate import (
+        build_steps,
+        run_preparation,
+        summarise_readiness,
+    )
+
+    paths = _paths(args)
+    queue_output = args.queue_output or str(
+        paths.labels_dir / "queue_resume_v1.json"
+    )
+    steps = build_steps(
+        data_root=args.data_root,
+        source_registries=list(
+            args.sources or getattr(args, "sources_default", [])
+        ),
+        dataset_config=args.dataset_config,
+        split_config=args.split_config,
+        split_version=args.split_version,
+        queue_config=args.queue_config,
+        queue_output=queue_output,
+        fixtures_registry=args.fixtures,
+        fetch_timeout=args.timeout,
+        skip_fetch=args.skip_fetch,
+        skip_features=args.skip_features,
+        force_split=args.force_split,
+        limit=args.limit,
+    )
+
+    print(f"Preparing the resume experiment corpus ({len(steps)} steps).")
+    report = run_preparation(steps, corpus_version=args.corpus_version)
+
+    readiness = summarise_readiness(
+        paths,
+        Path(queue_output),
+        target_labels=args.target_labels,
+        split_version=args.split_version,
+    )
+    report.readiness = readiness
+
+    destination = (
+        Path(args.report)
+        if args.report
+        else paths.data_root.parent
+        / "artifacts"
+        / "experiments"
+        / "prepare_report.json"
+    )
+    report.write(destination)
+
+    print()
+    print("=" * 72)
+    print("Corpus readiness")
+    print(f"  generated candidates        : {readiness.generated_candidate_count}")
+    print(f"  labellable (target domain)  : {readiness.labellable_candidate_count}")
+    print(f"  complete multimodal records : {readiness.complete_multimodal_count}")
+    print(f"  queued unique candidates    : {readiness.queued_unique_count}")
+    print(f"  labelling target            : {readiness.target_labels}")
+    print(f"  episodes / series           : {readiness.episode_count} / {readiness.series_count}")
+    print(f"  target-domain audio hours   : {readiness.processed_audio_hours}")
+    print(f"  series by split             : "
+          f"{ {k: len(v) for k, v in readiness.series_by_split.items()} }")
+    print(f"  ready to label              : {readiness.ready_to_label}")
+    for reason in readiness.blocking_reasons:
+        print(f"    - {reason}")
+    print("=" * 72)
+    print(f"Wrote {destination}")
+
+    if not report.ok:
+        failed = [step.name for step in report.steps if not step.ok]
+        print(f"error: step(s) failed: {failed}", file=sys.stderr)
+        return 1
+    if args.require_ready and not readiness.ready_to_label:
+        print(
+            "error: --require-ready set and the corpus cannot support the "
+            "labelling target.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
 def _cmd_import_local(args: argparse.Namespace) -> int:
     paths = _paths(args)
     registry = load_sources(args.sources)
@@ -895,6 +983,77 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Fail instead of writing when the registry would change.",
     )
     discover_parser.set_defaults(func=_cmd_discover)
+
+    prepare_parser = dataset_sub.add_parser(
+        "prepare-resume-experiment",
+        help=(
+            "One command: acquire, generate, featurise, split, validate, count "
+            "and queue the corpus for the resume experiment."
+        ),
+    )
+    _add_common(prepare_parser)
+    prepare_parser.add_argument(
+        "--sources",
+        action="append",
+        default=None,
+        help=(
+            "Source registry to fetch (repeatable). Defaults to the two committed "
+            "registries: sources_real_v1.yaml and sources_resume_v1.yaml."
+        ),
+    )
+    prepare_parser.add_argument(
+        "--fixtures",
+        default=None,
+        help="Registry of local/fixture sources to import (default: none).",
+    )
+    prepare_parser.add_argument(
+        "--dataset-config", default="ml/configs/dataset_v1.yaml"
+    )
+    prepare_parser.add_argument("--split-config", default="ml/configs/splits_v3.yaml")
+    prepare_parser.add_argument("--split-version", default="v3")
+    prepare_parser.add_argument(
+        "--queue-config", default="ml/configs/labelling_queue_resume_v1.yaml"
+    )
+    prepare_parser.add_argument("--queue-output", default=None)
+    prepare_parser.add_argument("--corpus-version", default="corpus-resume-v1")
+    prepare_parser.add_argument(
+        "--target-labels",
+        type=int,
+        default=2400,
+        help="Human labels the experiment targets; readiness is measured against it.",
+    )
+    prepare_parser.add_argument("--timeout", type=float, default=180.0)
+    prepare_parser.add_argument(
+        "--limit", type=int, default=None, help="Featurise at most N episodes."
+    )
+    prepare_parser.add_argument(
+        "--skip-fetch",
+        action="store_true",
+        help="Assume the audio is already downloaded (the only networked step).",
+    )
+    prepare_parser.add_argument(
+        "--skip-features",
+        action="store_true",
+        help="Stop before the model-loading stages (useful for a dry structure run).",
+    )
+    prepare_parser.add_argument(
+        "--force-split",
+        action="store_true",
+        help="Overwrite an existing split manifest of this version.",
+    )
+    prepare_parser.add_argument("--report", default=None)
+    prepare_parser.add_argument(
+        "--require-ready",
+        action="store_true",
+        help="Exit non-zero when the corpus cannot support the labelling target.",
+    )
+    prepare_parser.set_defaults(
+        func=_cmd_prepare_resume_experiment,
+        sources_default=[
+            "ml/configs/sources_real_v1.yaml",
+            "ml/configs/sources_resume_v1.yaml",
+        ],
+    )
 
     import_parser = dataset_sub.add_parser(
         "import-local", help="Register local files and repository fixtures."
