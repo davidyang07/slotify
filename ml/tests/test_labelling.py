@@ -557,3 +557,53 @@ def test_missing_transcript_is_handled_cleanly(tmp_path: Path):
     assert candidate["has_transcript"] is False
     assert candidate["transcript_before"] is None
     assert candidate["transcript_after"] is None
+
+
+def test_every_exported_row_carries_its_full_provenance(tmp_path: Path, database, candidates):
+    """A label is only interpretable years later if it says where it came from."""
+    database.upsert_label(
+        candidates[0].candidate_id,
+        "annotator-a",
+        4,
+        stage="primary",
+        queue_version="resume-v1",
+        elapsed_ms=4200,
+        notes="clean topic change",
+    )
+    result = export_labels(database, candidates, tmp_path / "labels_resume-v1.jsonl")
+
+    import json
+
+    row = json.loads(result.path.read_text(encoding="utf-8").strip())
+    for field in (
+        "annotator_id",
+        "candidate_id",
+        "episode_id",
+        "series_id",
+        "dataset_split",
+        "presentation_id",
+        "stage",
+        "queue_version",
+        "rubric_version",
+        "schema_version",
+        "created_at",
+        "updated_at",
+        "elapsed_ms",
+        "quality_score",
+        "graded_relevance",
+        "label_source",
+        "timestamp_ms",
+        "candidate_sources",
+        "heuristic_score",
+        "baseline_version",
+        "candidate_generation_version",
+    ):
+        assert field in row, field
+    assert row["label_source"] == "human"
+    assert row["queue_version"] == "resume-v1"
+    assert row["elapsed_ms"] == 4200
+    assert row["created_at"].endswith("+00:00")
+
+    metadata = json.loads(result.metadata_path.read_text(encoding="utf-8"))
+    assert metadata["label_schema_version"] == row["schema_version"]
+    assert metadata["graded_relevance_rule"].startswith("graded_relevance = quality_score - 1")
