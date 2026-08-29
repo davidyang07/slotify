@@ -143,6 +143,73 @@ def _cmd_readiness(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_manifest(args: argparse.Namespace) -> int:
+    """Resolve the committed experiment definition into a hashed manifest."""
+    from slotify_rank.experiment.canonical import (
+        ExperimentConfigError,
+        load_experiment_config,
+        resolve_manifest,
+        write_manifest,
+    )
+
+    paths = _paths(args)
+    try:
+        config = load_experiment_config(Path(args.config))
+    except ExperimentConfigError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+
+    _raw, aggregated, _candidates = _load_labels(paths, args.acceptable_threshold)
+    manifest = resolve_manifest(
+        config,
+        repo_root=paths.repo_root,
+        paths=paths,
+        human_label_count=len(aggregated),
+    )
+
+    destination = (
+        Path(args.output)
+        if args.output
+        else paths.data_root.parent
+        / "artifacts"
+        / "experiments"
+        / f"{config.experiment_version}.json"
+    )
+    write_manifest(destination, manifest)
+
+    print(f"Experiment {manifest.experiment_version}")
+    print(f"  config digest      : {manifest.config_digest[:16]}")
+    print(f"  human labels       : {manifest.label_summary['human_label_count']} "
+          f"(gate: {manifest.label_summary['minimum_human_labels']})")
+    print(f"  split              : {manifest.split_summary.get('version')} "
+          f"group_by={manifest.split_summary.get('group_by')} "
+          f"seed={manifest.split_summary.get('seed')} "
+          f"degraded={manifest.split_summary.get('degraded')}")
+    groups = manifest.split_summary.get("groups_by_split") or {}
+    print(f"  series per split   : { {k: len(v) for k, v in groups.items()} }")
+    print(f"  seeds              : {list(config.seeds)}")
+    print(f"  headline variant   : {config.model['headline_variant']}")
+    print(f"  canonical baseline : {config.canonical_baseline}")
+    print("  artifact hashes:")
+    for name, digest in sorted(manifest.artifact_hashes.items()):
+        shown = "MISSING" if digest is None else digest[:16]
+        print(f"    {name:<34} {shown}")
+    print(f"  ready: {manifest.ready}")
+    for reason in manifest.blocking_reasons:
+        print(f"    - blocked: {reason}")
+    for warning in manifest.warnings:
+        print(f"    - warning: {warning}")
+    print(f"Wrote {destination}")
+
+    if args.require_ready and not manifest.ready:
+        print(
+            "error: --require-ready set and the experiment is not resolvable yet.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
 def _cmd_freeze(args: argparse.Namespace) -> int:
     from slotify_rank.experiment.freeze import build_snapshot, write_snapshot
 
@@ -229,6 +296,30 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Exit non-zero when the gate is not met (for use in a training script).",
     )
     readiness.set_defaults(func=_cmd_readiness)
+
+    manifest = experiment_sub.add_parser(
+        "manifest",
+        help=(
+            "Resolve the committed experiment definition into a manifest that "
+            "pins every artifact's hash."
+        ),
+    )
+    manifest.add_argument("--data-root", default=None)
+    manifest.add_argument(
+        "--config",
+        default="ml/configs/experiment_resume_v1.yaml",
+        help="The committed experiment definition.",
+    )
+    manifest.add_argument("--output", default=None)
+    manifest.add_argument(
+        "--acceptable-threshold", type=int, default=DEFAULT_ACCEPTABLE_THRESHOLD
+    )
+    manifest.add_argument(
+        "--require-ready",
+        action="store_true",
+        help="Exit non-zero when the experiment cannot yet be resolved.",
+    )
+    manifest.set_defaults(func=_cmd_manifest)
 
     freeze = experiment_sub.add_parser(
         "freeze", help="Freeze an immutable label snapshot for the experiment."
