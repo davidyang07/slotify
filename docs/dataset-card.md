@@ -232,9 +232,22 @@ window and shows the transcript context either side of the break when one exists
 - **It is not a commercial-podcast corpus.** One real interview podcast, multi-voice dramatic
   readings and narrated prose. See "Target domain" above; transfer to commercial podcasts is an open
   question this corpus cannot settle.
-- **One show carries the podcast weight.** Houston We Have a Podcast is a single series, so the
-  series-grouped split places all of it in one partition. Whichever partition that is, the other two
-  contain no true podcast audio.
+- **One show carries the podcast weight, and it lands wholly in `test`.** Houston We Have a Podcast
+  is a single series, so grouping on the series necessarily puts all of it in one partition — and
+  under `splits_v3` that partition is the held-out one. Two consequences, both worth stating before
+  any number is read:
+
+  1. **The headline measures cross-domain transfer.** The model trains on multi-voice dramatic
+     readings and narrated prose and is tested on a real interview podcast. That is a harder and
+     more informative question than in-domain ranking, and it is not the same question.
+  2. **The test partition is one series.** Six episodes of one show are not six independent
+     observations; they share hosts, room, mic chain and editing rhythm, so the macro-average over
+     them reflects that show as much as the model. `evaluation compare` emits a caveat saying so,
+     and the bootstrap interval — not the point estimate — is the thing to read.
+
+  The alternative would be splitting one show's episodes across partitions, which is exactly the
+  leakage the series grouping exists to prevent. The honest fix is more openly licensed podcast
+  series; the survey above records why there are not any.
 - **`transcript_segment_end` contributes nothing at generation time.** Candidates are generated
   before transcription runs, so that generator only fires when a timestamped transcript is supplied
   up front. Every generation report states this explicitly. Transcripts *are* produced by the

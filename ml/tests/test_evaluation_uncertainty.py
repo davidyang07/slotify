@@ -306,3 +306,38 @@ def test_artifact_hashes_and_the_experiment_are_recorded():
     assert payload["artifact_hashes"]["model_checkpoint"] == "d" * 64
     # A missing artifact is recorded as missing, not omitted.
     assert payload["artifact_hashes"]["label_export"] is None
+
+
+def test_a_single_series_test_partition_is_called_out():
+    """Six episodes of one show is not six independent observations.
+
+    They share hosts, room, mic chain and editing rhythm, so a macro-average
+    over them measures that show as much as the model. The point estimate looks
+    exactly as confident either way, so the caveat has to be explicit.
+    """
+    examples, baseline, model = three_episodes()
+    one_show = {f"ep-{i}": "the-only-show" for i in range(3)}
+    result = compare(
+        examples=examples,
+        baseline_scores=baseline,
+        model_scores=model,
+        inputs=inputs(),
+        evaluation_id="eval-one-series",
+        series_by_episode=one_show,
+    )
+    assert any("1 series" in warning for warning in result.warnings)
+    assert any("one show's quirks" in warning for warning in result.warnings)
+
+
+def test_a_broad_test_partition_raises_no_series_caveat():
+    examples, baseline, model = three_episodes()
+    many = {f"ep-{i}": f"series-{i}" for i in range(3)}
+    result = compare(
+        examples=examples,
+        baseline_scores=baseline,
+        model_scores=model,
+        inputs=inputs(),
+        evaluation_id="eval-many-series",
+        series_by_episode=many,
+    )
+    assert not any("series (" in warning for warning in result.warnings)

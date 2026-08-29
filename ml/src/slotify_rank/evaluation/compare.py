@@ -510,6 +510,17 @@ def compare(
             f"only {len(grouped)} evaluation episode(s); metrics are macro-averaged "
             "over episodes, so this estimate has very wide uncertainty."
         )
+    evaluated_series = {
+        (series_by_episode or {}).get(episode_id, episode_id) for episode_id in grouped
+    }
+    if len(evaluated_series) < 3:
+        warnings.append(
+            f"the test partition holds {len(evaluated_series)} series "
+            f"({sorted(evaluated_series)}). Episodes of one show share hosts, room, "
+            "mic chain and editing rhythm, so a macro-average over them measures "
+            "one show's quirks as much as the model. Read the interval, not the "
+            "point estimate."
+        )
     if not inputs.seeds:
         warnings.append(
             "a single training run was evaluated; no seed-to-seed variance is "
