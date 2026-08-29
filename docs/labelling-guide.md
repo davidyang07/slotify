@@ -21,6 +21,11 @@ rubric are never pooled with these.
 | **4** | Strong natural breakpoint. A real end of a thought, a completed exchange, a clean handoff. |
 | **5** | Highly natural transition. A topic actually ends here; an ad would feel like it belongs in the seam. |
 
+The scale is **graded**, not binary. NDCG consumes `quality_score` directly, and
+the equivalent 0–4 relevance grade is `quality_score - 1` — a 1 contributes no
+gain at all, which is why "clearly disruptive" and "possible but unnatural" have
+to stay distinguishable rather than collapsing into "bad".
+
 **`is_acceptable` is derived, not entered.** The default rule is:
 
 ```text
@@ -36,19 +41,23 @@ label and recorded in the export metadata, so changing it later cannot silently 
 
 ```powershell
 cd ml
-.\.venv\Scripts\python.exe -m slotify_rank.cli label serve --port 8000
+.\.venv\Scripts\python.exe -m slotify_rank.cli label resume-experiment
 ```
 
-To run against a labelling queue, add `--queue ..\data\labels\queue_v1.json`; to
-run just the controlled pilot pass, add `--stage pilot` as well. The
-step-by-step pilot session is documented in
-[`pilot-labelling.md`](pilot-labelling.md).
+That pre-cuts every clip so no rating waits on FFmpeg, prints how many labels
+remain, and serves the UI. Add `--stage pilot` for the controlled first pass;
+the step-by-step pilot session is documented in
+[`pilot-labelling.md`](pilot-labelling.md). `label serve --queue …` is still
+there for a session that should not re-cut clips.
 
 Open <http://127.0.0.1:8000/>, enter an annotator id, and start. Notes:
 
 - **Your annotator id may be a pseudonym.** `annotator-a` is fine. No personal information is
   requested or stored anywhere in the schema.
-- **Every rating saves immediately.** Closing the tab loses nothing.
+- **A rating is one keystroke.** `1`–`5` saves *and* advances; there is no confirm step. The next
+  several clips are already loaded, so the gap between items is a repaint.
+- **Every rating saves immediately.** Nothing is buffered in the browser, so closing the tab loses
+  at most the item on screen. If a save fails you are told and the item comes back.
 - **Transcript context is shown when available.** The text just before and just after the break is
   the same context the model reads; when the episode has no transcript the UI says so and you rate
   from the audio alone.
@@ -62,13 +71,22 @@ Open <http://127.0.0.1:8000/>, enter an annotator id, and start. Notes:
 
 ### Keyboard shortcuts
 
+The session needs no mouse.
+
 | Key | Action |
 |---|---|
-| `1`–`5` | Rate and advance |
+| `1`–`5` | Rate **and advance** |
+| `Space` | Play / pause |
 | `R` | Replay the full context window |
 | `B` | Replay the last few seconds before the break |
-| `U` | Toggle "unusable" |
-| `Space` | Play / pause |
+| `U` | Toggle "broken clip" — a judgement, and recorded as one |
+| `S` | Skip for now — **not** a judgement; the item returns when you clear skips |
+| `N` / `Esc` | Write a note / leave the note field |
+
+`U` and `S` are different things and the difference matters. A broken clip is
+information about the audio and is exported as a label with `is_unusable` set. A
+skip is you deferring, and never reaches the export, the readiness gate or a
+model.
 
 ---
 
@@ -120,8 +138,16 @@ near the beginning or end of an episode — tick **unusable** and note "insuffic
 5 s edge guard should prevent this; if it happens often, the guard needs raising.
 
 ### When you genuinely cannot decide
-Score **3** and add a note. Do not skip: a systematically skipped kind of candidate biases the
-dataset more than an uncertain label does.
+Score **3** and add a note. Do not press `S`: a systematically skipped *kind* of candidate biases
+the dataset more than an uncertain label does. Skipping is for interruptions — the phone rang, you
+need to re-listen with better headphones — not for hard cases.
+
+### You are shown some clips twice
+Deliberately, and you are not told which. A small blind subset is re-presented much later in the
+session under a different id, and the agreement between your two judgements is the only measurement
+of how consistent you are. Rate the repeat as you find it. If you recognise one, rate it as you
+would have anyway rather than trying to recall your first answer — a remembered answer measures
+memory, which is not the thing being measured.
 
 ---
 
@@ -141,24 +167,27 @@ Labelling is staged so problems surface before hours are sunk into them.
 
 | Stage | Labels | Purpose |
 |---|---|---|
-| Pipeline debug | 200–300 | Prove the loop works and the rubric is usable. Expect to revise the rubric here. |
-| First model | ~750 | Enough to train something and see whether the signal exists at all. |
-| Final training and evaluation | ~1500 | The target for the MVP, over roughly 8–12 hours of audio. |
+| Pilot | 30 | Prove the loop works and the rubric is usable. Expect to revise the rubric here — that is what it is for. |
+| Readiness gate | 200 | The generic minimum for any held-out comparison: enough episodes, series and within-episode pairs to be meaningful. |
+| The resume experiment | 2 400 | The gate declared in `ml/configs/experiment_resume_v1.yaml`. Roughly 7–10 hours of attention at 10–15 s an item. |
 
 These are **targets, not results.** The measured count lives in
 `artifacts/dataset/label_statistics.json` as `human_labelled_candidate_count`, and it is the only
-number that may be quoted.
+number that may be quoted. The progress counter in the UI reads against the round's target so you
+can see the distance; it is not a claim about anything until the round finishes.
 
 ---
 
 ## Exporting
 
 ```powershell
-.\.venv\Scripts\python.exe -m slotify_rank.cli label export
+.\.venv\Scripts\python.exe -m slotify_rank.cli label export --dataset-version resume-v1
 ```
 
-Writes `data/labels/labels_v1.jsonl` plus a `.meta.json` sidecar recording the rubric version, the
-acceptability rule in force, the schema versions, and any orphaned labels. Every exported row is a
-human judgement — weak and heuristic labels are never written to this file.
+Writes `data/labels/labels_resume-v1.jsonl` plus a `.meta.json` sidecar recording the rubric
+version, the label schema version, the acceptability rule in force, the graded-relevance rule, any
+orphaned labels, and how many blind repeats were excluded. Every exported row is a human judgement:
+weak and heuristic labels are never written to this file, and neither are the consistency
+repeats — pooling those would turn a quality control into extra supervision.
 
 The database (`data/labels/labels.sqlite3`) and the exports are git-ignored. They are your data.

@@ -1,15 +1,19 @@
-# Pilot labelling session (Phase 5A.1)
+# Pilot labelling session
 
-This is the operator's guide to the **pilot**: a controlled first pass of
-~20–30 real candidates, labelled through the local UI, reviewed before any bulk
-labelling begins. Its purpose is to validate the rubric, the audio/transcript
-context and the candidate generator on genuine data — not to train anything.
+This is the operator's guide to the **pilot**: a controlled first pass of ~30
+real candidates, labelled through the local UI and reviewed before any bulk
+labelling begins. Its purpose is to validate the rubric, the audio and
+transcript context and the candidate generator on genuine data — not to train
+anything.
 
-The repository ships with **zero human labels**. Phase 5B (the real
-baseline-vs-model comparison) stays blocked until ≥ 200 genuine labels exist, so
-the pilot is where the human work starts. See
-[`human-labelling-workflow.md`](human-labelling-workflow.md) for how the corpus
-and queue were built, and [`labelling-guide.md`](labelling-guide.md) for the
+Do the pilot first. The bulk round is a few thousand items; discovering after
+two thousand of them that the context window is too short, or that the rubric's
+middle grades are ambiguous, means discarding real human effort. Thirty items
+costs ten minutes.
+
+See [`human-labelling-workflow.md`](human-labelling-workflow.md) for how the
+corpus and queue were built, [`resume-experiment.md`](resume-experiment.md) for
+what the labels are for, and [`labelling-guide.md`](labelling-guide.md) for the
 full rubric.
 
 All commands run from the `ml/` directory with its own Python 3.12 virtual
@@ -23,19 +27,18 @@ environment. CPU-only; nothing here reaches the network or a paid API.
 cd ml
 .\.venv\Scripts\Activate.ps1        # or call .\.venv\Scripts\python.exe directly
 
-.\.venv\Scripts\python.exe -m slotify_rank.cli label serve `
-    --queue ..\data\labels\queue_v1.json `
-    --stage pilot `
-    --host 127.0.0.1 --port 8000
+# Pre-cuts every clip, reports what is left, then serves the UI.
+.\.venv\Scripts\python.exe -m slotify_rank.cli label resume-experiment `
+    --stage pilot --host 127.0.0.1 --port 8000
 ```
 
 | Setting | Value |
 |---|---|
 | Working directory | `ml/` |
 | Python environment | `ml/.venv` (activate `.\.venv\Scripts\Activate.ps1`) |
-| Command | `slotify_rank.cli label serve` |
-| Queue argument | `--queue ..\data\labels\queue_v1.json` |
-| Stage argument | `--stage pilot` (serves **only** the 24 pilot candidates) |
+| Command | `slotify_rank.cli label resume-experiment` |
+| Queue argument | defaults to `data/labels/queue_resume-v1.json` under the data root |
+| Stage argument | `--stage pilot` (serves **only** the 30 pilot candidates) |
 | Host / port | `127.0.0.1` / `8000` (localhost only) |
 | Local URL | <http://127.0.0.1:8000/> |
 | Annotator id | `david-pilot-v1` (a pseudonym — enter it in the page) |
@@ -126,20 +129,19 @@ Safe to re-run at any time.
 
 ```powershell
 # Export human labels to versioned JSONL (+ .meta.json sidecar).
-.\.venv\Scripts\python.exe -m slotify_rank.cli label export --dataset-version v1
+.\.venv\Scripts\python.exe -m slotify_rank.cli label export --dataset-version resume-v1
 
 # Quality check: invalid ratings, orphans, out-of-queue labels, manifest drift.
 .\.venv\Scripts\python.exe -m slotify_rank.cli label check `
-    --queue ..\data\labels\queue_v1.json --split-version v2
+    --queue ..\data\labels\queue_resume-v1.json --split-version v3
 
-# Phase 5B readiness gate (reports zero labels as blocked, honestly).
+# Readiness gate (reports zero labels as blocked, honestly).
 .\.venv\Scripts\python.exe -m slotify_rank.cli experiment readiness `
-    --queue ..\data\labels\queue_v1.json --split-version v2
+    --queue ..\data\labels\queue_resume-v1.json --split-version v3
 ```
 
-Once the pilot has ≥ 20 genuine usable labels, rerun the **Phase 5A.1
-post-pilot review**: `label check`, pilot statistics and the pilot acceptance
-check, then freeze the snapshot and generate the primary queue.
+Once the pilot has at least 20 genuine usable labels, run the post-pilot
+review below before continuing into the bulk round.
 
 ---
 
@@ -167,57 +169,69 @@ If accepted, freeze an immutable snapshot before anything else:
 
 ```powershell
 .\.venv\Scripts\python.exe -m slotify_rank.cli experiment freeze `
-    --snapshot-version v1 --split-version v2 --queue ..\data\labels\queue_v1.json
+    --snapshot-version resume-v1 --split-version v3 `
+    --queue ..\data\labels\queue_resume-v1.json
 ```
 
 ---
 
-## 6. The primary queue
+## 6. The rest of the queue
 
-The primary 200–250-candidate queue is generated **only after the pilot is
-accepted**, and it already exists inside `queue_v1.json` as the `primary` stage
-(256 candidates, disjoint from the 24 pilot candidates). Serve it with
-`--stage primary`. It preserves the frozen series-aware v2 split and is
-stratified by split × heuristic-score tertile with round-robin episode/series
-spread; overlap (40) and consistency (12) presentations are reserved for
-inter- and intra-annotator agreement and are never counted as unique training
-examples. Regenerating the queue requires a version bump — a byte-different
-queue of the same version is refused, so labels already collected are never
-orphaned.
+The bulk stages live in the same artifact and are generated at the same time;
+the pilot is not a separate build. Serve them with `--stage primary`, or drop
+`--stage` entirely to work the whole queue.
+
+The queue preserves the frozen series-grouped split and is stratified by
+(split × heuristic-score tertile) with round-robin episode and series spread.
+Its four stages, with the sizes the committed config declares:
+
+| Stage | Size | What it is for |
+|---|---|---|
+| `pilot` | 30 | the controlled first pass above |
+| `primary` | the remainder | the bulk round |
+| `overlap` | 60 | reserved for a *second* annotator, for inter-annotator agreement |
+| `consistency` | 60 | blind repeats of candidates already in the set, interleaved far from their first showing, for intra-annotator agreement |
+
+Overlap and consistency presentations are **never** counted as unique
+candidates and never enter the label export. Regenerating the queue requires a
+version bump — a byte-different queue of the same version is refused — so labels
+already collected are never orphaned.
 
 ---
 
 ## 7. Why evaluation stays blocked
 
-`experiment readiness` will report **Phase 5B ready: False** until the label
-database genuinely contains enough human judgements. The gate requires ≥ 200
-unique labelled candidates, ≥ 8 episodes, ≥ 6 series (≥ 4 train / ≥ 1 validation
-/ ≥ 1 test), usable within-episode pairs in train and validation, at least one
+`experiment readiness` reports **not ready** until the label database
+genuinely contains enough human judgements. The gate requires at least 200
+unique labelled candidates, 8 episodes and 6 series (4 train / 1 validation /
+1 test), usable within-episode pairs in train and validation, at least one
 graded-relevant test candidate, all labels passing integrity checks, and a
 complete multimodal feature record for every labelled candidate. The thresholds
-are fixed in `ReadinessGate` and are **not** to be weakened to advance the
-phase. Until they are met, no model is trained and no NDCG comparison against
-`heuristic_offline_v1` is computed or implied. A pilot of ~24 labels is a
+are fixed in `ReadinessGate` and are **not** to be weakened to advance past
+them.
+
+The resume experiment sets a second, higher bar on top of that one: 2,400 unique
+human labels, declared in `ml/configs/experiment_resume_v1.yaml`. Until both are
+met, no model is trained on human labels and no NDCG comparison against
+`heuristic_offline_v1` is computed or implied. A pilot of thirty labels is a
 workflow validation, not a dataset.
 
 ---
 
 ## Pilot queue at a glance
 
-Read from `data/labels/queue_v1.json` (git-ignored; regenerated by
-`label queue`). These are **generated, unlabelled** candidates — not labels.
+The queue artifact records exactly what it selected: the score-tertile
+boundaries, the candidate- and split-manifest hashes it was built from, and a
+coverage breakdown across split, score stratum, series, episode, candidate
+source, position bucket, silence bucket, sentence-boundary status and transcript
+availability.
 
-| Field | Value |
-|---|---|
-| Queue version | `v1` (schema `labelling-queue-v1.0.0`) |
-| Pilot candidates | 24 unique |
-| Episodes / series | 6 / 6 |
-| Split spread | train 9 · validation 9 · test 6 |
-| Score strata | high 9 · medium 9 · low 6 |
-| Candidate sources | silence 18 · rms_minimum 4 · pause 2 |
-| Episode position | spread across p0–p4 (early/middle/late) |
-| Transcript / feature completeness | 24/24 · 24/24 |
-| Synthetic / missing-media | 0 · 0 |
+Read the current numbers from the artifact rather than from here — they change
+whenever the corpus does:
 
-The queue's content and manifest hashes are recorded inside the artifact; a
-freeze pins exactly this queue.
+```powershell
+.\.venv\Scripts\python.exe -c "import json,sys; q=json.load(open(r'..\data\labels\queue_resume-v1.json')); c=q['coverage']; print(q['queue_version'], q['unique_candidate_count']); print(c['by_split']); print(c['by_score_stratum']); print(c['by_primary_source'])"
+```
+
+Whatever they say, these are **generated, unlabelled** candidates — not labels,
+and never counted as any. A freeze pins exactly this queue by its content hash.
