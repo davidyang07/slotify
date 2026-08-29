@@ -260,3 +260,63 @@ def test_write_produces_both_files(tmp_path: Path) -> None:
     assert set(written) == {"model_evidence.json", "model_evidence.md"}
     for path in written.values():
         assert path.is_file() and path.stat().st_size > 0
+
+
+def test_a_human_trained_run_is_preferred_over_a_newer_weak_one(tmp_path: Path):
+    """The ablation matrix writes fifteen runs at once.
+
+    "The newest" would then name an arbitrary variant, and a later weak
+    bootstrap would displace the run the product actually serves.
+    """
+    import json
+
+    from slotify_rank.evaluation.evidence import _best_training_run
+
+    training = tmp_path / "training"
+    for name, label_source, generated_at in (
+        ("gated-human", "human", "2026-09-01T00:00:00+00:00"),
+        ("gated-weak", "weak_heuristic", "2026-09-05T00:00:00+00:00"),
+        ("text_only-human", "human", "2026-08-30T00:00:00+00:00"),
+    ):
+        directory = training / name
+        directory.mkdir(parents=True)
+        (directory / "training_summary.json").write_text(
+            json.dumps(
+                {
+                    "run_id": name,
+                    "label_source": label_source,
+                    "generated_at": generated_at,
+                    "model_variant": name.split("-")[0],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    _path, summary = _best_training_run(training)
+    assert summary["run_id"] == "gated-human"
+
+
+def test_the_newest_run_is_used_when_none_are_human(tmp_path: Path):
+    import json
+
+    from slotify_rank.evaluation.evidence import _best_training_run
+
+    training = tmp_path / "training"
+    for name, generated_at in (
+        ("a", "2026-09-01T00:00:00+00:00"),
+        ("b", "2026-09-05T00:00:00+00:00"),
+    ):
+        directory = training / name
+        directory.mkdir(parents=True)
+        (directory / "training_summary.json").write_text(
+            json.dumps(
+                {
+                    "run_id": name,
+                    "label_source": "weak_heuristic",
+                    "generated_at": generated_at,
+                }
+            ),
+            encoding="utf-8",
+        )
+    _path, summary = _best_training_run(training)
+    assert summary["run_id"] == "b"

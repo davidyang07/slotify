@@ -462,3 +462,50 @@ def test_a_span_wholly_swallowed_by_its_predecessor_is_dropped_not_zero_length()
     ]
     resolved = reconcile_overlapping_segments(candidates)
     assert all(end > start for start, end, _text, _words in resolved)
+
+
+def test_reconciliation_always_returns_ordered_non_overlapping_spans():
+    """A property, not an example.
+
+    `build_segments` rejects an entire episode when any segment starts before
+    the previous one ended, and two real episodes were lost that way. Asserting
+    the invariant over randomised overlapping input is what makes the guarantee
+    structural rather than a patch for the two cases that happened to be seen.
+    """
+    import random
+
+    from slotify_rank.transcription.segments import reconcile_overlapping_segments
+
+    phrases = [
+        "he said quietly",
+        "and then she left",
+        "the door closed",
+        "he said quietly",  # deliberate duplicates, which is what triggers it
+        "nothing happened after that",
+    ]
+    rng = random.Random(20260829)
+    for _ in range(200):
+        candidates = []
+        for _ in range(rng.randint(2, 12)):
+            start = rng.randrange(0, 60_000)
+            start -= start % 20
+            end = start + rng.randrange(20, 4_000)
+            chunk_index = rng.randrange(0, 4)
+            candidates.append(
+                (
+                    start,
+                    end,
+                    rng.choice(phrases),
+                    (),
+                    chunk_index,
+                    chunk_index * 25_000 + 15_000,
+                )
+            )
+
+        resolved = reconcile_overlapping_segments(candidates)
+        for previous, following in zip(resolved, resolved[1:]):
+            assert following[0] >= previous[1], (
+                f"{following[0]} starts before {previous[1]} in {resolved}"
+            )
+        for start, end, _text, _words in resolved:
+            assert end > start, "a zero-length span must be dropped, not emitted"

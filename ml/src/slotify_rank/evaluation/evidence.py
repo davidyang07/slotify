@@ -128,11 +128,17 @@ class ModelEvidence:
 
 
 def _best_training_run(training_dir: Path) -> tuple[str, dict[str, Any]] | None:
-    """The most recent run summary, whatever its provenance.
+    """The run this report should describe.
 
-    Chosen by generated_at rather than by metric: picking the best-scoring run
-    would be seed cherry-picking, which is precisely what this report exists to
-    make impossible.
+    A human-trained run if any exists, otherwise the most recent run of any
+    provenance -- and within each group, the most recent by ``generated_at``.
+
+    Never the best-scoring run: picking by metric would be seed cherry-picking,
+    which is precisely what this report exists to make impossible. And never
+    simply "the newest", because the ablation matrix writes fifteen runs at once
+    and the newest of them is an arbitrary variant, not the one being reported.
+    Preferring human provenance keeps this aligned with the checkpoint the
+    product actually serves (``scripts/lib/select-checkpoint.mjs``).
     """
     candidates: list[tuple[str, dict[str, Any]]] = []
     if not training_dir.is_dir():
@@ -143,8 +149,12 @@ def _best_training_run(training_dir: Path) -> tuple[str, dict[str, Any]] | None:
             candidates.append((str(summary_path), summary))
     if not candidates:
         return None
-    candidates.sort(key=lambda entry: str(entry[1].get("generated_at", "")))
-    return candidates[-1]
+    human = [
+        entry for entry in candidates if entry[1].get("label_source") == "human"
+    ]
+    pool = human or candidates
+    pool.sort(key=lambda entry: str(entry[1].get("generated_at", "")))
+    return pool[-1]
 
 
 def _publishable_comparison(evaluation_dir: Path) -> tuple[str, dict[str, Any]] | None:
