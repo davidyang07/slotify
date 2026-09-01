@@ -2,8 +2,8 @@
 
 **Generated file - do not edit.** Produced by `slotify-rank report model-evidence`, which reads the artifacts named at the bottom. Every number here comes from one of them.
 
-- Git SHA: `9e9a0ccfde7b75d621bb9cfa76c21a06a72e7155`
-- Generated: 2026-08-19T17:33:53+00:00
+- Git SHA: `d9d009a720a72570380b298840ca6b12793608de`
+- Generated: 2026-09-01T23:00:29+00:00
 - Package version: 0.2.0
 
 `NOT YET AVAILABLE` means no artifact produced that value. It is not a zero: a measured zero (for example, zero human labels) is printed as `0`.
@@ -22,7 +22,7 @@
 > Enough human-labelled candidates exist, spread across enough episodes and series, for the readiness gate to pass and a held-out evaluation to be possible.
 
 - human_labelled_candidate_count = 0 (measured from the label database, not estimated).
-- generated_candidate_count = 595 -- candidates produced by the generators, which are NOT labels.
+- generated_candidate_count = 13176 -- candidates produced by the generators, which are NOT labels.
 - No human label exists, so no labelled-candidate count can be quoted and no human-ground-truth evaluation can run.
 
 ### Held-out ranking improvement - NOT YET SUPPORTED
@@ -39,10 +39,10 @@
 | Human labelled candidates | 0 |
 | Human annotators | 0 |
 | Human labelled audio hours | 0.0 |
-| Generated candidates (NOT labels) | 595 |
-| Complete multimodal feature records | 583 |
-| Processed audio hours | 0.8387 |
-| Processed episodes | 13 |
+| Generated candidates (NOT labels) | 13176 |
+| Complete multimodal feature records | 12930 |
+| Processed audio hours | 18.6135 |
+| Processed episodes | 77 |
 | Held-out evaluation candidates | 0 |
 | Dataset/evaluation readiness gate | False |
 

@@ -362,6 +362,28 @@ def resolve_manifest(
             root / str(config.model["config_dir"]) / f"{variant}_v1.yaml"
         )
 
+    # A declared dependency that does not resolve is worse than an absent one:
+    # `_hash_or_none` records null and the manifest goes on claiming to pin the
+    # experiment, so a typo in a path silently turns a frozen input into an
+    # unpinned one. The queue and its config are exactly that kind of input --
+    # a result is only reproducible if the candidates offered to annotators are
+    # known bytes -- so a path that does not resolve blocks here rather than
+    # passing as a null hash. Label exports and snapshots are deliberately not
+    # in this list: they are absent until labelling happens, and the label gate
+    # above already accounts for them.
+    if artifact_hashes["labelling_queue_config"] is None:
+        blocking.append(
+            f"the labelling queue config declared at "
+            f"{config.labels['queue_config']} does not exist, so the manifest "
+            f"cannot pin it (looked in {root / str(config.labels['queue_config'])})"
+        )
+    if artifact_hashes["labelling_queue"] is None:
+        blocking.append(
+            f"the labelling queue declared at {config.labels['queue_artifact']} "
+            f"does not exist, so the manifest cannot pin the candidates shown to "
+            f"annotators (looked in {queue_path})"
+        )
+
     feature_schema = {
         "feature_spec_version": FEATURE_SPEC_VERSION,
         "feature_pipeline_version": FEATURE_PIPELINE_VERSION,

@@ -8,7 +8,7 @@
 # test split is read for the first time.
 #
 # `slotify-rank experiment manifest` resolves this file into
-# artifacts/experiments/experiment_v2.json, which pins the actual bytes:
+# artifacts/experiments/experiment-v2.json, which pins the actual bytes:
 # the split manifest hash, the candidate manifest hash, the label snapshot hash,
 # the feature schema versions and the resolved model configuration. A result
 # reported against experiment-v2 always means those bytes.

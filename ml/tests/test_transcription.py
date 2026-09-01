@@ -509,3 +509,31 @@ def test_reconciliation_always_returns_ordered_non_overlapping_spans():
             )
         for start, end, _text, _words in resolved:
             assert end > start, "a zero-length span must be dropped, not emitted"
+
+
+def test_only_the_cache_module_builds_a_transcript_filename():
+    """The transcript filename convention lives in exactly one place.
+
+    It has been re-spelled by hand twice, and both times the copy was wrong.
+    The labelling session's readiness banner looked for ``<id>.json`` where the
+    cache writes ``<id>.transcript.json``, so it announced ``0/77 episode(s)
+    have one`` for a fully transcribed corpus immediately before a 2,400-label
+    session -- a false not-ready signal on the one screen that exists to say
+    whether labelling can begin. Anything joining ``transcripts_dir`` to a
+    per-episode filename must go through ``transcription.cache.transcript_path``.
+    """
+    source_root = Path(__file__).resolve().parents[1] / "src" / "slotify_rank"
+    offenders = []
+    for path in source_root.rglob("*.py"):
+        if path.name == "cache.py" and path.parent.name == "transcription":
+            continue
+        for number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            if "transcripts_dir /" in line:
+                offenders.append(f"{path.relative_to(source_root)}:{number}: {line.strip()}")
+
+    assert not offenders, (
+        "these build a transcript path by hand instead of calling "
+        "transcription.cache.transcript_path:\n" + "\n".join(offenders)
+    )

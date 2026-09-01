@@ -5,8 +5,8 @@
   "errors": [],
   "warnings": [],
   "checked": {
-    "records": 20,
-    "episodes": 7,
+    "records": 13176,
+    "episodes": 77,
     "handcrafted_feature_count": 110,
     "deep": true
   }

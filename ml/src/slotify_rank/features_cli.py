@@ -77,7 +77,7 @@ def _load_corpus(
 ) -> tuple[list[EpisodeRecord], list[DatasetCandidate], dict[str, str]]:
     episodes = list(manifests.read_episodes(paths.episodes_manifest))
     candidates = list(manifests.read_candidates(paths.candidates_manifest))
-    split_lookup = _split_lookup(paths, getattr(args, "split_version", "v1"))
+    split_lookup = _split_lookup(paths, getattr(args, "split_version", "v4"))
     selected = select_episodes(
         episodes,
         episode_ids=getattr(args, "episode_id", None),
@@ -358,7 +358,11 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--split", action="append", help="Filter by dataset split (repeatable)."
     )
-    parser.add_argument("--split-version", default="v1")
+    # v4 is the split the committed experiment pins. This defaulted to v1,
+    # so a bare `features stats` would recompute the by-split feature counts
+    # against a superseded split and write them into the same
+    # feature_statistics.json the evidence report reads.
+    parser.add_argument("--split-version", default="v4")
     parser.add_argument(
         "--limit", type=int, default=None, help="Process at most N episodes."
     )

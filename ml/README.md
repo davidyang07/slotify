@@ -257,6 +257,11 @@ cd ml
 
 # 8. Statistics -> artifacts/dataset/*.json + dataset_summary.md
 .\.venv\Scripts\python.exe -m slotify_rank.cli dataset stats
+
+# 9. Unreferenced generated files. `reconcile` drops manifest episodes but never
+#    deletes audio, so a corpus version bump leaves the renders and transcripts
+#    of removed episodes behind. This reports them and deletes nothing.
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset orphans
 ```
 
 Add `--data-root <path>` to any of them to work against a different corpus

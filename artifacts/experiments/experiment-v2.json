@@ -1,0 +1,193 @@
+{
+  "schema_version": "experiment-config-v1.0.0",
+  "package_version": "0.2.0",
+  "experiment_version": "experiment-v2",
+  "config_digest": "c1e09d5e341083306a3edfdbca5e013f3d447602dc89119c9363373eeb33e99b",
+  "resolved_at": "2026-09-01T22:54:55+00:00",
+  "ready": false,
+  "blocking_reasons": [
+    "0 human-labelled candidate(s) exist, fewer than the 2400 this experiment requires"
+  ],
+  "warnings": [
+    "no frozen label snapshot at C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\data\\labels\\label_snapshot_full-v2.json; freeze one with `experiment freeze` before evaluating"
+  ],
+  "artifact_hashes": {
+    "experiment_config": "d6b2a104a9b345123cbf574dcf71e06a52281493da15b7cafcae8832caca03dd",
+    "corpus_plan": "e301a4443c2cb0ad548a9e3fa7acd348c3e6b891ad475d59a22acc9a55635127",
+    "split_config": "c25316209e915131180f5f071e7e2a27f300c851490f2263751ed05319fd9e7a",
+    "split_manifest": "8db84a85e80f94f60dea25ad7180088cd3b54e9d9eab58478610180fc116b8e7",
+    "candidate_manifest": "bcb63eac450b7b635812cbcbbc9397c3eb6e2afd4092d7b2dc530987f88a14f5",
+    "episode_manifest": "cc77fd88e4c1d17abfc94b46828a8e2ede2bc0d396c02857c8ecadf171df7758",
+    "feature_manifest": "391701a19ab69b22c0a1f6270988bbca1da5e9a3e087944f5ec9f8000bb2010a",
+    "labelling_queue_config": "4c117174e38def26de558a64f0ba26da4f5e454faf7a21e1bc27893fc52a0595",
+    "labelling_queue": "1c66743bb42df214573db37e36ffa8d758b6b1aba4af0718c488dccce4b4a589",
+    "label_export": null,
+    "label_snapshot": null,
+    "training_config": "b5e778d2bda2d44405089ec6a54c5c658647885d4a35440edfe8be0f2ec832ae",
+    "baseline_config": "eb23e3409c0c7516b257386f548b61bd71b70baca789728cd03773f6619f6178",
+    "source_registry:sources_real_v1.yaml": "3daef9fdef87bf854012afb3f39ab62d311db555e02bf155823482d615d70beb",
+    "source_registry:sources_v2.yaml": "7769a158803cae5d0baee7e8c5dced88e81eba5fd834f7e1480c0c1567716525",
+    "model_config:handcrafted": "48d79df045ba14e21cd702f3bbd4a15885993facbae97329400e372d2e62dfb9",
+    "model_config:text_only": "d291b62fcc6cb933bc44407755b1d45d98bf4ff1ba17fcf5be1d0707f58aa172",
+    "model_config:audio_only": "0d85f7e46bc30a3e6c6d249343af1fb848f2112eac34689f9d8271db41cc34df",
+    "model_config:concat": "1d60dc7c015772de7d62488061430ec98b2643408ad182d7647eef935da38619",
+    "model_config:gated": "e31d6b650c0f0ec7fc1a8071b54ed41eee0fc10b4111d3a28e81418848300cb7"
+  },
+  "split": {
+    "manifest_path": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\data\\manifests\\splits_v4.json",
+    "version": "v4",
+    "algorithm_version": "split-stratified-greedy-v1.0.0",
+    "seed": 42,
+    "group_by": "series",
+    "ratios": {
+      "train": 0.7,
+      "validation": 0.15,
+      "test": 0.15
+    },
+    "degraded": false,
+    "group_count": 40,
+    "groups_by_split": {
+      "test": [
+        "filibuster-podcast",
+        "free-will-science-and-religion",
+        "houston-we-have-a-podcast"
+      ],
+      "train": [
+        "amiga-ireland",
+        "building-bridges-radio",
+        "gruesome-hertzogg",
+        "librivox-dramatic-agnes-grey",
+        "librivox-dramatic-alice-in-wonderland",
+        "librivox-dramatic-anne-of-green-gables",
+        "librivox-dramatic-black-beauty",
+        "librivox-dramatic-christmas-carol",
+        "librivox-dramatic-daisy-miller",
+        "librivox-dramatic-jekyll-and-hyde",
+        "librivox-dramatic-tom-sawyer",
+        "librivox-short-nonfiction-036",
+        "librivox-short-nonfiction-042",
+        "librivox-short-nonfiction-048",
+        "librivox-short-nonfiction-054",
+        "librivox-short-nonfiction-060",
+        "librivox-short-nonfiction-066",
+        "librivox-short-nonfiction-079",
+        "librivox-short-nonfiction-083",
+        "librivox-short-nonfiction-103",
+        "rubenerd-show",
+        "short-nonfiction-013",
+        "short-nonfiction-064",
+        "short-nonfiction-072",
+        "the-cinematic-tangent",
+        "the-command-line",
+        "the-final-straw-radio",
+        "two-br-02-b",
+        "voa-our-world",
+        "what-is-it-about-the-weather"
+      ],
+      "validation": [
+        "art-of-war",
+        "labor-express-radio",
+        "librivox-dramatic-doctor-dolittle",
+        "librivox-dramatic-scene-and-story-002",
+        "librivox-short-nonfiction-030",
+        "open-source-musician",
+        "short-nonfiction-067"
+      ]
+    }
+  },
+  "labels": {
+    "snapshot_version": "full-v2",
+    "snapshot_path": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\data\\labels\\label_snapshot_full-v2.json",
+    "export_path": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\data\\labels\\labels_full-v2.jsonl",
+    "minimum_human_labels": 2400,
+    "human_label_count": 0,
+    "allowed_label_sources": [
+      "human"
+    ]
+  },
+  "feature_schema": {
+    "feature_spec_version": "featurespec-v1.1.0",
+    "feature_pipeline_version": "featurepipeline-v1.0.0",
+    "manifest_feature_spec_version": "featurespec-v1.1.0",
+    "manifest_feature_pipeline_version": "featurepipeline-v1.0.0",
+    "handcrafted_dimension": null,
+    "record_count": 13176
+  },
+  "config": {
+    "experiment_version": "experiment-v2",
+    "schema_version": "experiment-config-v1.0.0",
+    "source_path": "ml/configs/experiment_v2.yaml",
+    "corpus": {
+      "plan": "ml/configs/corpus_v2.yaml",
+      "source_registries": [
+        "ml/configs/sources_real_v1.yaml",
+        "ml/configs/sources_v2.yaml"
+      ],
+      "candidate_generation_config": "ml/configs/dataset_v1.yaml"
+    },
+    "split": {
+      "config": "ml/configs/splits_v4.yaml",
+      "version": "v4",
+      "group_by": "series",
+      "seed": 42,
+      "algorithm_version": "split-stratified-greedy-v1.0.0",
+      "ratios": {
+        "train": 0.7,
+        "validation": 0.15,
+        "test": 0.15
+      }
+    },
+    "labels": {
+      "queue_config": "ml/configs/labelling_queue_full_v2.yaml",
+      "queue_artifact": "data/labels/queue_full-v2.json",
+      "snapshot_version": "full-v2",
+      "rubric": "docs/labelling-guide.md",
+      "minimum_human_labels": 2400,
+      "allowed_label_sources": [
+        "human"
+      ]
+    },
+    "model": {
+      "headline_variant": "gated",
+      "ablations": [
+        "handcrafted",
+        "text_only",
+        "audio_only",
+        "concat",
+        "gated"
+      ],
+      "config_dir": "ml/configs/models",
+      "training_config": "ml/configs/training_v1.yaml",
+      "seeds": [
+        42,
+        43,
+        44
+      ],
+      "seed_selection": "median_validation_ndcg_at_3",
+      "checkpoint_selection_metric": "validation_ndcg_at_3"
+    },
+    "baselines": {
+      "canonical": "heuristic_offline_v1",
+      "classical": "classical_handcrafted_v1"
+    },
+    "evaluation": {
+      "primary_metric": "ndcg_at_3",
+      "cutoffs": [
+        1,
+        3,
+        5
+      ],
+      "relevance_threshold": 4.0,
+      "gain_offset": 1.0,
+      "bootstrap_resamples": 2000,
+      "bootstrap_confidence": 0.95,
+      "bootstrap_seed": 20260829,
+      "require_independent_metric_crosscheck": true
+    },
+    "claim": {
+      "statement": "Trained on 2,400+ labelled candidates, improving NDCG@3 by 18% over the heuristic baseline.",
+      "minimum_human_labels": 2400,
+      "minimum_relative_improvement_percent": 18.0
+    }
+  }
+}

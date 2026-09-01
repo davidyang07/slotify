@@ -185,6 +185,76 @@ def _paths_with_split(tmp_path: Path, group_by: str = "series", seed: int = 42):
     return paths
 
 
+def _write_declared_queue(tmp_path: Path, config) -> None:
+    """Materialise the queue and queue config `_VALID` declares, under tmp_path."""
+    for declared in (config.labels["queue_config"], config.labels["queue_artifact"]):
+        path = tmp_path / str(declared)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n", encoding="utf-8")
+
+
+def test_a_declared_queue_and_config_are_pinned_when_they_exist(tmp_path: Path):
+    config = load_experiment_config(_write(tmp_path, _VALID))
+    paths = _paths_with_split(tmp_path)
+    _write_declared_queue(tmp_path, config)
+    manifest = resolve_manifest(config, tmp_path, paths, human_label_count=2400)
+
+    assert manifest.artifact_hashes["labelling_queue"]
+    assert manifest.artifact_hashes["labelling_queue_config"]
+    assert not any("labelling queue" in r for r in manifest.blocking_reasons)
+
+
+def test_a_missing_queue_artifact_blocks_instead_of_pinning_null(tmp_path: Path):
+    """The defect this guard exists for: a path that does not resolve used to
+    become a null hash, leaving the manifest claiming to pin an input it had
+    never read."""
+    config = load_experiment_config(_write(tmp_path, _VALID))
+    paths = _paths_with_split(tmp_path)
+    _write_declared_queue(tmp_path, config)
+    (tmp_path / str(config.labels["queue_artifact"])).unlink()
+
+    manifest = resolve_manifest(config, tmp_path, paths, human_label_count=2400)
+    assert manifest.artifact_hashes["labelling_queue"] is None
+    assert not manifest.ready
+    assert any(
+        str(config.labels["queue_artifact"]) in r for r in manifest.blocking_reasons
+    )
+
+
+def test_a_missing_queue_config_blocks_instead_of_pinning_null(tmp_path: Path):
+    config = load_experiment_config(_write(tmp_path, _VALID))
+    paths = _paths_with_split(tmp_path)
+    _write_declared_queue(tmp_path, config)
+    (tmp_path / str(config.labels["queue_config"])).unlink()
+
+    manifest = resolve_manifest(config, tmp_path, paths, human_label_count=2400)
+    assert manifest.artifact_hashes["labelling_queue_config"] is None
+    assert not manifest.ready
+    assert any(
+        str(config.labels["queue_config"]) in r for r in manifest.blocking_reasons
+    )
+
+
+@pytest.mark.parametrize(
+    "committed", sorted((REPO_ROOT / "ml" / "configs").glob("experiment_*.yaml"))
+)
+def test_a_committed_experiment_declares_a_queue_config_that_exists(committed: Path):
+    """The regression test for the original wiring defect.
+
+    `experiment_v2` once pointed `queue_config` at the v1 file and spelled
+    `queue_artifact` with underscores where the generated file uses a hyphen.
+    Both resolved to null and nothing complained. A committed config must name a
+    queue config that is actually in the tree.
+    """
+    config = load_experiment_config(committed)
+    declared = REPO_ROOT / str(config.labels["queue_config"])
+    assert declared.is_file(), (
+        f"{committed.name} declares queue_config "
+        f"{config.labels['queue_config']!r}, which is not in the repository; it "
+        f"would resolve to a null hash and silently unpin the queue"
+    )
+
+
 def test_a_resolved_manifest_pins_hashes_and_records_the_split(tmp_path: Path):
     config = load_experiment_config(_write(tmp_path, _VALID))
     paths = _paths_with_split(tmp_path)

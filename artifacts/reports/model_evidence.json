@@ -1,8 +1,8 @@
 {
   "schema_version": "model-evidence-v1.0.0",
   "package_version": "0.2.0",
-  "generated_at": "2026-08-19T17:33:53+00:00",
-  "git_sha": "9e9a0ccfde7b75d621bb9cfa76c21a06a72e7155",
+  "generated_at": "2026-09-01T23:00:29+00:00",
+  "git_sha": "d9d009a720a72570380b298840ca6b12793608de",
   "unavailable_marker": "NOT YET AVAILABLE",
   "measurements": {
     "human_labelled_candidate_count": 0,
@@ -10,13 +10,13 @@
     "human_annotator_count": 0,
     "weakly_labelled_candidate_count": 0,
     "held_out_evaluation_candidate_count": 0,
-    "generated_candidate_count": 595,
-    "processed_audio_hours": 0.8387,
-    "processed_episode_count": 13,
-    "complete_multimodal_candidate_count": 583,
-    "featurised_candidate_count": 595,
-    "audio_only_candidate_count": 12,
-    "transcribed_audio_hours": 0.8213,
+    "generated_candidate_count": 13176,
+    "processed_audio_hours": 18.6135,
+    "processed_episode_count": 77,
+    "complete_multimodal_candidate_count": 12930,
+    "featurised_candidate_count": 13176,
+    "audio_only_candidate_count": 246,
+    "transcribed_audio_hours": 17.7692,
     "audio_embedding_model": "openai/whisper-tiny.en",
     "text_embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
     "phase_5b_ready": false,
@@ -57,7 +57,7 @@
         "model_parameter_count": 489477,
         "audio_embedding_model": "openai/whisper-tiny.en",
         "text_embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
-        "complete_multimodal_candidate_count": 583
+        "complete_multimodal_candidate_count": 12930
       }
     },
     {
@@ -67,12 +67,12 @@
       "status": "NOT YET SUPPORTED",
       "reasons": [
         "human_labelled_candidate_count = 0 (measured from the label database, not estimated).",
-        "generated_candidate_count = 595 -- candidates produced by the generators, which are NOT labels.",
+        "generated_candidate_count = 13176 -- candidates produced by the generators, which are NOT labels.",
         "No human label exists, so no labelled-candidate count can be quoted and no human-ground-truth evaluation can run."
       ],
       "evidence": {
         "human_labelled_candidate_count": 0,
-        "generated_candidate_count": 595,
+        "generated_candidate_count": 13176,
         "weakly_labelled_candidate_count": 0,
         "held_out_evaluation_candidate_count": 0,
         "phase_5b_ready": false

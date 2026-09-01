@@ -1,0 +1,37 @@
+{
+  "episode_count": 77,
+  "scanned_file_counts": {
+    "raw": 80,
+    "normalized": 87,
+    "transcripts": 84
+  },
+  "orphan_count": 20,
+  "orphans": {
+    "raw": [
+      "data/raw/houston-we-have-a-podcast-ep190-beforehissecondflight.mp3",
+      "data/raw/houston-we-have-a-podcast-ep199-bettertogether.mp3",
+      "data/raw/houston-we-have-a-podcast-ep201-citizenscienceonstation.mp3"
+    ],
+    "normalized": [
+      "data/normalized/fixture-cats-versus-dogs-debate_52a83dd90eca.wav",
+      "data/normalized/fixture-music-clip-drake_985dc58a5ee3.wav",
+      "data/normalized/fixture-music-clip-ryan-rap_2dd097f42519.wav",
+      "data/normalized/fixture-narrated-speech-david_4ae18ba65aeb.wav",
+      "data/normalized/fixture-narrated-speech-ryan_af62f43d417f.wav",
+      "data/normalized/fixture-podcast-style-monologue_eefa0528f230.wav",
+      "data/normalized/fixture-two-speaker-conversation_c2c631e09775.wav",
+      "data/normalized/houston-we-have-a-podcast-ep190-before-his-secon_840f6abe10d5.wav",
+      "data/normalized/houston-we-have-a-podcast-ep199-better-together_7b51bfab1891.wav",
+      "data/normalized/houston-we-have-a-podcast-shreya-garg-clip_fc724f215dcb.wav"
+    ],
+    "transcripts": [
+      "data/transcripts/fixture-cats-versus-dogs-debate_52a83dd90eca.transcript.json",
+      "data/transcripts/fixture-music-clip-drake_985dc58a5ee3.transcript.json",
+      "data/transcripts/fixture-music-clip-ryan-rap_2dd097f42519.transcript.json",
+      "data/transcripts/fixture-narrated-speech-david_4ae18ba65aeb.transcript.json",
+      "data/transcripts/fixture-narrated-speech-ryan_af62f43d417f.transcript.json",
+      "data/transcripts/fixture-podcast-style-monologue_eefa0528f230.transcript.json",
+      "data/transcripts/fixture-two-speaker-conversation_c2c631e09775.transcript.json"
+    ]
+  }
+}

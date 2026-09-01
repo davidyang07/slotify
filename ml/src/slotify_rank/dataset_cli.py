@@ -326,6 +326,30 @@ def _cmd_reconcile(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_orphans(args: argparse.Namespace) -> int:
+    """Report generated files no manifest episode references. Never deletes."""
+    from slotify_rank.data.orphans import scan_orphans
+
+    paths = _paths(args)
+    report = scan_orphans(paths)
+    for line in report.lines():
+        print(line)
+    if args.report:
+        Path(args.report).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.report).write_text(
+            json.dumps(report.to_dict(), indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        print(f"Wrote {args.report}")
+    if args.check and not report.clean:
+        print(
+            "error: generated files exist that no manifest episode references.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
 def _cmd_probe(args: argparse.Namespace) -> int:
     paths = _paths(args)
     episodes = manifests.read_episodes(paths.episodes_manifest)
@@ -512,9 +536,15 @@ def _cmd_stats(args: argparse.Namespace) -> int:
         f"  generated_candidate_count          "
         f"{bundle.candidates['generated_candidate_count']} (target 10000)"
     )
+    # Read from the targets block, which takes it from the committed experiment,
+    # rather than restating it here. This line said "(target 1500)" while the
+    # artifact beside it recorded the frozen gate of 2400 -- the console
+    # contradicting the file it had just written, on the one number the whole
+    # label gate turns on.
     print(
         f"  human_labelled_candidate_count     "
-        f"{label_stats['human_labelled_candidate_count']} (target 1500)"
+        f"{label_stats['human_labelled_candidate_count']} "
+        f"(target {dataset['targets']['human_labelled_candidate_count']})"
     )
     print(
         f"  human_labelled_audio_hours         "
@@ -834,10 +864,17 @@ def _cmd_label_run_experiment(args: argparse.Namespace) -> int:
         f"  clips: {counts['rendered']} rendered, {counts['cached']} already cached, "
         f"{counts['skipped']} skipped, {counts['failed']} failed"
     )
+    # Via the same resolver the labelling service reads with. Spelling the
+    # convention out here instead cost this banner its accuracy once already: it
+    # looked for "<id>.json" where the cache writes "<id>.transcript.json", so it
+    # reported 0/77 transcripts for a fully transcribed corpus and made the
+    # session look far less ready than it was.
+    from slotify_rank.transcription.cache import transcript_path
+
     transcribed = sum(
         1
         for episode in episodes
-        if (paths.transcripts_dir / f"{episode.episode_id}.json").is_file()
+        if transcript_path(paths, episode.episode_id).is_file()
     )
     print(f"  transcripts: {transcribed}/{len(episodes)} episode(s) have one")
     print()
@@ -1180,6 +1217,22 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             "ml/configs/sources_v2.yaml",
         ],
     )
+
+    orphans_parser = dataset_sub.add_parser(
+        "orphans",
+        help=(
+            "Report generated files under data/ that no manifest episode "
+            "references. Reports only; never deletes."
+        ),
+    )
+    _add_common(orphans_parser)
+    orphans_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Exit non-zero when unreferenced generated files exist.",
+    )
+    orphans_parser.add_argument("--report", default=None)
+    orphans_parser.set_defaults(func=_cmd_orphans)
 
     probe_parser = dataset_sub.add_parser(
         "probe", help="Measure duration, sample rate, channels and format with ffprobe."
