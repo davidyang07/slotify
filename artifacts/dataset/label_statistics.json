@@ -1,12 +1,13 @@
 {
-  "generated_at": "2026-08-19T17:33:49+00:00",
+  "generated_at": "2026-08-30T02:05:29+00:00",
   "package_version": "0.2.0",
   "human_labelled_candidate_count": 0,
   "human_label_row_count": 0,
+  "repeat_judgement_row_count": 0,
   "human_labelled_audio_hours": 0.0,
   "human_labelled_episode_count": 0,
   "weakly_labelled_candidate_count": 0,
-  "unlabelled_candidate_count": 595,
+  "unlabelled_candidate_count": 13176,
   "held_out_evaluation_candidate_count": 0,
   "annotator_count": 0,
   "labels_by_score": {

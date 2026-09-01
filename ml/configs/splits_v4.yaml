@@ -1,0 +1,122 @@
+# Split configuration v4 -- the benchmark corpus, rebuilt.
+#
+# WHY A NEW VERSION. A split manifest is IMMUTABLE for a given version: models
+# are trained against it and results are reported against it, so changing one in
+# place would invalidate every number already produced. v3 was frozen over the
+# corpus of corpus_v1.yaml. v2 of that plan replaces one podcast series
+# with fourteen, which changes the corpus materially, so it gets its own split
+# version rather than overwriting v3.
+#
+# ---------------------------------------------------------------------------
+# WHAT WENT WRONG IN V3, IN ONE PARAGRAPH
+# ---------------------------------------------------------------------------
+#
+# v3 was a correct implementation of a split over a corpus that could not
+# support one. The corpus held exactly one podcast-format series, so the grouped
+# greedy walk put that series in the test partition, alone, and left train and
+# validation with no podcast audio at all. Every guard rail passed: the split
+# was grouped, leakage-free, non-degraded, and target-domain-only in test. It
+# was also useless -- the headline metric would have measured one NASA
+# programme's editing style, the model would never have seen the target format
+# during training, and a bootstrap over six episodes of one show is an interval
+# around that show. None of the guard rails asked whether the partitions were
+# made of enough *different* things, because none of them could: with one
+# podcast series in the corpus there was no answer that would have helped.
+#
+# v4 changes four things, and each one is a rule that would have caught v3.
+#
+# ---------------------------------------------------------------------------
+# 1. STRATIFICATION (`stratify_by: content_type`)
+#
+# The greedy walk balances total duration and nothing else. That is right when
+# the corpus is homogeneous and wrong when it is not: a corpus whose podcasts
+# are a minority of its hours can put all of them in one partition and still
+# report a perfectly balanced split. Stratifying runs the assignment once per
+# content type against that type's own share, so every partition receives its
+# share of the podcasts *and* its share of the audiobooks.
+#
+# Grouping is untouched. The unit of assignment is still the series, a series
+# still lands in exactly one partition, and the leakage guarantee is the same
+# one. Only the order of consideration and the deficit each choice is measured
+# against change.
+#
+# 2. THE TEST PARTITION HOLDS THE TARGET FORMAT ONLY (`test_content_types`)
+#
+# The product ranks ad breaks in podcasts. A test partition padded with
+# audiobook chapters measures something adjacent to that and reports it as the
+# thing itself. The LibriVox material earns its place in *training* -- performed
+# dialogue and narrated prose are useful signal and they give the split enough
+# independent groups to be meaningful -- but it has no business in the number
+# the claim rests on. Test is podcast-format series and nothing else.
+#
+# This is deliberately the stricter choice. It makes the test set smaller and
+# the claim harder to support, which is the correct direction for a rule whose
+# purpose is to stop a number being flattered.
+#
+# 3. NO SERIES MAY DOMINATE A PARTITION (`max_group_share_of_partition`)
+#
+# The corpus plan already says "no show may dominate" and enforces it with
+# per-show episode caps. That is not enough on its own: a partition is a
+# fraction of the corpus, so a show that is a modest share of the whole can
+# still be most of a small partition. With the test partition restricted to
+# podcasts, the longest podcast in the corpus -- a 2-hour interview show --
+# would have taken roughly three-quarters of the test budget by itself and left
+# room for one more series. Capping any one series at half a partition's hours
+# sends the long-form shows to train, where there is room for them, and lets the
+# small partitions fill with several independent series instead of one big one.
+#
+# 4. A PARTITION OF ONE SHOW IS A FAILURE, NOT A WARNING
+#    (`min_series_per_partition`)
+#
+# v3's test partition held one series and every check passed. This one fails the
+# split outright. A metric macro-averaged over the episodes of a single show
+# measures that show; a bootstrap over them is an interval around one
+# programme's editing rhythm. The correct response is to widen the corpus, which
+# is what v2 of the corpus plan does -- not to lower this number.
+#
+# ---------------------------------------------------------------------------
+# GROUPING. `group_by: series` means the unit of assignment is the show, never
+# the episode and never the candidate. Two episodes of one podcast share hosts,
+# room, mic chain and editing rhythm; a model that saw one in training and the
+# other in test would be graded partly on memorisation. Series grouping implies
+# episode grouping, so the weaker guarantee comes free.
+
+split:
+  version: v4
+  seed: 42
+  group_by: series
+
+  ratios:
+    train: 0.70
+    validation: 0.15
+    test: 0.15
+
+  # Balance each content type across the partitions separately. See (1).
+  stratify_by: content_type
+
+  # Music and any supplemental out-of-domain material stay out of the test
+  # partition entirely. Kept from v3; `test_content_types` below is strictly
+  # stronger, and this stays as the floor that applies even if that is relaxed.
+  require_target_domain_test: true
+
+  # See (2). The test partition is the product's actual task or it is not the
+  # test partition.
+  test_content_types: [podcast]
+
+  # See (3). Half of a partition's duration budget is the most any one series
+  # may occupy. A series too long for every partition keeps its eligibility
+  # rather than becoming unplaceable: the rule shapes the split, it can never
+  # break it.
+  max_group_share_of_partition: 0.5
+
+  # See (4). Three independent shows is the floor for reporting a macro-averaged
+  # metric over a partition. The corpus supplies fourteen podcast series, so
+  # this is a gate the current corpus clears rather than a target it was tuned
+  # to hit -- and if a future corpus change stops clearing it, preprocessing
+  # stops with a reason instead of quietly shipping a one-show test set.
+  min_series_per_partition: 3
+
+  # Below this many independent series a three-way split is a fiction and the
+  # splitter degrades to a single 'development' partition rather than producing
+  # a "test set" of one show.
+  min_groups_for_split: 6

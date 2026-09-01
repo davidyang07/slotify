@@ -25,7 +25,7 @@ from slotify_rank.experiment.canonical import (
 from tests.dataset_fixtures import make_episode
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-COMMITTED = REPO_ROOT / "ml" / "configs" / "experiment_resume_v1.yaml"
+COMMITTED = REPO_ROOT / "ml" / "configs" / "experiment_v1.yaml"
 
 
 def _write(tmp_path: Path, body: str) -> Path:
@@ -38,7 +38,7 @@ _VALID = f"""
 experiment_version: test-experiment-v1
 schema_version: {EXPERIMENT_CONFIG_SCHEMA_VERSION}
 corpus:
-  plan: ml/configs/corpus_resume_v1.yaml
+  plan: ml/configs/corpus_v1.yaml
   source_registries: [ml/configs/sources_real_v1.yaml]
   candidate_generation_config: ml/configs/dataset_v1.yaml
 split:
@@ -48,9 +48,9 @@ split:
   seed: 42
   ratios: {{train: 0.70, validation: 0.15, test: 0.15}}
 labels:
-  queue_config: ml/configs/labelling_queue_resume_v1.yaml
-  queue_artifact: data/labels/queue_resume_v1.json
-  snapshot_version: resume-v1
+  queue_config: ml/configs/labelling_queue_full_v1.yaml
+  queue_artifact: data/labels/queue_full-v1.json
+  snapshot_version: full-v1
   rubric: docs/labelling-guide.md
   minimum_human_labels: 2400
   allowed_label_sources: [human]
@@ -88,7 +88,7 @@ claim:
 
 def test_the_committed_experiment_definition_loads():
     config = load_experiment_config(COMMITTED)
-    assert config.experiment_version == "experiment-resume-v1"
+    assert config.experiment_version == "experiment-v1"
     assert config.canonical_baseline == "heuristic_offline_v1"
     assert config.minimum_human_labels == 2400
     assert config.minimum_relative_improvement_percent == 18.0

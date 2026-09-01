@@ -1,10 +1,10 @@
-# Corpus plan for the resume experiment.
+# Corpus plan for the benchmark experiment.
 #
 # WHAT THIS FILE IS. A declarative statement of which shows the corpus is built
 # from, how many episodes each may contribute, and under what licence. It is the
 # input to `slotify-rank dataset discover`, which reads the Internet Archive's
 # public metadata API and writes the concrete source registry
-# (ml/configs/sources_resume_v1.yaml). That generated file is what
+# (ml/configs/sources_v1.yaml). That generated file is what
 # `dataset fetch` reads, and it is committed, so a clone reproduces exactly this
 # corpus without re-running discovery.
 #
@@ -60,7 +60,7 @@
 # item's own file table.
 
 plan_version: corpus-plan-v1.0.0
-corpus_version: corpus-resume-v1
+corpus_version: corpus-v1
 
 # A `search` show declares BOTH a query and an exact `creator`. The Archive's
 # scrape endpoint tokenizes a quoted `creator:"..."` phrase, so the query alone

@@ -228,7 +228,7 @@ def test_the_experiments_split_config_matches_what_the_experiment_declares():
     from slotify_rank.experiment.canonical import load_experiment_config
 
     experiment = load_experiment_config(
-        find_repo_root() / "ml" / "configs" / "experiment_resume_v1.yaml"
+        find_repo_root() / "ml" / "configs" / "experiment_v1.yaml"
     )
     config = load_split_config(find_repo_root() / str(experiment.split["config"]))
     assert config.version == experiment.split_version

@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-07-22T10:25:00+00:00",
+  "generated_at": "2026-08-30T02:05:27+00:00",
   "package_version": "0.2.0",
   "ok": true,
   "error_count": 0,
-  "warning_count": 9,
+  "warning_count": 1,
   "checks_run": [
     "candidate_episode_exists",
     "candidate_preprocessing_version",
@@ -16,7 +16,6 @@
     "duplicate_labels",
     "episode_absolute_paths",
     "episode_audio_readable",
-    "episode_checksums",
     "episode_duration_valid",
     "episode_license_metadata",
     "episode_paths_within_data_roots",
@@ -35,56 +34,8 @@
   "findings": [
     {
       "severity": "warning",
-      "check": "episode_license_metadata",
-      "message": "no licence declared; treated as private and non-redistributable",
-      "subject": "fixture-cats-versus-dogs-debate_52a83dd90eca"
-    },
-    {
-      "severity": "warning",
-      "check": "episode_license_metadata",
-      "message": "no licence declared; treated as private and non-redistributable",
-      "subject": "fixture-two-speaker-conversation_c2c631e09775"
-    },
-    {
-      "severity": "warning",
-      "check": "episode_license_metadata",
-      "message": "no licence declared; treated as private and non-redistributable",
-      "subject": "fixture-music-clip-drake_985dc58a5ee3"
-    },
-    {
-      "severity": "warning",
-      "check": "episode_license_metadata",
-      "message": "no licence declared; treated as private and non-redistributable",
-      "subject": "fixture-music-clip-ryan-rap_2dd097f42519"
-    },
-    {
-      "severity": "warning",
-      "check": "episode_license_metadata",
-      "message": "no licence declared; treated as private and non-redistributable",
-      "subject": "fixture-narrated-speech-david_4ae18ba65aeb"
-    },
-    {
-      "severity": "warning",
-      "check": "episode_license_metadata",
-      "message": "no licence declared; treated as private and non-redistributable",
-      "subject": "fixture-narrated-speech-ryan_af62f43d417f"
-    },
-    {
-      "severity": "warning",
-      "check": "episode_license_metadata",
-      "message": "no licence declared; treated as private and non-redistributable",
-      "subject": "fixture-podcast-style-monologue_eefa0528f230"
-    },
-    {
-      "severity": "warning",
       "check": "label_candidate_exists",
       "message": "no human labels yet; held-out evaluation is not possible until there are",
-      "subject": null
-    },
-    {
-      "severity": "warning",
-      "check": "split_leakage_by_episode",
-      "message": "split is degraded: only 4 independent group(s) under group_by='series'; a train/validation/test split needs at least 6 to be meaningful. Everything is assigned to 'development' -- do not report held-out metrics from it.",
       "subject": null
     }
   ]

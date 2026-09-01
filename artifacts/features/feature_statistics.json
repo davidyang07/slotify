@@ -3,35 +3,43 @@
   "feature_pipeline_version": "featurepipeline-v1.0.0",
   "feature_spec_version": "featurespec-v1.1.0",
   "transcription_version": "transcript-v1.0.0",
+  "library_versions": {
+    "librosa": "0.11.0",
+    "numpy": "2.4.6",
+    "scipy": "1.18.0",
+    "torch": "2.13.0",
+    "transformers": "4.57.6",
+    "sentence-transformers": "5.6.0",
+    "soundfile": "0.14.0"
+  },
   "episodes": {
-    "selected": 13,
-    "with_feature_records": 13
+    "selected": 77,
+    "with_feature_records": 77
   },
   "transcription": {
-    "episodes_transcribed": 13,
+    "episodes_transcribed": 84,
     "failures": 0,
-    "segment_count": 743,
-    "transcribed_audio_ms": 2956759,
-    "transcribed_audio_hours": 0.8213
+    "segment_count": 17056,
+    "transcribed_audio_ms": 63969020,
+    "transcribed_audio_hours": 17.7692
   },
   "candidates": {
-    "processed": 595,
-    "complete_multimodal": 583,
-    "audio_only": 12,
+    "processed": 13176,
+    "complete_multimodal": 12930,
+    "audio_only": 246,
     "text_only": 0,
     "handcrafted_only": 0,
     "failed": 0,
     "missing_both_learned_modalities": 0,
     "by_split": {
-      "test": 268,
-      "train": 260,
-      "validation": 67
+      "train": 8892,
+      "validation": 2009,
+      "test": 2275
     },
     "by_content_type": {
-      "conversational": 274,
-      "narrated": 314,
-      "music": 4,
-      "podcast": 3
+      "conversational": 3240,
+      "narrated": 1899,
+      "podcast": 8037
     }
   },
   "features": {
@@ -153,16 +161,16 @@
       "candidate_energy_mean_dbfs": 0.0,
       "candidate_energy_min_dbfs": 0.0,
       "candidate_silence_duration_ms": 0.0,
-      "chars_after": 0.001681,
-      "chars_before": 0.018487,
-      "context_cosine_similarity": 0.020168,
+      "chars_after": 0.007134,
+      "chars_before": 0.013585,
+      "context_cosine_similarity": 0.01867,
       "dbfs_mean_after_short": 0.0,
       "dbfs_mean_before_short": 0.0,
       "edge_guard_violation": 0.0,
       "energy_discontinuity_context": 0.0,
       "energy_discontinuity_medium": 0.0,
       "energy_discontinuity_short": 0.0,
-      "following_segment_duration_ms": 0.001681,
+      "following_segment_duration_ms": 0.007134,
       "heuristic_clamped": 0.0,
       "heuristic_component_base": 0.0,
       "heuristic_component_edge": 0.0,
@@ -177,7 +185,7 @@
       "ms_from_episode_start": 0.0,
       "ms_since_prior_speech": 0.0,
       "ms_to_episode_end": 0.0,
-      "ms_until_next_speech": 0.0,
+      "ms_until_next_speech": 0.000152,
       "normalized_episode_position": 0.0,
       "onset_strength_max_around_context": 0.0,
       "onset_strength_max_around_medium": 0.0,
@@ -186,7 +194,7 @@
       "onset_strength_mean_around_medium": 0.0,
       "onset_strength_mean_around_short": 0.0,
       "pause_duration_ms": 0.0,
-      "prior_segment_duration_ms": 0.018487,
+      "prior_segment_duration_ms": 0.013585,
       "rms_delta_across_context": 0.0,
       "rms_delta_across_medium": 0.0,
       "rms_delta_across_short": 0.0,
@@ -211,7 +219,7 @@
       "rms_var_around_context": 0.0,
       "rms_var_around_medium": 0.0,
       "rms_var_around_short": 0.0,
-      "semantic_change_score": 0.020168,
+      "semantic_change_score": 0.01867,
       "sentence_end": 1.0,
       "silence_duration_ms": 0.0,
       "source_fixed_interval": 0.0,
@@ -237,22 +245,22 @@
       "spectral_rolloff_mean_around_context": 0.0,
       "spectral_rolloff_mean_around_medium": 0.0,
       "spectral_rolloff_mean_around_short": 0.0,
-      "terminal_punctuation_ordinal": 0.018487,
+      "terminal_punctuation_ordinal": 0.013585,
       "text_after_available": 0.0,
       "text_before_available": 0.0,
       "transcript_available": 0.0,
-      "transcript_gap_after_ms": 0.001681,
-      "transcript_gap_before_ms": 0.018487,
-      "transcript_inter_segment_pause_ms": 0.020168,
-      "transcript_sentence_end": 0.018487,
+      "transcript_gap_after_ms": 0.007134,
+      "transcript_gap_before_ms": 0.013585,
+      "transcript_inter_segment_pause_ms": 0.01867,
+      "transcript_sentence_end": 0.013585,
       "window_available_after_context": 0.0,
       "window_available_after_medium": 0.0,
       "window_available_after_short": 0.0,
       "window_available_before_context": 0.0,
       "window_available_before_medium": 0.0,
       "window_available_before_short": 0.0,
-      "words_after": 0.001681,
-      "words_before": 0.018487,
+      "words_after": 0.007134,
+      "words_before": 0.013585,
       "zcr_mean_around_context": 0.0,
       "zcr_mean_around_medium": 0.0,
       "zcr_mean_around_short": 0.0,
@@ -274,30 +282,30 @@
     "constructed_text_vector_note": "4 blocks of the native dimension: [before | after | |before-after| | before*after]"
   },
   "cache": {
-    "hits": 0,
-    "misses": 0,
-    "hit_rate": null,
+    "hits": 36,
+    "misses": 272,
+    "hit_rate": 0.1169,
     "stage_counts": {
       "transcribe": {
-        "complete": 13,
+        "complete": 84,
         "failed": 0,
         "partial": 0,
         "stale": 0
       },
       "acoustic": {
-        "complete": 13,
+        "complete": 84,
         "failed": 0,
         "partial": 0,
         "stale": 0
       },
       "audio_embedding": {
-        "complete": 13,
+        "complete": 84,
         "failed": 0,
         "partial": 0,
         "stale": 0
       },
       "text_embedding": {
-        "complete": 13,
+        "complete": 84,
         "failed": 0,
         "partial": 0,
         "stale": 0
@@ -311,15 +319,74 @@
     }
   },
   "runtime": {
-    "total_seconds": 0,
-    "stages": [],
-    "candidates_per_second": null
+    "total_seconds": 21144.014,
+    "stages": [
+      {
+        "stage": "transcribe",
+        "processed": 59,
+        "skipped": 18,
+        "failed": 0,
+        "cache_hits": 18,
+        "cache_misses": 59,
+        "seconds": 16440.749
+      },
+      {
+        "stage": "acoustic",
+        "processed": 71,
+        "skipped": 6,
+        "failed": 0,
+        "cache_hits": 6,
+        "cache_misses": 71,
+        "seconds": 935.028
+      },
+      {
+        "stage": "audio_embedding",
+        "processed": 71,
+        "skipped": 6,
+        "failed": 0,
+        "cache_hits": 6,
+        "cache_misses": 71,
+        "seconds": 2674.748,
+        "details": {
+          "dimension": 384,
+          "device": "cpu",
+          "frame_duration_ms": 20.0
+        }
+      },
+      {
+        "stage": "text_embedding",
+        "processed": 71,
+        "skipped": 6,
+        "failed": 0,
+        "cache_hits": 6,
+        "cache_misses": 71,
+        "seconds": 798.848,
+        "details": {
+          "dimension": 384,
+          "device": "cpu"
+        }
+      },
+      {
+        "stage": "assemble",
+        "processed": 77,
+        "skipped": 0,
+        "failed": 0,
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "seconds": 294.641,
+        "details": {
+          "records": 13176,
+          "excluded_synthetic": 0
+        }
+      }
+    ],
+    "candidates_per_second": 0.623
   },
   "disk_usage_bytes": {
-    "transcripts": 309725,
-    "handcrafted": 6957593,
-    "audio_embeddings": 3856109,
-    "text_embeddings": 1910356,
-    "feature_manifest": 3039455
+    "transcripts": 7060270,
+    "handcrafted": 155298902,
+    "audio_embeddings": 85602021,
+    "text_embeddings": 42338604,
+    "feature_manifest": 68534985
   }
 }

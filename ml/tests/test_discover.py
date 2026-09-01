@@ -562,21 +562,30 @@ shows:
 def test_the_committed_resume_plan_parses():
     """The plan that actually builds the corpus, validated in CI with no network."""
     plan = load_corpus_plan(
-        Path(__file__).resolve().parents[1] / "configs" / "corpus_resume_v1.yaml"
+        Path(__file__).resolve().parents[1] / "configs" / "corpus_v2.yaml"
     )
-    assert plan.corpus_version == "corpus-resume-v1"
+    assert plan.corpus_version == "corpus-v2"
     assert len({show.series_id for show in plan.shows}) == len(plan.shows)
     for show in plan.shows:
         assert show.max_episodes >= 1
         assert show.licence.basis in (
             "declared_public_domain",
+            "declared_open_licence",
             "us_government_work",
         )
 
 
+def test_the_superseded_v1_plan_still_parses():
+    """It stays committed as the record of what was planned, so it must load."""
+    plan = load_corpus_plan(
+        Path(__file__).resolve().parents[1] / "configs" / "corpus_v1.yaml"
+    )
+    assert plan.corpus_version == "corpus-v1"
+
+
 def test_the_committed_resume_registry_loads_and_is_fully_licensed():
     registry = load_sources(
-        Path(__file__).resolve().parents[1] / "configs" / "sources_resume_v1.yaml"
+        Path(__file__).resolve().parents[1] / "configs" / "sources_v2.yaml"
     )
     assert len(registry) > 0
     for entry in registry:
@@ -585,6 +594,7 @@ def test_the_committed_resume_registry_loads_and_is_fully_licensed():
         assert entry.provenance["licence_verified_by"] in (
             "item_license_url",
             "agency_collection",
+            "open_licence_in_home_collection",
             "manual_attestation",
         )
 
@@ -592,7 +602,7 @@ def test_the_committed_resume_registry_loads_and_is_fully_licensed():
 def test_no_two_registry_entries_name_the_same_upstream_file():
     """A duplicate would be the same audio counted twice under two episode ids."""
     registry = load_sources(
-        Path(__file__).resolve().parents[1] / "configs" / "sources_resume_v1.yaml"
+        Path(__file__).resolve().parents[1] / "configs" / "sources_v2.yaml"
     )
     seen = [
         (

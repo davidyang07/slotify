@@ -1,0 +1,1878 @@
+# GENERATED FILE -- do not edit by hand.
+#
+# Produced by `slotify-rank dataset discover --plan configs/corpus_v2.yaml` from corpus
+# plan corpus-v2 (plan digest cb441a33ac3410f0). Regenerate it with
+# that command; every URL, duration and licence field below was read from the
+# Internet Archive's public metadata API, not typed.
+#
+# It holds no audio and no credentials. `slotify_rank.data.sources.load_sources`
+# revalidates every entry -- licence present, no secrets, real audio file URL --
+# before a byte is fetched, and `slotify_rank.data.discover` recorded, per
+# episode, how the licence was established (`provenance.licence_verified_by`):
+#
+#   item_license_url    the Archive item itself declares a public-domain
+#                       dedication or the Public Domain Mark;
+#   agency_collection   the item is in an official federal agency collection,
+#                       which the item metadata proves;
+#   open_licence_in_home_collection
+#                       the item declares an open Creative Commons licence (CC0,
+#                       Public Domain Mark, CC BY or CC BY-SA) *and* sits in the
+#                       show's own home collection on the Archive, which the
+#                       corpus plan names alongside the show's homepage;
+#   manual_attestation  the corpus plan asserts, naming the agency and the
+#                       programme's official URL, that the recording is a work
+#                       of the United States federal government and therefore in
+#                       the public domain in the US under 17 U.S.C. Sec. 105.
+#
+# Episodes: 67   Series: 34   Audio: 17.43 h
+
+source_manifest_version: source-manifest-v1.0.0
+sources:
+- id: houston-we-have-a-podcast-ep100-apollo11tonow
+  source_type: direct_download
+  url: https://archive.org/download/Houston-We-Have-a-Podcast/Ep100_Apollo11toNow.mp3
+  title: Houston We Have a Podcast - Ep100 _Apollo 11 to Now
+  series_id: houston-we-have-a-podcast
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: U.S. Government work (17 U.S.C. Sec. 105) - public domain in the United States
+  license_url: https://www.usa.gov/government-works
+  provenance:
+    internet_archive_identifier: Houston-We-Have-a-Podcast
+    internet_archive_file: Ep100_Apollo11toNow.mp3
+    internet_archive_md5: 011ac7c3a685d4878a75cffecc6627c0
+    internet_archive_size_bytes: 22810688
+    internet_archive_length_seconds: 1140.53
+    internet_archive_uploader: john.l.stoll@nasa.gov
+    internet_archive_collections:
+    - nasaaudiocollection
+    - nasa
+    internet_archive_license_url: null
+    licence_basis: us_government_work
+    licence_verified_by: agency_collection
+    licence_evidence: nasa,nasaaudiocollection
+    producing_agency: National Aeronautics and Space Administration
+    official_programme_url: https://www.nasa.gov/podcasts/houston-we-have-a-podcast/
+  attribution: Produced by NASA. Public domain; uploaded by NASA to the Internet Archive.
+- id: houston-we-have-a-podcast-ep115-airtospace
+  source_type: direct_download
+  url: https://archive.org/download/Houston-We-Have-a-Podcast/Ep115_AirtoSpace.mp3
+  title: Houston We Have a Podcast - Ep115_Air to Space
+  series_id: houston-we-have-a-podcast
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: U.S. Government work (17 U.S.C. Sec. 105) - public domain in the United States
+  license_url: https://www.usa.gov/government-works
+  provenance:
+    internet_archive_identifier: Houston-We-Have-a-Podcast
+    internet_archive_file: Ep115_AirtoSpace.mp3
+    internet_archive_md5: fd976c02afad524e55cc374a859c5160
+    internet_archive_size_bytes: 68207168
+    internet_archive_length_seconds: 1705.18
+    internet_archive_uploader: john.l.stoll@nasa.gov
+    internet_archive_collections:
+    - nasaaudiocollection
+    - nasa
+    internet_archive_license_url: null
+    licence_basis: us_government_work
+    licence_verified_by: agency_collection
+    licence_evidence: nasa,nasaaudiocollection
+    producing_agency: National Aeronautics and Space Administration
+    official_programme_url: https://www.nasa.gov/podcasts/houston-we-have-a-podcast/
+  attribution: Produced by NASA. Public domain; uploaded by NASA to the Internet Archive.
+- id: houston-we-have-a-podcast-ep165-astronautandmicrobiologist
+  source_type: direct_download
+  url: https://archive.org/download/Houston-We-Have-a-Podcast/Ep165_AstronautandMicrobiologist.mp3
+  title: Houston We Have a Podcast - Ep165_AstronautandMicrobiologist
+  series_id: houston-we-have-a-podcast
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: U.S. Government work (17 U.S.C. Sec. 105) - public domain in the United States
+  license_url: https://www.usa.gov/government-works
+  provenance:
+    internet_archive_identifier: Houston-We-Have-a-Podcast
+    internet_archive_file: Ep165_AstronautandMicrobiologist.mp3
+    internet_archive_md5: 169e75c2bd3cb1c1fb86aa021a518ee2
+    internet_archive_size_bytes: 26902336
+    internet_archive_length_seconds: 1344.91
+    internet_archive_uploader: john.l.stoll@nasa.gov
+    internet_archive_collections:
+    - nasaaudiocollection
+    - nasa
+    internet_archive_license_url: null
+    licence_basis: us_government_work
+    licence_verified_by: agency_collection
+    licence_evidence: nasa,nasaaudiocollection
+    producing_agency: National Aeronautics and Space Administration
+    official_programme_url: https://www.nasa.gov/podcasts/houston-we-have-a-podcast/
+  attribution: Produced by NASA. Public domain; uploaded by NASA to the Internet Archive.
+- id: voa-our-world-ourworld-219-2004-04-17
+  source_type: direct_download
+  url: https://archive.org/download/OurWorld-2004-04-17pgm219/OurWorld_219_2004-04-17.mp3
+  title: VOA Our World - Our World pgm. 219 (2004-04-17)
+  series_id: voa-our-world
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: U.S. Government work (17 U.S.C. Sec. 105) - public domain in the United States
+  license_url: https://www.usa.gov/government-works
+  provenance:
+    internet_archive_identifier: OurWorld-2004-04-17pgm219
+    internet_archive_file: OurWorld_219_2004-04-17.mp3
+    internet_archive_md5: a405b3be960c7205bb973ef987ac08af
+    internet_archive_size_bytes: 23309399
+    internet_archive_length_seconds: 1456.84
+    internet_archive_uploader: artsonline@gmail.com
+    internet_archive_collections:
+    - voaourworld
+    - audio_news
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: us_government_work
+    licence_verified_by: manual_attestation
+    licence_evidence: Voice of America is the United States' federal international broadcaster, operated
+      by the U.S. Agency for Global Media. Its programmes are works of the United States federal government
+      and are in the public domain in the United States under 17 U.S.C. Sec. 105. The Archive items additionally
+      declare the Public Domain Mark and name VOA as creator, which is corroboration rather than the basis.
+    producing_agency: Voice of America (U.S. Agency for Global Media)
+    official_programme_url: https://www.voanews.com/
+  attribution: Produced by the Voice of America, a U.S. government agency. Public domain in the United
+    States.
+- id: voa-our-world-ourworld-220-2004-04-24
+  source_type: direct_download
+  url: https://archive.org/download/OurWorld-2004-04-24pgm220/OurWorld_220_2004-04-24.mp3
+  title: VOA Our World - Our World pgm. 220 (2004-04-24)
+  series_id: voa-our-world
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: U.S. Government work (17 U.S.C. Sec. 105) - public domain in the United States
+  license_url: https://www.usa.gov/government-works
+  provenance:
+    internet_archive_identifier: OurWorld-2004-04-24pgm220
+    internet_archive_file: OurWorld_220_2004-04-24.mp3
+    internet_archive_md5: 6674d43f0e1e743a609d32aaa2b87576
+    internet_archive_size_bytes: 22274532
+    internet_archive_length_seconds: 1392.16
+    internet_archive_uploader: artsonline@gmail.com
+    internet_archive_collections:
+    - voaourworld
+    - audio_news
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: us_government_work
+    licence_verified_by: manual_attestation
+    licence_evidence: Voice of America is the United States' federal international broadcaster, operated
+      by the U.S. Agency for Global Media. Its programmes are works of the United States federal government
+      and are in the public domain in the United States under 17 U.S.C. Sec. 105. The Archive items additionally
+      declare the Public Domain Mark and name VOA as creator, which is corroboration rather than the basis.
+    producing_agency: Voice of America (U.S. Agency for Global Media)
+    official_programme_url: https://www.voanews.com/
+  attribution: Produced by the Voice of America, a U.S. government agency. Public domain in the United
+    States.
+- id: the-command-line-diary-2015-07-05
+  source_type: direct_download
+  url: https://archive.org/download/2015-07-05AudioDiary/diary_2015-07-05.mp3
+  title: The Command Line Podcast - Audio Diary of a Peculiar Character 2015-07-05
+  series_id: the-command-line
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: 2015-07-05AudioDiary
+    internet_archive_file: diary_2015-07-05.mp3
+    internet_archive_md5: d282d492971fb7d3a0ce61ca79699319
+    internet_archive_size_bytes: 6753310
+    internet_archive_length_seconds: 419.97
+    internet_archive_uploader: cmdln@thecommandline.net
+    internet_archive_collections:
+    - thecommandline
+    - podcasts
+    internet_archive_license_url: http://creativecommons.org/licenses/by-sa/3.0/us/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/licenses/by-sa/3.0/us/ in thecommandline
+    producing_agency: null
+    official_programme_url: https://thecommandline.net/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: the-command-line-cmdln-net-2015-10-10
+  source_type: direct_download
+  url: https://archive.org/download/2015-10-10TheCommandLinePodcast/cmdln.net_2015-10-10.mp3
+  title: The Command Line Podcast - The Command Line 2015-10-10
+  series_id: the-command-line
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: 2015-10-10TheCommandLinePodcast
+    internet_archive_file: cmdln.net_2015-10-10.mp3
+    internet_archive_md5: e92b7b1c0ae7fb7760ad58b434a4bf2e
+    internet_archive_size_bytes: 18895416
+    internet_archive_length_seconds: 1179.25
+    internet_archive_uploader: cmdln@thecommandline.net
+    internet_archive_collections:
+    - thecommandline
+    - podcasts
+    internet_archive_license_url: http://creativecommons.org/licenses/by-sa/3.0/us/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/licenses/by-sa/3.0/us/ in thecommandline
+    producing_agency: null
+    official_programme_url: https://thecommandline.net/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: rubenerd-show-rubenerdshow070
+  source_type: direct_download
+  url: https://archive.org/download/RubenSchadeRubenerdShow070/RubenerdShow070.mp3
+  title: The Rubenerd Show - RubenerdShow070 (Wed 15/Mar/2006)
+  series_id: rubenerd-show
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: RubenSchadeRubenerdShow070
+    internet_archive_file: RubenerdShow070.mp3
+    internet_archive_md5: 3a0f45e01792b6e6bdde6619a079ceb9
+    internet_archive_size_bytes: 10251360
+    internet_archive_length_seconds: 1281.42
+    internet_archive_uploader: me@rubenschade.com
+    internet_archive_collections:
+    - rubenerdshow
+    - podcasts
+    internet_archive_license_url: http://creativecommons.org/licenses/by-sa/3.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/licenses/by-sa/3.0/ in rubenerdshow
+    producing_agency: null
+    official_programme_url: https://rubenerd.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: rubenerd-show-rubenerdshow072
+  source_type: direct_download
+  url: https://archive.org/download/RubenSchadeRubenerdShow072/RubenerdShow072.mp3
+  title: The Rubenerd Show - RubenerdShow072 (Sun 19/Mar/2006)
+  series_id: rubenerd-show
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: RubenSchadeRubenerdShow072
+    internet_archive_file: RubenerdShow072.mp3
+    internet_archive_md5: 35f4d58b73aa4b52448569218bbeccfd
+    internet_archive_size_bytes: 10361240
+    internet_archive_length_seconds: 1295.16
+    internet_archive_uploader: me@rubenschade.com
+    internet_archive_collections:
+    - rubenerdshow
+    - podcasts
+    internet_archive_license_url: http://creativecommons.org/licenses/by-sa/3.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/licenses/by-sa/3.0/ in rubenerdshow
+    producing_agency: null
+    official_programme_url: https://rubenerd.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: what-is-it-about-the-weather-wiiatw-ep198-20220304-whisper-weather
+  source_type: direct_download
+  url: https://archive.org/download/WIIATW198/WIIATW_EP198-20220304-Whisper_Weather.mp3
+  title: What Is It About The Weather? - Whisper Weather?
+  series_id: what-is-it-about-the-weather
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: WIIATW198
+    internet_archive_file: WIIATW_EP198-20220304-Whisper_Weather.mp3
+    internet_archive_md5: 5d1eafa852cec013fba05cc4b8180a18
+    internet_archive_size_bytes: 30320961
+    internet_archive_length_seconds: 1222.76
+    internet_archive_uploader: sam@jelinek.us
+    internet_archive_collections:
+    - whatisitabouttheweather
+    - podcasts
+    internet_archive_license_url: https://creativecommons.org/licenses/by-sa/4.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: https://creativecommons.org/licenses/by-sa/4.0/ in whatisitabouttheweather
+    producing_agency: null
+    official_programme_url: https://www.whatisitabouttheweather.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: what-is-it-about-the-weather-wiiatw-ep1
+  source_type: direct_download
+  url: https://archive.org/download/WIIATWEP1/WIIATW_EP1.mp3
+  title: What Is It About The Weather? - WIIATW_EP1
+  series_id: what-is-it-about-the-weather
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: WIIATWEP1
+    internet_archive_file: WIIATW_EP1.mp3
+    internet_archive_md5: f31ddf965f0fd33937419fd3a791bbee
+    internet_archive_size_bytes: 30106876
+    internet_archive_length_seconds: 1254.45
+    internet_archive_uploader: sam@jelinek.us
+    internet_archive_collections:
+    - whatisitabouttheweather
+    - podcasts
+    internet_archive_license_url: http://creativecommons.org/licenses/by-sa/4.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/licenses/by-sa/4.0/ in whatisitabouttheweather
+    producing_agency: null
+    official_programme_url: https://www.whatisitabouttheweather.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: free-will-science-and-religion-fwsr031715
+  source_type: direct_download
+  url: https://archive.org/download/FreeWillScienceAndReligion1/fwsr031715.mp3
+  title: Free Will, Science, and Religion - 3-17-2015
+  series_id: free-will-science-and-religion
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: FreeWillScienceAndReligion1
+    internet_archive_file: fwsr031715.mp3
+    internet_archive_md5: dd134f46028597404879f042afbe6fa3
+    internet_archive_size_bytes: 28807225
+    internet_archive_length_seconds: 1800.05
+    internet_archive_uploader: chandlerklebs@gmail.com
+    internet_archive_collections:
+    - freewillsciencereligionpodcast
+    - podcasts
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/ in freewillsciencereligionpodcast
+    producing_agency: null
+    official_programme_url: http://causalconsciousness.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: free-will-science-and-religion-fwsr033115
+  source_type: direct_download
+  url: https://archive.org/download/FreeWillScienceAndReligion3312015/fwsr033115.mp3
+  title: Free Will, Science, and Religion - 3-31-2015
+  series_id: free-will-science-and-religion
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: FreeWillScienceAndReligion3312015
+    internet_archive_file: fwsr033115.mp3
+    internet_archive_md5: 280da27832e6f0db42ee8d34181c021c
+    internet_archive_size_bytes: 28708744
+    internet_archive_length_seconds: 1794.04
+    internet_archive_uploader: chandlerklebs@gmail.com
+    internet_archive_collections:
+    - freewillsciencereligionpodcast
+    - podcasts
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/ in freewillsciencereligionpodcast
+    producing_agency: null
+    official_programme_url: http://causalconsciousness.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: labor-express-radio-stewartacuffussf-vbr
+  source_type: direct_download
+  url: https://archive.org/download/AcuffUSSF/StewartAcuffUSSF_vbr.mp3
+  title: Labor Express Radio - Stewart Acuff at the USSF
+  series_id: labor-express-radio
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: AcuffUSSF
+    internet_archive_file: StewartAcuffUSSF_vbr.mp3
+    internet_archive_md5: 33f4ac1caa71c7ab0489a77b30e6c94e
+    internet_archive_size_bytes: 18927066
+    internet_archive_length_seconds: 1047.0
+    internet_archive_uploader: redjerry2@yahoo.com
+    internet_archive_collections:
+    - LaborExpressRadio
+    - audio_news
+    internet_archive_license_url: http://creativecommons.org/licenses/by/3.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/licenses/by/3.0/ in LaborExpressRadio
+    producing_agency: null
+    official_programme_url: https://laborexpress.blogspot.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: labor-express-radio-ai-jenpooussf-vbr
+  source_type: direct_download
+  url: https://archive.org/download/Ai-JenPooUSSF/Ai-JenPooUSSF_vbr.mp3
+  title: Labor Express Radio - Ai-Jen Poo of Domestic Workers United at USSF
+  series_id: labor-express-radio
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: Ai-JenPooUSSF
+    internet_archive_file: Ai-JenPooUSSF_vbr.mp3
+    internet_archive_md5: 02c2af2e9d3d749698d4348d2a73b751
+    internet_archive_size_bytes: 12884649
+    internet_archive_length_seconds: 706.0
+    internet_archive_uploader: redjerry2@yahoo.com
+    internet_archive_collections:
+    - LaborExpressRadio
+    - audio_news
+    internet_archive_license_url: http://creativecommons.org/licenses/by/3.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/licenses/by/3.0/ in LaborExpressRadio
+    producing_agency: null
+    official_programme_url: https://laborexpress.blogspot.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: the-cinematic-tangent-cinematictangentmessagestarwarspreview
+  source_type: direct_download
+  url: https://archive.org/download/CinematicTangentMessageStarWarsPreview/CinematicTangentMessageStarWarsPreview.mp3
+  title: 'The Cinematic Tangent - A CinTan Message: ''Star Wars'' Reaction'
+  series_id: the-cinematic-tangent
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: CinematicTangentMessageStarWarsPreview
+    internet_archive_file: CinematicTangentMessageStarWarsPreview.mp3
+    internet_archive_md5: 13943845fe7f00e1d2bb520c9b43b41c
+    internet_archive_size_bytes: 14020339
+    internet_archive_length_seconds: 438.14
+    internet_archive_uploader: chadvanalstin@gmail.com
+    internet_archive_collections:
+    - thecinematictangent
+    - podcasts
+    internet_archive_license_url: http://creativecommons.org/licenses/by-sa/3.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/licenses/by-sa/3.0/ in thecinematictangent
+    producing_agency: null
+    official_programme_url: https://cinematictangent.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: the-cinematic-tangent-the-cinematic-tangent-episode-11-the-lego-movie
+  source_type: direct_download
+  url: https://archive.org/download/TheCinematicTangentEpisode11TheLEGOMovie/The%20Cinematic%20Tangent%20-%20Episode%2011%20-%20The%20LEGO%20Movie.mp3
+  title: The Cinematic Tangent - Episode 11 - The LEGO Movie
+  series_id: the-cinematic-tangent
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: TheCinematicTangentEpisode11TheLEGOMovie
+    internet_archive_file: The Cinematic Tangent - Episode 11 - The LEGO Movie.mp3
+    internet_archive_md5: c56ac7aa18669455907326e30acb8401
+    internet_archive_size_bytes: 47278187
+    internet_archive_length_seconds: 1477.44
+    internet_archive_uploader: chadvanalstin@gmail.com
+    internet_archive_collections:
+    - thecinematictangent
+    - podcasts
+    internet_archive_license_url: http://creativecommons.org/licenses/by-sa/3.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/licenses/by-sa/3.0/ in thecinematictangent
+    producing_agency: null
+    official_programme_url: https://cinematictangent.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: open-source-musician-osmpepisode1
+  source_type: direct_download
+  url: https://archive.org/download/OSMP01/OSMPEpisode1.mp3
+  title: The Open Source Musician Podcast - OSMPEpisode1
+  series_id: open-source-musician
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: OSMP01
+    internet_archive_file: OSMPEpisode1.mp3
+    internet_archive_md5: a9ab8b6466312563ab259a0d75d08571
+    internet_archive_size_bytes: 17182080
+    internet_archive_length_seconds: 1073.78
+    internet_archive_uploader: ssjackson71@gmail.com
+    internet_archive_collections:
+    - osmpodcast
+    - podcasts
+    internet_archive_license_url: http://creativecommons.org/licenses/by-sa/3.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/licenses/by-sa/3.0/ in osmpodcast
+    producing_agency: null
+    official_programme_url: https://osmpodcast.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: open-source-musician-osmpepisode5
+  source_type: direct_download
+  url: https://archive.org/download/OSMP05/OSMPEpisode5.mp3
+  title: The Open Source Musician Podcast - Mistakes and Compressors
+  series_id: open-source-musician
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: OSMP05
+    internet_archive_file: OSMPEpisode5.mp3
+    internet_archive_md5: 957d31195b1289195f06ae1fb815793b
+    internet_archive_size_bytes: 27935035
+    internet_archive_length_seconds: 1745.84
+    internet_archive_uploader: ssjackson71@gmail.com
+    internet_archive_collections:
+    - osmpodcast
+    - podcasts
+    internet_archive_license_url: http://creativecommons.org/licenses/by-sa/3.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/licenses/by-sa/3.0/ in osmpodcast
+    producing_agency: null
+    official_programme_url: https://osmpodcast.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: building-bridges-radio-2hectorshutdownntl
+  source_type: direct_download
+  url: https://archive.org/download/2hectorshutdownntl/2hectorshutdownntl.mp3
+  title: 'Building Bridges: Your Community & Labor Report - 2hectorshutdownntl'
+  series_id: building-bridges-radio
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: 2hectorshutdownntl
+    internet_archive_file: 2hectorshutdownntl.mp3
+    internet_archive_md5: 0b5fcd9dcc124b8b9121515e83a63c7c
+    internet_archive_size_bytes: 27523865
+    internet_archive_length_seconds: 1720.22
+    internet_archive_uploader: knash@igc.org
+    internet_archive_collections:
+    - building_bridges
+    - podcasts
+    - podcasts_miscellaneous
+    internet_archive_license_url: http://creativecommons.org/licenses/by-sa/4.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/licenses/by-sa/4.0/ in building_bridges
+    producing_agency: null
+    official_programme_url: http://www.buildingbridgesradio.blogspot.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: building-bridges-radio-atticantl2
+  source_type: direct_download
+  url: https://archive.org/download/40thAnniversaryOfTheAtticaRebellionTheStruggleTodayAgainstTheNew/atticantl2.mp3
+  title: 'Building Bridges: Your Community & Labor Report - atticantl2'
+  series_id: building-bridges-radio
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: 40thAnniversaryOfTheAtticaRebellionTheStruggleTodayAgainstTheNew
+    internet_archive_file: atticantl2.mp3
+    internet_archive_md5: dd4995539039c7fb3ad43dcbc793215c
+    internet_archive_size_bytes: 26820439
+    internet_archive_length_seconds: 1676.25
+    internet_archive_uploader: knash@igc.org
+    internet_archive_collections:
+    - building_bridges
+    - podcasts
+    - podcasts_miscellaneous
+    internet_archive_license_url: http://creativecommons.org/licenses/by/3.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/licenses/by/3.0/ in building_bridges
+    producing_agency: null
+    official_programme_url: http://www.buildingbridgesradio.blogspot.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: amiga-ireland-amigaireland-s5e1-floppy-fodder
+  source_type: direct_download
+  url: https://archive.org/download/Floppy_Fodder/AmigaIreland-S5E1-Floppy-Fodder.mp3
+  title: Amiga Ireland - AmigaIreland-S5E1-Floppy-Fodder
+  series_id: amiga-ireland
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: Floppy_Fodder
+    internet_archive_file: AmigaIreland-S5E1-Floppy-Fodder.mp3
+    internet_archive_md5: e34180f4b1a000a9a2fa69454df32944
+    internet_archive_size_bytes: 46516929
+    internet_archive_length_seconds: 1466.54
+    internet_archive_uploader: info@amigausers.ie
+    internet_archive_collections:
+    - amiga-ireland
+    - podcasts
+    internet_archive_license_url: https://creativecommons.org/licenses/by/4.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: https://creativecommons.org/licenses/by/4.0/ in amiga-ireland
+    producing_agency: null
+    official_programme_url: https://amigausers.ie/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: amiga-ireland-amigaireland-s5e10-grand-opening
+  source_type: direct_download
+  url: https://archive.org/download/Grand_Opening/AmigaIreland-S5E10-Grand-Opening.mp3
+  title: Amiga Ireland - AmigaIreland-S5E10-Grand-Opening
+  series_id: amiga-ireland
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: Grand_Opening
+    internet_archive_file: AmigaIreland-S5E10-Grand-Opening.mp3
+    internet_archive_md5: 993a8010b4702c3925d68f2d6ce6bf08
+    internet_archive_size_bytes: 20812953
+    internet_archive_length_seconds: 1065.07
+    internet_archive_uploader: info@amigausers.ie
+    internet_archive_collections:
+    - amiga-ireland
+    - podcasts
+    internet_archive_license_url: https://creativecommons.org/licenses/by/4.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: https://creativecommons.org/licenses/by/4.0/ in amiga-ireland
+    producing_agency: null
+    official_programme_url: https://amigausers.ie/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: gruesome-hertzogg-100-bloody-acres-2012
+  source_type: direct_download
+  url: https://archive.org/download/100BloodyAcres2012/100%20Bloody%20Acres%20%282012%29.mp3
+  title: Gruesome Hertzogg Podcast - 100 Bloody Acres (2012)
+  series_id: gruesome-hertzogg
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: 100BloodyAcres2012
+    internet_archive_file: 100 Bloody Acres (2012).mp3
+    internet_archive_md5: f1f2fd8d2bce50d5afc7783c831ac9a9
+    internet_archive_size_bytes: 5118390
+    internet_archive_length_seconds: 319.79
+    internet_archive_uploader: gruesomehertzogg@gmail.com
+    internet_archive_collections:
+    - gruesomehertzogg
+    - podcasts
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/ in gruesomehertzogg
+    producing_agency: null
+    official_programme_url: https://gruesomehertzogg.podbean.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: gruesome-hertzogg-100-degrees-below-zero-2013
+  source_type: direct_download
+  url: https://archive.org/download/100DegreesBelowZero2013_201312/100%20Degrees%20Below%20Zero%20%282013%29.mp3
+  title: Gruesome Hertzogg Podcast - 100 Degrees Below Zero (2013)
+  series_id: gruesome-hertzogg
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: 100DegreesBelowZero2013_201312
+    internet_archive_file: 100 Degrees Below Zero (2013).mp3
+    internet_archive_md5: dee9ebfc24800fbb5622492697572b74
+    internet_archive_size_bytes: 4531227
+    internet_archive_length_seconds: 283.17
+    internet_archive_uploader: gruesomehertzogg@gmail.com
+    internet_archive_collections:
+    - gruesomehertzogg
+    - podcasts
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/ in gruesomehertzogg
+    producing_agency: null
+    official_programme_url: https://gruesomehertzogg.podbean.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: filibuster-podcast-363-20190927
+  source_type: direct_download
+  url: https://archive.org/download/363_20190927/363_20190927.mp3
+  title: 'Filibuster - The Black and Red United Podcast - Episode 363: Clinging onto summer'
+  series_id: filibuster-podcast
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: '363_20190927'
+    internet_archive_file: 363_20190927.mp3
+    internet_archive_md5: 42ab4256d9645bd288aead888814452f
+    internet_archive_size_bytes: 22907026
+    internet_archive_length_seconds: 1894.16
+    internet_archive_uploader: ben@amongotheritems.org
+    internet_archive_collections:
+    - filibusterpodcast
+    - podcasts
+    internet_archive_license_url: https://creativecommons.org/licenses/by-sa/4.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: https://creativecommons.org/licenses/by-sa/4.0/ in filibusterpodcast
+    producing_agency: null
+    official_programme_url: http://blackandredunited.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: filibuster-podcast-365-20191003
+  source_type: direct_download
+  url: https://archive.org/download/365_20191003/365_20191003.mp3
+  title: 'Filibuster - The Black and Red United Podcast - Episode 365: Fights over food'
+  series_id: filibuster-podcast
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: '365_20191003'
+    internet_archive_file: 365_20191003.mp3
+    internet_archive_md5: fcd557f21c4cea00aad997d99ef7c761
+    internet_archive_size_bytes: 20726127
+    internet_archive_length_seconds: 1712.42
+    internet_archive_uploader: ben@amongotheritems.org
+    internet_archive_collections:
+    - filibusterpodcast
+    - podcasts
+    internet_archive_license_url: https://creativecommons.org/licenses/by-sa/4.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: https://creativecommons.org/licenses/by-sa/4.0/ in filibusterpodcast
+    producing_agency: null
+    official_programme_url: http://blackandredunited.com/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: the-final-straw-radio-afm-final-straw-10062013
+  source_type: direct_download
+  url: https://archive.org/download/01SubrosaTheUsher/afm-final-straw-10062013.mp3
+  title: The Final Straw Radio - The Final Straw (w/ Bursts O'Goodness) 10-06-2013
+  series_id: the-final-straw-radio
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: 01SubrosaTheUsher
+    internet_archive_file: afm-final-straw-10062013.mp3
+    internet_archive_md5: 65f1c7a340becc56a8ec21c9b3be852e
+    internet_archive_size_bytes: 59504675
+    internet_archive_length_seconds: 3719.04
+    internet_archive_uploader: thefinalstrawradio@riseup.net
+    internet_archive_collections:
+    - thefinalstrawradio
+    - podcasts
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/ in thefinalstrawradio
+    producing_agency: null
+    official_programme_url: https://thefinalstrawradio.noblogs.org/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: the-final-straw-radio-afm-final-straw-06122016exp
+  source_type: direct_download
+  url: https://archive.org/download/1Mayis2011AnarsistDevrimFaaliyetle3/afm-final-straw-06122016exp.mp3
+  title: The Final Straw Radio - afm-final-straw-06122016exp.mp3
+  series_id: the-final-straw-radio
+  content_type: podcast
+  source_name: Internet Archive
+  language: en
+  license_name: Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)
+  license_url: https://creativecommons.org/
+  provenance:
+    internet_archive_identifier: 1Mayis2011AnarsistDevrimFaaliyetle3
+    internet_archive_file: afm-final-straw-06122016exp.mp3
+    internet_archive_md5: 5ae1e4c16354bedcc26b893120a98027
+    internet_archive_size_bytes: 55549691
+    internet_archive_length_seconds: 3576.4
+    internet_archive_uploader: thefinalstrawradio@riseup.net
+    internet_archive_collections:
+    - thefinalstrawradio
+    - podcasts
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_open_licence
+    licence_verified_by: open_licence_in_home_collection
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/ in thefinalstrawradio
+    producing_agency: null
+    official_programme_url: https://thefinalstrawradio.noblogs.org/
+  attribution: Published by its creator to their own Internet Archive collection under an open Creative
+    Commons licence; the exact licence URL declared by each episode is recorded per source entry.
+- id: librivox-dramatic-tom-sawyer-adventuresoftomsawyer-02-twain-128kb
+  source_type: direct_download
+  url: https://archive.org/download/adventures_of_tom_sawyer_1402_librivox/adventuresoftomsawyer_02_twain_128kb.mp3
+  title: The Adventures of Tom Sawyer (dramatic reading) - 02 - Chapter 2
+  series_id: librivox-dramatic-tom-sawyer
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: adventures_of_tom_sawyer_1402_librivox
+    internet_archive_file: adventuresoftomsawyer_02_twain_128kb.mp3
+    internet_archive_md5: 492d54f0859c99a779d9142584f72743
+    internet_archive_size_bytes: 12136370
+    internet_archive_length_seconds: 758.23
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-tom-sawyer-adventuresoftomsawyer-03-twain-128kb
+  source_type: direct_download
+  url: https://archive.org/download/adventures_of_tom_sawyer_1402_librivox/adventuresoftomsawyer_03_twain_128kb.mp3
+  title: The Adventures of Tom Sawyer (dramatic reading) - 03 - Chapter 3
+  series_id: librivox-dramatic-tom-sawyer
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: adventures_of_tom_sawyer_1402_librivox
+    internet_archive_file: adventuresoftomsawyer_03_twain_128kb.mp3
+    internet_archive_md5: c39f547975dd01bacf555ce3616b23e9
+    internet_archive_size_bytes: 14045189
+    internet_archive_length_seconds: 877.53
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-agnes-grey-agnesgrey-bronte-02
+  source_type: direct_download
+  url: https://archive.org/download/agnes_grey_1208_librivox/agnesgrey_bronte_02.mp3
+  title: Agnes Grey (dramatic reading) - 02 - Chapter 2
+  series_id: librivox-dramatic-agnes-grey
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: agnes_grey_1208_librivox
+    internet_archive_file: agnesgrey_bronte_02.mp3
+    internet_archive_md5: c3f15da99e151eba8788477eb3bdd9cd
+    internet_archive_size_bytes: 13578368
+    internet_archive_length_seconds: 848.53
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-agnes-grey-agnesgrey-bronte-05
+  source_type: direct_download
+  url: https://archive.org/download/agnes_grey_1208_librivox/agnesgrey_bronte_05.mp3
+  title: Agnes Grey (dramatic reading) - 05 - Chapter 5
+  series_id: librivox-dramatic-agnes-grey
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: agnes_grey_1208_librivox
+    internet_archive_file: agnesgrey_bronte_05.mp3
+    internet_archive_md5: e2ca8372ab55ef17d7b0e37a71cdb3ed
+    internet_archive_size_bytes: 12236928
+    internet_archive_length_seconds: 764.73
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-alice-in-wonderland-aliceinwonderland-01-carroll
+  source_type: direct_download
+  url: https://archive.org/download/aliceinwonderland_1102_librivox/aliceinwonderland_01_carroll.mp3
+  title: Alice's Adventures in Wonderland (dramatic reading) - 01 - Down the Rabbit-Hole
+  series_id: librivox-dramatic-alice-in-wonderland
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: aliceinwonderland_1102_librivox
+    internet_archive_file: aliceinwonderland_01_carroll.mp3
+    internet_archive_md5: 518e2b0e3c833fa449b7be835fccbd1f
+    internet_archive_size_bytes: 11844704
+    internet_archive_length_seconds: 740.25
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-alice-in-wonderland-aliceinwonderland-02-carroll
+  source_type: direct_download
+  url: https://archive.org/download/aliceinwonderland_1102_librivox/aliceinwonderland_02_carroll.mp3
+  title: Alice's Adventures in Wonderland (dramatic reading) - 02 - The Pool of Tears
+  series_id: librivox-dramatic-alice-in-wonderland
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: aliceinwonderland_1102_librivox
+    internet_archive_file: aliceinwonderland_02_carroll.mp3
+    internet_archive_md5: 92da0e4ee66e87dd992eb8e999203e71
+    internet_archive_size_bytes: 10997888
+    internet_archive_length_seconds: 687.36
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-anne-of-green-gables-anneofgreengables-03-montgomery
+  source_type: direct_download
+  url: https://archive.org/download/anneofgreengables_1102_librivox/anneofgreengables_03_montgomery.mp3
+  title: Anne of Green Gables (dramatic reading) - 03 - Marilla Cuthbert is Surprised
+  series_id: librivox-dramatic-anne-of-green-gables
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: anneofgreengables_1102_librivox
+    internet_archive_file: anneofgreengables_03_montgomery.mp3
+    internet_archive_md5: 6ff62163252f9de91c2d8a062f04faa3
+    internet_archive_size_bytes: 12044288
+    internet_archive_length_seconds: 752.64
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-anne-of-green-gables-anneofgreengables-04-montgomery
+  source_type: direct_download
+  url: https://archive.org/download/anneofgreengables_1102_librivox/anneofgreengables_04_montgomery.mp3
+  title: Anne of Green Gables (dramatic reading) - 04 - Morning at Green Gables
+  series_id: librivox-dramatic-anne-of-green-gables
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: anneofgreengables_1102_librivox
+    internet_archive_file: anneofgreengables_04_montgomery.mp3
+    internet_archive_md5: fb02e0909e2684bf4e15951d8ca00f9f
+    internet_archive_size_bytes: 12048384
+    internet_archive_length_seconds: 752.87
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-black-beauty-blackbeauty-02-sewell-128kb
+  source_type: direct_download
+  url: https://archive.org/download/blackbeautydramatic_1703_librivox/blackbeauty_02_sewell_128kb.mp3
+  title: Black Beauty (dramatic reading) - 02 - The Hunt
+  series_id: librivox-dramatic-black-beauty
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: blackbeautydramatic_1703_librivox
+    internet_archive_file: blackbeauty_02_sewell_128kb.mp3
+    internet_archive_md5: 863dfd8c5804105532cc6154dec142c7
+    internet_archive_size_bytes: 5482910
+    internet_archive_length_seconds: 342.39
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-black-beauty-blackbeauty-03-sewell-128kb
+  source_type: direct_download
+  url: https://archive.org/download/blackbeautydramatic_1703_librivox/blackbeauty_03_sewell_128kb.mp3
+  title: Black Beauty (dramatic reading) - 03 - My Breaking In
+  series_id: librivox-dramatic-black-beauty
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: blackbeautydramatic_1703_librivox
+    internet_archive_file: blackbeauty_03_sewell_128kb.mp3
+    internet_archive_md5: 265fd92bed502adb0ea86e1168f6c2f8
+    internet_archive_size_bytes: 7142625
+    internet_archive_length_seconds: 446.12
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-christmas-carol-christmascarol-5-dickens
+  source_type: direct_download
+  url: https://archive.org/download/christmascarol_1104_librivox/christmascarol_5_dickens.mp3
+  title: A Christmas Carol (dramatic reading) - 5 - The End of It
+  series_id: librivox-dramatic-christmas-carol
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: christmascarol_1104_librivox
+    internet_archive_file: christmascarol_5_dickens.mp3
+    internet_archive_md5: 83d79fc13ede66d889dcb9c85f8a4683
+    internet_archive_size_bytes: 14113780
+    internet_archive_length_seconds: 882.07
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-daisy-miller-daisymiller-1-james
+  source_type: direct_download
+  url: https://archive.org/download/daisy_miller_dramatic_reading_1308_librivox/daisymiller_1_james.mp3
+  title: Daisy Miller (dramatic reading) - 1 - Section 1
+  series_id: librivox-dramatic-daisy-miller
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: daisy_miller_dramatic_reading_1308_librivox
+    internet_archive_file: daisymiller_1_james.mp3
+    internet_archive_md5: d1c0827b12549e961a56ab4057c2cae8
+    internet_archive_size_bytes: 20194867
+    internet_archive_length_seconds: 1261.9
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-daisy-miller-daisymiller-2-james
+  source_type: direct_download
+  url: https://archive.org/download/daisy_miller_dramatic_reading_1308_librivox/daisymiller_2_james.mp3
+  title: Daisy Miller (dramatic reading) - 2 - Section 2
+  series_id: librivox-dramatic-daisy-miller
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: daisy_miller_dramatic_reading_1308_librivox
+    internet_archive_file: daisymiller_2_james.mp3
+    internet_archive_md5: d5fb094dbe85eb67542e0f37ed82956e
+    internet_archive_size_bytes: 17534557
+    internet_archive_length_seconds: 1095.63
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-doctor-dolittle-doctordolittle-00-lofting-128kb
+  source_type: direct_download
+  url: https://archive.org/download/doctordolittledramatic_1511_librivox/doctordolittle_00_lofting_128kb.mp3
+  title: The Story of Doctor Dolittle (dramatic reading) - 00 - Dramatis Personae and Introduction
+  series_id: librivox-dramatic-doctor-dolittle
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: doctordolittledramatic_1511_librivox
+    internet_archive_file: doctordolittle_00_lofting_128kb.mp3
+    internet_archive_md5: 66ebe47f4c1ea9ea0fe87aacfa9d5cc6
+    internet_archive_size_bytes: 8263142
+    internet_archive_length_seconds: 516.15
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-doctor-dolittle-doctordolittle-02-lofting-128kb
+  source_type: direct_download
+  url: https://archive.org/download/doctordolittledramatic_1511_librivox/doctordolittle_02_lofting_128kb.mp3
+  title: The Story of Doctor Dolittle (dramatic reading) - 02 - Animal Languages
+  series_id: librivox-dramatic-doctor-dolittle
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: doctordolittledramatic_1511_librivox
+    internet_archive_file: doctordolittle_02_lofting_128kb.mp3
+    internet_archive_md5: 05f4bc586026d54a67ca69a3700cd9ac
+    internet_archive_size_bytes: 10353774
+    internet_archive_length_seconds: 646.82
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-jekyll-and-hyde-drjekyllandmrhydedr-04-stevenson-128kb
+  source_type: direct_download
+  url: https://archive.org/download/drjekyllandmrhydedr_1505_librivox/drjekyllandmrhydedr_04_stevenson_128kb.mp3
+  title: The Strange Case of Jekyll and Hyde (dramatic reading) - 04 - Chapter 4
+  series_id: librivox-dramatic-jekyll-and-hyde
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: drjekyllandmrhydedr_1505_librivox
+    internet_archive_file: drjekyllandmrhydedr_04_stevenson_128kb.mp3
+    internet_archive_md5: 8a089a3080ff63ca6220ffc3d7af5680
+    internet_archive_size_bytes: 9886913
+    internet_archive_length_seconds: 617.64
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-jekyll-and-hyde-drjekyllandmrhydedr-05-stevenson-128kb
+  source_type: direct_download
+  url: https://archive.org/download/drjekyllandmrhydedr_1505_librivox/drjekyllandmrhydedr_05_stevenson_128kb.mp3
+  title: The Strange Case of Jekyll and Hyde (dramatic reading) - 05 - Chapter 5
+  series_id: librivox-dramatic-jekyll-and-hyde
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: drjekyllandmrhydedr_1505_librivox
+    internet_archive_file: drjekyllandmrhydedr_05_stevenson_128kb.mp3
+    internet_archive_md5: dcea3c3f1b40bc692eafd8398dddc6ce
+    internet_archive_size_bytes: 9755288
+    internet_archive_length_seconds: 609.41
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-scene-and-story-002-drsceneandstoryvol-002-04-various-128kb
+  source_type: direct_download
+  url: https://archive.org/download/dramaticreadingsceneandstorycollectionvolume002_2005_librivox/drsceneandstoryvol_002_04_various_128kb.mp3
+  title: Dramatic Reading Scene and Story Collection Vol. 002 - 04. The Stolen Bacillus by H. G. Wells
+  series_id: librivox-dramatic-scene-and-story-002
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: dramaticreadingsceneandstorycollectionvolume002_2005_librivox
+    internet_archive_file: drsceneandstoryvol_002_04_various_128kb.mp3
+    internet_archive_md5: 1b5e14b49ac1486c9629769fa9c79206
+    internet_archive_size_bytes: 18218512
+    internet_archive_length_seconds: 1138.36
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-dramatic-scene-and-story-002-drsceneandstoryvol-002-07-various-128kb
+  source_type: direct_download
+  url: https://archive.org/download/dramaticreadingsceneandstorycollectionvolume002_2005_librivox/drsceneandstoryvol_002_07_various_128kb.mp3
+  title: Dramatic Reading Scene and Story Collection Vol. 002 - 07. The Diamond Necklace by Guy De Maupassant.
+  series_id: librivox-dramatic-scene-and-story-002
+  content_type: conversational
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: dramaticreadingsceneandstorycollectionvolume002_2005_librivox
+    internet_archive_file: drsceneandstoryvol_002_07_various_128kb.mp3
+    internet_archive_md5: b737364e76fb8061b40ec67af67bf3cf
+    internet_archive_size_bytes: 18724660
+    internet_archive_length_seconds: 1170.0
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-030-snf030-journeys-pn-128kb
+  source_type: direct_download
+  url: https://archive.org/download/nonfiction030_1308_librivox/snf030_journeys_pn_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 030 - 13 - Little Journeys to the Homes of Prominent
+    Amateurs - H.P. Lovecraft
+  series_id: librivox-short-nonfiction-030
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: nonfiction030_1308_librivox
+    internet_archive_file: snf030_journeys_pn_128kb.mp3
+    internet_archive_md5: 2388e39fc587298cdc788441d80f9ac8
+    internet_archive_size_bytes: 7538819
+    internet_archive_length_seconds: 470.88
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-030-snf030-mendelianproportions-hardy-ava-128kb
+  source_type: direct_download
+  url: https://archive.org/download/nonfiction030_1308_librivox/snf030_mendelianproportions_hardy_ava_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 030 - 14 - Mendelian Properties in a Mixed Population
+  series_id: librivox-short-nonfiction-030
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: nonfiction030_1308_librivox
+    internet_archive_file: snf030_mendelianproportions_hardy_ava_128kb.mp3
+    internet_archive_md5: cb361a52b5c8d86e1ebda6126c59ed7f
+    internet_archive_size_bytes: 6975654
+    internet_archive_length_seconds: 435.7
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-036-snf036-daisy-encyclopediabritannica-bt-128kb
+  source_type: direct_download
+  url: https://archive.org/download/nonfiction036_1501_librivox/snf036_daisy_encyclopediabritannica_bt_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 036 - 02 - Daisy
+  series_id: librivox-short-nonfiction-036
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: nonfiction036_1501_librivox
+    internet_archive_file: snf036_daisy_encyclopediabritannica_bt_128kb.mp3
+    internet_archive_md5: 91cb6f88452d7ec8474318aa9e8b1f4a
+    internet_archive_size_bytes: 3946042
+    internet_archive_length_seconds: 246.33
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-036-snf036-goldfish-milne-jnd-128kb
+  source_type: direct_download
+  url: https://archive.org/download/nonfiction036_1501_librivox/snf036_goldfish_milne_jnd_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 036 - 06 - Goldfish
+  series_id: librivox-short-nonfiction-036
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: nonfiction036_1501_librivox
+    internet_archive_file: snf036_goldfish_milne_jnd_128kb.mp3
+    internet_archive_md5: db686eb1733f3ab17b09d0274da19563
+    internet_archive_size_bytes: 6927344
+    internet_archive_length_seconds: 432.67
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-042-snf042-early20thcentpoetryreview-lowell-mp-128kb
+  source_type: direct_download
+  url: https://archive.org/download/nonfiction042_1604_librivox/snf042_early20thcentpoetryreview_lowell_mp_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 042 - 04 - Early 20th Century Poetry, a Review
+  series_id: librivox-short-nonfiction-042
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: nonfiction042_1604_librivox
+    internet_archive_file: snf042_early20thcentpoetryreview_lowell_mp_128kb.mp3
+    internet_archive_md5: 6ae8d296a68c6cd6da85239f0e9c0db0
+    internet_archive_size_bytes: 5836503
+    internet_archive_length_seconds: 364.49
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-042-snf042-livefreeordie-desmoulins-cc-128kb
+  source_type: direct_download
+  url: https://archive.org/download/nonfiction042_1604_librivox/snf042_livefreeordie_desmoulins_cc_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 042 - 10 - Live Free Or Die (1788)
+  series_id: librivox-short-nonfiction-042
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: nonfiction042_1604_librivox
+    internet_archive_file: snf042_livefreeordie_desmoulins_cc_128kb.mp3
+    internet_archive_md5: 0729a14928ea858ad881b5bf649c0ecc
+    internet_archive_size_bytes: 6421228
+    internet_archive_length_seconds: 401.03
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-048-snf048-emersonjournal-emerson-sa-128kb
+  source_type: direct_download
+  url: https://archive.org/download/nonfiction048_1705_librivox/snf048_emersonjournal_emerson_sa_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 048 - 02 - Emerson and Thoreau, November 10, 1838
+  series_id: librivox-short-nonfiction-048
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: nonfiction048_1705_librivox
+    internet_archive_file: snf048_emersonjournal_emerson_sa_128kb.mp3
+    internet_archive_md5: 431e5fb24e3d024b4ec507d7d3b1bf8b
+    internet_archive_size_bytes: 4226074
+    internet_archive_length_seconds: 263.84
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-048-snf048-tabloiddrama-howard-vfkabt-128kb
+  source_type: direct_download
+  url: https://archive.org/download/nonfiction048_1705_librivox/snf048_tabloiddrama_howard_vfkabt_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 048 - 13 - Tabloid Drama (review of Fifty Contemporary
+    One-Act Plays
+  series_id: librivox-short-nonfiction-048
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: nonfiction048_1705_librivox
+    internet_archive_file: snf048_tabloiddrama_howard_vfkabt_128kb.mp3
+    internet_archive_md5: 30bff4c444e6b4c74cbc0cec8cc0f197
+    internet_archive_size_bytes: 5272226
+    internet_archive_length_seconds: 329.22
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-054-snf054-busterkeaton-russell-ak-128kb
+  source_type: direct_download
+  url: https://archive.org/download/nonfiction054_1801_librivox/snf054_busterkeaton_russell_ak_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 054 - 02 - Buster Keaton--Hard Knocks Make a Man
+  series_id: librivox-short-nonfiction-054
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: nonfiction054_1801_librivox
+    internet_archive_file: snf054_busterkeaton_russell_ak_128kb.mp3
+    internet_archive_md5: d6ce12b87031c044e8df931be2113f5a
+    internet_archive_size_bytes: 6181737
+    internet_archive_length_seconds: 386.06
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-054-snf054-diapsalmata-kierkegaard-cc-128kb
+  source_type: direct_download
+  url: https://archive.org/download/nonfiction054_1801_librivox/snf054_diapsalmata_kierkegaard_cc_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 054 - 04 - Diapsalmata from Either/Or (1843)
+  series_id: librivox-short-nonfiction-054
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: nonfiction054_1801_librivox
+    internet_archive_file: snf054_diapsalmata_kierkegaard_cc_128kb.mp3
+    internet_archive_md5: 007429f91675195b00bac6adb74e910b
+    internet_archive_size_bytes: 6850054
+    internet_archive_length_seconds: 427.83
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-060-snf060-brokenwindow-bastiat-mtf-128kb
+  source_type: direct_download
+  url: https://archive.org/download/nonfiction060_1810_librivox/snf060_brokenwindow_bastiat_mtf_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 060 - 02 - The Broken Window
+  series_id: librivox-short-nonfiction-060
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: nonfiction060_1810_librivox
+    internet_archive_file: snf060_brokenwindow_bastiat_mtf_128kb.mp3
+    internet_archive_md5: ff695c7309fe9c10038672cfcf9d9936
+    internet_archive_size_bytes: 6216846
+    internet_archive_length_seconds: 388.26
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-060-snf060-dislikes-holmes-dg-128kb
+  source_type: direct_download
+  url: https://archive.org/download/nonfiction060_1810_librivox/snf060_dislikes_holmes_dg_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 060 - 04 - Dislikes
+  series_id: librivox-short-nonfiction-060
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: nonfiction060_1810_librivox
+    internet_archive_file: snf060_dislikes_holmes_dg_128kb.mp3
+    internet_archive_md5: 8a1ad104ac38cb153f67c03123518142
+    internet_archive_size_bytes: 5828563
+    internet_archive_length_seconds: 364.03
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-066-snf066-namikawayasuyuki-taisho-ava-128kb
+  source_type: direct_download
+  url: https://archive.org/download/nonfiction066_1907_librivox/snf066_namikawayasuyuki_taisho_ava_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 066 - 12 - Mr. NAMIKAWA Yasuyuki 's Cloisonne
+  series_id: librivox-short-nonfiction-066
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: nonfiction066_1907_librivox
+    internet_archive_file: snf066_namikawayasuyuki_taisho_ava_128kb.mp3
+    internet_archive_md5: cc7076558267e10eb056e02b98cbb4ec
+    internet_archive_size_bytes: 4129558
+    internet_archive_length_seconds: 257.8
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-066-snf066-quentinlastletter-roosevelt-ks-128kb
+  source_type: direct_download
+  url: https://archive.org/download/nonfiction066_1907_librivox/snf066_quentinlastletter_roosevelt_ks_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 066 - 15 - Quentin Roosevelt's Last Letter Home
+  series_id: librivox-short-nonfiction-066
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: nonfiction066_1907_librivox
+    internet_archive_file: snf066_quentinlastletter_roosevelt_ks_128kb.mp3
+    internet_archive_md5: 9cca4146206c02aacbe40f3906c8d536
+    internet_archive_size_bytes: 5477894
+    internet_archive_length_seconds: 342.07
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-079-snf079-governorvetocatbill-stevenson-128kb
+  source_type: direct_download
+  url: https://archive.org/download/snf079_2101_librivox/snf079_governorvetocatbill_stevenson_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 079 - 05 - Governor Adlai Stevenson's Veto of the "Cat
+    Bill" (1949)
+  series_id: librivox-short-nonfiction-079
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: snf079_2101_librivox
+    internet_archive_file: snf079_governorvetocatbill_stevenson_128kb.mp3
+    internet_archive_md5: d356a76acea9a6c3000b77f934c18a01
+    internet_archive_size_bytes: 4677502
+    internet_archive_length_seconds: 292.05
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-079-snf079-pinehurstteagardens-shepard-bbs-128kb
+  source_type: direct_download
+  url: https://archive.org/download/snf079_2101_librivox/snf079_pinehurstteagardens_shepard_bbs_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 079 - 10 - The Pinehurst Tea Gardens near Summerville.
+    S.C.
+  series_id: librivox-short-nonfiction-079
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: snf079_2101_librivox
+    internet_archive_file: snf079_pinehurstteagardens_shepard_bbs_128kb.mp3
+    internet_archive_md5: b28efce5b2e65168f13af2c3d56f4a4b
+    internet_archive_size_bytes: 5395106
+    internet_archive_length_seconds: 336.9
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-083-snf083-roadtosuccess-floyd-jbw-128kb
+  source_type: direct_download
+  url: https://archive.org/download/snf083_2106_librivox/snf083_roadtosuccess_floyd_jbw_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 083 - 16 - The Road to Success
+  series_id: librivox-short-nonfiction-083
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: snf083_2106_librivox
+    internet_archive_file: snf083_roadtosuccess_floyd_jbw_128kb.mp3
+    internet_archive_md5: 6389130594ddf52814ca2a0811eda7ad
+    internet_archive_size_bytes: 4143350
+    internet_archive_length_seconds: 258.66
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-083-snf083-wintertalk-beecher-sa-128kb
+  source_type: direct_download
+  url: https://archive.org/download/snf083_2106_librivox/snf083_wintertalk_beecher_sa_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 083 - 19 - Winter Talk (1859)
+  series_id: librivox-short-nonfiction-083
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: snf083_2106_librivox
+    internet_archive_file: snf083_wintertalk_beecher_sa_128kb.mp3
+    internet_archive_md5: cbcb622f657e1e2610457e1ce545a0ec
+    internet_archive_size_bytes: 5669287
+    internet_archive_length_seconds: 354.04
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.
+- id: librivox-short-nonfiction-103-snf103-fruitorvegetable-supremecourt-dg-128kb
+  source_type: direct_download
+  url: https://archive.org/download/snf103_2406a_librivox/snf103_fruitorvegetable_supremecourt_dg_128kb.mp3
+  title: LibriVox Short Nonfiction Collection Vol. 103 - 08 - Fruit or Vegetable? Supreme Court Rules
+    on Tomatoes (1893)
+  series_id: librivox-short-nonfiction-103
+  content_type: narrated
+  source_name: Internet Archive
+  language: en
+  license_name: Public domain (LibriVox dedication / Public Domain Mark 1.0)
+  license_url: https://creativecommons.org/publicdomain/mark/1.0/
+  provenance:
+    internet_archive_identifier: snf103_2406a_librivox
+    internet_archive_file: snf103_fruitorvegetable_supremecourt_dg_128kb.mp3
+    internet_archive_md5: 0d2e9c867aec1ee5901dfa49cd5825e3
+    internet_archive_size_bytes: 4548772
+    internet_archive_length_seconds: 284.03
+    internet_archive_uploader: info@librivox.org
+    internet_archive_collections:
+    - librivoxaudio
+    - audio_bookspoetry
+    internet_archive_license_url: http://creativecommons.org/publicdomain/mark/1.0/
+    licence_basis: declared_public_domain
+    licence_verified_by: item_license_url
+    licence_evidence: http://creativecommons.org/publicdomain/mark/1.0/
+    producing_agency: null
+    official_programme_url: null
+  attribution: Read for LibriVox and released into the public domain; hosted by the Internet Archive.

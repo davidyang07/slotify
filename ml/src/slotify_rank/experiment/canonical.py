@@ -1,6 +1,6 @@
 """The canonical experiment: its committed definition and its resolved manifest.
 
-``ml/configs/experiment_resume_v1.yaml`` says what the experiment *is*. This
+``ml/configs/experiment_v2.yaml`` says what the experiment *is*. This
 module reads it, checks that the repository actually matches what it claims, and
 resolves it into a manifest that pins the *bytes*: the split manifest's hash, the
 candidate manifest's hash, the label snapshot's hash, the feature schema
@@ -39,6 +39,7 @@ from slotify_rank.config.versions import (
     FEATURE_SPEC_VERSION,
     PACKAGE_VERSION,
     SPLIT_ALGORITHM_VERSION,
+    SUPPORTED_SPLIT_ALGORITHM_VERSIONS,
 )
 from slotify_rank.data.checksum import atomic_write_bytes, sha256_file, sha256_text
 
@@ -169,7 +170,7 @@ def load_experiment_config(path: Path | str) -> ExperimentConfig:
     ]:
         raise ExperimentConfigError(
             f"{config_path}: labels.allowed_label_sources may only be ['human'] "
-            "for the resume experiment. A weak-label run is a different "
+            "for the benchmark experiment. A weak-label run is a different "
             "experiment and must carry a different experiment_version."
         )
     headline = str(config.model.get("headline_variant") or "")
@@ -286,10 +287,17 @@ def resolve_manifest(
                 f"the experiment declares split seed {config.split.get('seed')} but "
                 f"the manifest records {manifest.seed}"
             )
-        if manifest.algorithm_version != SPLIT_ALGORITHM_VERSION:
+        if manifest.algorithm_version not in SUPPORTED_SPLIT_ALGORITHM_VERSIONS:
             blocking.append(
                 f"the split manifest was produced by {manifest.algorithm_version!r}, "
-                f"but this build implements {SPLIT_ALGORITHM_VERSION!r}"
+                f"but this build implements "
+                f"{list(SUPPORTED_SPLIT_ALGORITHM_VERSIONS)}"
+            )
+        declared_algorithm = config.split.get("algorithm_version")
+        if declared_algorithm and manifest.algorithm_version != declared_algorithm:
+            blocking.append(
+                f"the experiment declares split algorithm {declared_algorithm!r} "
+                f"but the manifest records {manifest.algorithm_version!r}"
             )
 
     snapshot_path = (

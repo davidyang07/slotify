@@ -4,14 +4,12 @@ Every capability below is **unverified until its generating command succeeds and
 in this repository**. No number in this file may be typed by hand — each is read from the artifact
 named in its row.
 
-> **Start here.** The authoritative, machine-generated answers are
+> **Start here.** The authoritative, machine-generated answer is
 > [`artifacts/reports/model_evidence.md`](../artifacts/reports/model_evidence.md) (what each
-> capability's artifacts establish) and
-> [`artifacts/reports/resume_evidence.md`](../artifacts/reports/resume_evidence.md) (PASS / FAIL /
-> NOT MEASURED per headline claim), produced by `npm run evidence` and `npm run resume-evidence`.
-> This document explains the *reasoning*; those reports carry the *numbers*, and both are
-> regenerated from the artifacts on every run. Where they disagree with this file, they are right
-> and this file is stale — and CI fails if either report disagrees with its own inputs.
+> capability's artifacts establish), produced by `npm run evidence`.
+> This document explains the *reasoning*; that report carries the *numbers*, and it is
+> regenerated from the artifacts on every run. Where it disagrees with this file, it is right
+> and this file is stale — and CI fails if the report disagrees with its own inputs.
 
 Status vocabulary: `not started` → `in progress` → `evidence generated` → `verified`
 (`verified` = artifact exists, was produced by the current `git_sha`, and the plan's acceptance
@@ -100,6 +98,8 @@ claim about model quality.
 | A genuinely trainable multimodal PyTorch ranker exists | Five variants behind one interface; each forward pass runs on the real Phase 3 records; parameter counts reported; all under 1M params | `slotify-rank models describe --model gated` | `artifacts/training/<run_id>/training_summary.json` | **verified** (2026-07-22, synthetic smoke) |
 | Training is reproducible and CPU-first | Deterministic seeds; content-addressed run id; device/dtype recorded; resume equivalent to uninterrupted within 1e-4; runs on CPU with no GPU | `slotify-rank training run --model-config ml/configs/models/gated_v1.yaml` | `artifacts/training/<run_id>/resolved_config.json`, `environment.json` | **verified** (2026-07-22, synthetic smoke) |
 | Phase 3 features load without recomputation | Loader reads cached `.npy` arrays; a run imports neither Whisper nor MiniLM; eligibility accounts for every candidate | `slotify-rank training prepare` | `artifacts/training/<run_id>/dataset_summary.json` | **verified** (2026-07-22) |
+| The held-out partition is made of enough different shows to mean something | ≥ 3 independent series per partition, enforced as a hard split failure; the test partition restricted to podcast-format series; no series may occupy more than half a partition's hours | `dataset split --config ml/configs/splits_v4.yaml` | `data/manifests/splits_v4.json` | **verified**, with tests reconstructing the v3 corpus that failed each rule |
+| The corpus on disk is the corpus the plan declares | Episodes no committed source registry declares are removed before the split reads them; `--check` reports drift without writing | `dataset reconcile --check` | `artifacts/dataset/reconcile_report.json` | **verified** |
 | Normalization does not leak | Statistics fitted on the train split only; refit refuses validation/test rows; artifact records the fit provenance | (fitted during `training run`) | `artifacts/training/<run_id>/normalizer.json` | **verified** (2026-07-22) |
 | No cross-episode or cross-split pairs | Pairs formed only within one episode of one split; generator refuses a mixed split | `slotify-rank training pairs` | `artifacts/training/<run_id>/pairs.jsonl` | **verified** (2026-07-22) |
 | Checkpoints are safe and resumable | `state_dict` only, `weights_only=True` load, incompatible/corrupt rejected, OneDrive-safe atomic write | `slotify-rank training inspect --checkpoint …` | ignored `.pt` + `training_summary.json` | **verified** (2026-07-22) |
@@ -148,10 +148,10 @@ preliminary real data` → `supported by held-out real evaluation`.
 |---|---|---|---|---|
 | A real target-domain corpus is registered under clear licences | ≥ 6 public-domain series, all `direct_download` with `license_name`+`license_url`, all target-domain, verified against the IA metadata API | `dataset fetch --sources ml/configs/sources_real_v1.yaml` | `ml/configs/sources_real_v1.yaml`, `data/manifests/episodes.jsonl` | **supported by preliminary real data** |
 | Enough real audio is processed to yield ≥ 300 eligible candidates with complete features | probe → normalize → generate → `pipeline features`; complete multimodal records reported | `dataset stats --split-version v2` | `artifacts/dataset/*.json`, `data/manifests/features.jsonl` | **supported by preliminary real data** (~0.8 h, ~575 real candidates, majority `complete`) |
-| A deterministic, stratified labelling queue exists | balanced (split × score-tertile) strata, round-robin episode/series spread, per-episode cap, pilot/primary/overlap/consistency stages, byte-identical on re-run | `label queue --config ml/configs/labelling_queue_resume_v1.yaml --split-version v3` | `data/labels/queue_resume-v1.json` (git-ignored) | **implemented, verified on real candidates** |
+| A deterministic, stratified labelling queue exists | balanced (split × score-tertile) strata, round-robin episode/series spread, per-episode cap, pilot/primary/overlap/consistency stages, byte-identical on re-run | `label queue --config ml/configs/labelling_queue_full_v2.yaml --split-version v4` | `data/labels/queue_full-v2.json` (git-ignored) | **implemented, verified on real candidates** |
 | Synthetic product fallbacks never enter the queue | `is_synthetic` / non-eligible excluded from the pool by construction; tested | `label queue …` | queue coverage + `test_labelling_queue.py` | **verified** |
 | The labelling UI hides bias signals and sessions save/resume | reveal-hints off by default; served candidate carries no heuristic score; save → resume preserves labels; export is clean; transcript context resolved from the cache; `--stage pilot` runs a controlled 24-candidate session and rejects out-of-stage labels | `label serve --queue … --stage pilot` → `label export` | pilot service smoke, `test_labelling.py`, `test_labelling_queue.py` | **verified** (round-trip on the real queue) |
-| The readiness gate blocks when labels are insufficient | every gate condition checked; blocking reasons listed; `--require-ready` exits non-zero | `experiment readiness --queue … --split-version v3` | `artifacts/experiments/readiness_report.json` | **implemented**; whether it passes depends on the label count, which the report reads |
+| The readiness gate blocks when labels are insufficient | every gate condition checked; blocking reasons listed; `--require-ready` exits non-zero | `experiment readiness --queue … --split-version v4` | `artifacts/experiments/readiness_report.json` | **implemented**; whether it passes depends on the label count, which the report reads |
 | An immutable frozen label snapshot can be produced before training | hashes of label/candidate/feature/split manifests, distribution, exclusions, version-immutability | `experiment freeze --snapshot-version v1` | `data/labels/label_snapshot_v1.json` (git-ignored) | **implemented but not populated** |
 | `human_labelled_candidate_count` (round 1: 250–300) | resumable per-annotator SQLite store; versioned export; quality controls | `label serve` → `label export` → `label check` | `data/labels/labels_v1.jsonl`, `label_statistics.json` | **not yet supported** (0 human labels; the terminal Phase 5A action is human work) |
 
@@ -352,41 +352,40 @@ labelling time, which is human work and cannot be synthesised.
 ```powershell
 cd ml
 # 1. Everything mechanical: acquire, generate, featurise, split, queue.
-.\.venv\Scripts\python.exe -m slotify_rank.cli dataset prepare-resume-experiment
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset prepare-experiment
 
 # 2. The only manual step. 2,400 unique candidates is the experiment's gate.
-.\.venv\Scripts\python.exe -m slotify_rank.cli label resume-experiment
+.\.venv\Scripts\python.exe -m slotify_rank.cli label run-experiment
 
 # 3. Gate, export, freeze, pin.
-.\.venv\Scripts\python.exe -m slotify_rank.cli experiment readiness --split-version v3 `
-    --experiment-config configs\experiment_resume_v1.yaml --require-ready
-.\.venv\Scripts\python.exe -m slotify_rank.cli label export --dataset-version resume-v1
-.\.venv\Scripts\python.exe -m slotify_rank.cli experiment freeze --snapshot-version resume-v1 --split-version v3
+.\.venv\Scripts\python.exe -m slotify_rank.cli experiment readiness --split-version v4 `
+    --experiment-config configs\experiment_v2.yaml --require-ready
+.\.venv\Scripts\python.exe -m slotify_rank.cli label export --dataset-version full-v2
+.\.venv\Scripts\python.exe -m slotify_rank.cli experiment freeze --snapshot-version full-v2 --split-version v4
 .\.venv\Scripts\python.exe -m slotify_rank.cli experiment manifest --require-ready
 
 # 4. Five ablations x three seeds; the MEDIAN seed by validation NDCG@3 is reported.
-.\.venv\Scripts\python.exe -m slotify_rank.cli experiment train --labels ..\data\labels\labels_resume-v1.jsonl --split-version v3
+.\.venv\Scripts\python.exe -m slotify_rank.cli experiment train --labels ..\data\labels\labels_full-v2.jsonl --split-version v4
 
 # 5. Once, at the end, on the frozen test split.
-.\.venv\Scripts\python.exe -m slotify_rank.cli evaluation compare --split test --split-version v3 --require-publishable
+.\.venv\Scripts\python.exe -m slotify_rank.cli evaluation compare --split test --split-version v4 --require-publishable
 
-# 6. Both reports then fill themselves in.
+# 6. The report then fills itself in.
 npm run evidence
-npm run resume-evidence
 ```
 
 Every number that comes out of step 5 is whatever it is. The claim threshold
-lives in `ml/configs/experiment_resume_v1.yaml`, the measured improvement comes
-from the comparison artifact, and `resume_evidence.md` compares the two. If the
-measured value is below the threshold the report says **FAIL** and prints the
-measured number; there is no code path in this repository that can do anything
-else, and a test asserts the threshold is not a literal in the checker.
+lives in `ml/configs/experiment_v2.yaml` and the measured improvement comes
+from the comparison artifact. If the measured value is below the threshold the
+comparison refuses to mark itself publishable and prints the measured number;
+there is no code path in this repository that can do anything else, and a test
+asserts the threshold is not a literal in the checker.
 
 ---
 
-## The resume claims and what each one requires
+## the headline claims and what each one requires
 
-`artifacts/reports/resume_evidence.md` is generated from the rows below.
+The verdict for each claim is read from the artifact named in the third column.
 
 | Claim | What establishes it | Where the verdict is read from |
 |---|---|---|
@@ -394,7 +393,7 @@ else, and a test asserts the threshold is not a literal in the checker.
 | It uses audio *and* transcript | both encoders named in the embedding statistics; handcrafted count from the feature statistics | `artifacts/features/*.json` |
 | ≥ 2,400 human-labelled candidates | the label count against the gate in the experiment definition | `artifacts/dataset/label_statistics.json` |
 | The checkpoint is human-trained | a run recording `label_source: human` | `artifacts/training/*/training_summary.json` |
-| A frozen held-out test set | a non-degraded, series-grouped split whose test groups appear in no other partition | `artifacts/experiments/experiment-resume-v1.json` |
+| A frozen held-out test set | a non-degraded, series-grouped split whose test groups appear in no other partition | `artifacts/experiments/experiment-v2.json` |
 | The canonical baseline was used | the comparison's baseline matches the one the experiment declares | `artifacts/evaluation/*/comparison.json` |
 | Measured baseline / model NDCG@3, and the improvement | a **publishable** comparison; a blocked one is never treated as a result | `artifacts/evaluation/*/comparison.json` |
 | Improvement ≥ the claimed threshold | measured value vs the committed threshold | both of the above |
@@ -419,5 +418,5 @@ cross-check that agreed *and* a fitted classical baseline. Its two jobs are:
   reader should ask about any multimodal result.
 
 If either were removed, the claim would drop to NOT MEASURED and the honest
-action would be to remove scikit-learn from the resume. That is the behaviour
-the check is designed to produce.
+action would be to stop listing scikit-learn as part of the stack. That is the
+behaviour the check is designed to produce.

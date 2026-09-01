@@ -211,6 +211,36 @@ def build_steps(
                 )
             )
 
+    # Fetch is additive by design, so a corpus version bump leaves behind
+    # episodes the current plan no longer declares -- extra episodes of a show
+    # whose cap was lowered, and fixtures from earlier runs. They would be split
+    # over, counted and labelled as though the plan had asked for them. Drop
+    # them here, before anything downstream reads the manifest.
+    #
+    # Locally imported material is dropped too *unless this run was told to
+    # import some*. That makes the rule "the corpus is what this invocation
+    # declared", rather than "whatever any previous invocation ever left". It
+    # matters more than it sounds: one of the repository smoke fixtures is typed
+    # `podcast`, and under a split whose test partition is podcast-only a
+    # synthetic clip left lying in the manifest is eligible for the held-out set.
+    steps.append(
+        PreparationStep(
+            name="reconcile",
+            description=(
+                "Drop episodes no committed registry declares"
+                + ("" if fixtures_registry else " (including stray local imports)")
+            ),
+            run=dataset_cli._cmd_reconcile,
+            args=_namespace(
+                **common,
+                sources=list(source_registries),
+                drop_local=not fixtures_registry,
+                check=False,
+                report=None,
+            ),
+        )
+    )
+
     steps += [
         PreparationStep(
             name="probe",

@@ -428,14 +428,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     readiness.add_argument("--data-root", default=None)
     readiness.add_argument("--queue", default=None, help="Assigned queue artifact.")
-    readiness.add_argument("--split-version", default="v2")
+    readiness.add_argument("--split-version", default="v4")
     readiness.add_argument(
         "--experiment-config",
         default=None,
         dest="experiment_config",
         help=(
             "Raise the minimum-label gate to the one this experiment declares "
-            "(e.g. ml/configs/experiment_resume_v1.yaml)."
+            "(e.g. ml/configs/experiment_v2.yaml)."
         ),
     )
     readiness.add_argument("--output", default=None)
@@ -459,7 +459,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     manifest.add_argument("--data-root", default=None)
     manifest.add_argument(
         "--config",
-        default="ml/configs/experiment_resume_v1.yaml",
+        default="ml/configs/experiment_v2.yaml",
         help="The committed experiment definition.",
     )
     manifest.add_argument("--output", default=None)
@@ -482,7 +482,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     train.add_argument("--data-root", default=None)
     train.add_argument(
-        "--config", default="ml/configs/experiment_resume_v1.yaml"
+        "--config", default="ml/configs/experiment_v2.yaml"
     )
     train.add_argument(
         "--labels", required=True, help="Human label export to train on."
@@ -490,7 +490,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     train.add_argument(
         "--training-config", default=None, dest="training_config"
     )
-    train.add_argument("--split-version", default="v3", dest="split_version")
+    train.add_argument("--split-version", default="v4", dest="split_version")
     train.add_argument(
         "--output-root",
         default=None,
@@ -521,7 +521,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     freeze.add_argument("--data-root", default=None)
     freeze.add_argument("--queue", default=None)
-    freeze.add_argument("--split-version", default="v2")
+    freeze.add_argument("--split-version", default="v4")
     freeze.add_argument("--dataset-version", default="v1")
     freeze.add_argument("--snapshot-version", default="v1")
     freeze.add_argument("--output", default=None)

@@ -366,7 +366,7 @@ def test_the_label_target_is_read_from_the_experiment_not_restated():
 
     target, source = _label_target()
     config = load_experiment_config(
-        Path(__file__).resolve().parents[1] / "configs" / "experiment_resume_v1.yaml"
+        Path(__file__).resolve().parents[1] / "configs" / "experiment_v2.yaml"
     )
     assert target == config.minimum_human_labels
     assert source == config.experiment_version

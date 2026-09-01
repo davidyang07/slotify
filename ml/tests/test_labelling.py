@@ -566,11 +566,11 @@ def test_every_exported_row_carries_its_full_provenance(tmp_path: Path, database
         "annotator-a",
         4,
         stage="primary",
-        queue_version="resume-v1",
+        queue_version="full-v1",
         elapsed_ms=4200,
         notes="clean topic change",
     )
-    result = export_labels(database, candidates, tmp_path / "labels_resume-v1.jsonl")
+    result = export_labels(database, candidates, tmp_path / "labels_full-v1.jsonl")
 
     import json
 
@@ -600,7 +600,7 @@ def test_every_exported_row_carries_its_full_provenance(tmp_path: Path, database
     ):
         assert field in row, field
     assert row["label_source"] == "human"
-    assert row["queue_version"] == "resume-v1"
+    assert row["queue_version"] == "full-v1"
     assert row["elapsed_ms"] == 4200
     assert row["created_at"].endswith("+00:00")
 

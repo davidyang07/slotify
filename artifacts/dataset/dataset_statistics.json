@@ -1,42 +1,43 @@
 {
-  "generated_at": "2026-08-19T17:33:49+00:00",
+  "generated_at": "2026-08-30T02:05:29+00:00",
   "package_version": "0.2.0",
   "preprocessing_version": "preprocess-v1.0.0",
-  "processed_episode_count": 13,
-  "processed_audio_hours": 0.8387,
-  "target_domain_episode_count": 11,
-  "target_domain_audio_hours": 0.8288,
-  "out_of_domain_audio_hours": 0.0099,
-  "registered_episode_count": 13,
+  "processed_episode_count": 77,
+  "processed_audio_hours": 18.6135,
+  "target_domain_episode_count": 77,
+  "target_domain_audio_hours": 18.6135,
+  "out_of_domain_audio_hours": 0.0,
+  "registered_episode_count": 77,
   "unprocessed_episode_count": 0,
-  "series_count": 10,
+  "series_count": 40,
   "duration_hours_by_content_type": {
-    "conversational": 0.3819,
-    "music": 0.0099,
-    "narrated": 0.4416,
-    "podcast": 0.0053
+    "conversational": 4.5135,
+    "narrated": 2.6567,
+    "podcast": 11.4432
   },
   "duration_hours_by_source": {
-    "LibriVox / Internet Archive": 0.8021,
-    "Slotify repository fixture": 0.0365
+    "Internet Archive": 17.4274,
+    "LibriVox / Internet Archive": 1.1861
   },
   "duration_hours_by_license": {
+    "Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)": 9.4884,
     "Public Domain (LibriVox dedication)": 0.5692,
-    "Public Domain Mark 1.0": 0.2329,
-    "undeclared (private)": 0.0365
+    "Public Domain Mark 1.0": 0.6169,
+    "Public domain (LibriVox dedication / Public Domain Mark 1.0)": 5.9842,
+    "U.S. Government work (17 U.S.C. Sec. 105) - public domain in the United States": 1.9548
   },
   "duration_hours_by_split": {
-    "test": 0.3724,
-    "train": 0.3725,
-    "validation": 0.0937
+    "test": 3.1642,
+    "train": 12.6459,
+    "validation": 2.8033
   },
   "episodes_by_split": {
-    "test": 1,
-    "train": 11,
-    "validation": 1
+    "test": 7,
+    "train": 57,
+    "validation": 13
   },
   "episodes_by_status": {
-    "normalized": 13
+    "normalized": 77
   },
   "target_domain_content_types": [
     "conversational",
@@ -47,7 +48,10 @@
   "targets": {
     "processed_audio_hours": 50,
     "generated_candidate_count": 10000,
-    "human_labelled_candidate_count": 1500
+    "human_labelled_candidate_count": 2400
+  },
+  "targets_source": {
+    "human_labelled_candidate_count": "experiment-v2"
   },
   "targets_note": "Targets are design goals, not results. Compare them against the measured values above; do not quote a target as an achievement."
 }

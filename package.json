@@ -14,8 +14,7 @@
     "verify:frontend": "npm --prefix frontend run verify",
     "test:scripts": "node --test \"scripts/lib/*.test.mjs\"",
     "verify": "npm run verify:backend && npm run verify:frontend && npm run test:scripts",
-    "evidence": "node scripts/evidence.mjs",
-    "resume-evidence": "node scripts/resume-evidence.mjs"
+    "evidence": "node scripts/evidence.mjs"
   },
   "engines": {
     "node": ">=20"

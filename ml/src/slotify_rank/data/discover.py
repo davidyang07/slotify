@@ -4,7 +4,7 @@
 with a named licence. Writing three thousand candidates' worth of that list by
 hand is not practical, and pasting URLs found in a browser is not auditable. So
 this module builds the registry mechanically from a declarative *corpus plan*
-(``ml/configs/corpus_resume_v1.yaml``) and the Internet Archive's public
+(``ml/configs/corpus_v2.yaml``) and the Internet Archive's public
 metadata APIs.
 
 What it is, and what it deliberately is not:
@@ -27,6 +27,26 @@ Licensing is the part worth reading carefully. Every show declares a licence
     public-domain dedication or the Public Domain Mark. Discovery checks the
     URL against :data:`PUBLIC_DOMAIN_LICENSE_PATTERNS` and **drops** any item
     that does not match. This is the strongest basis available here.
+
+``declared_open_licence``
+    The item itself declares an *open* Creative Commons licence -- CC0, the
+    Public Domain Mark, CC BY or CC BY-SA -- **and** it sits in the show's own
+    home collection on the Archive, which the plan names. Both halves are
+    required and both are read from the item's metadata.
+
+    The second half is what separates this from the thing the corpus plan
+    rejects: there are tens of thousands of items where somebody uploaded
+    somebody else's podcast and ticked "public domain", and a licence tag
+    applied by a stranger is worth nothing. A show's own collection is where the
+    show publishes itself, so a licence declared there is the publisher's own
+    declaration. It is not a proof -- a fan can be granted a collection too --
+    so the plan additionally records each show's homepage, and shows whose
+    collection turned out to be a third-party archive are listed as rejected
+    there by name.
+
+    NonCommercial and NoDerivatives variants do **not** qualify. They are
+    Creative Commons but they are not open, and mixing them in would make the
+    single word "openly licensed" mean two different things in one corpus.
 
 ``us_government_work``
     The recording is a work of the United States federal government and is
@@ -77,7 +97,7 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -89,6 +109,8 @@ __all__ = [
     "CORPUS_PLAN_VERSION",
     "item_is_restricted",
     "PUBLIC_DOMAIN_LICENSE_PATTERNS",
+    "OPEN_LICENSE_PATTERNS",
+    "is_open_license_url",
     "DiscoveryError",
     "LicenceSpec",
     "ShowSpec",
@@ -113,6 +135,20 @@ PUBLIC_DOMAIN_LICENSE_PATTERNS: tuple[str, ...] = (
     "creativecommons.org/publicdomain/zero/1.0",
     "creativecommons.org/publicdomain/mark/1.0",
     "creativecommons.org/licenses/publicdomain",
+)
+
+#: A ``licenseurl`` matching one of these is an *open* licence: it permits
+#: redistribution and derivative works by anyone, for any purpose. The
+#: public-domain patterns above are open by definition and are included.
+#:
+#: Deliberately absent: ``licenses/by-nc``, ``licenses/by-nd`` and their
+#: combinations. Matching is on the URL *path* after the scheme is stripped, and
+#: ``by-nc-sa`` does not start with ``licenses/by-sa`` or ``licenses/by/``, so
+#: the trailing slash in ``licenses/by/`` is load-bearing: without it
+#: ``licenses/by-nc/4.0`` would match ``licenses/by``.
+OPEN_LICENSE_PATTERNS: tuple[str, ...] = PUBLIC_DOMAIN_LICENSE_PATTERNS + (
+    "creativecommons.org/licenses/by/",
+    "creativecommons.org/licenses/by-sa/",
 )
 
 _AUDIO_SUFFIXES = (".mp3", ".m4a", ".ogg", ".flac", ".wav", ".opus")
@@ -148,6 +184,14 @@ def is_public_domain_license_url(url: str | None) -> bool:
     )
 
 
+def is_open_license_url(url: str | None) -> bool:
+    """True when ``url`` is an open licence: CC0, PDM, CC BY or CC BY-SA."""
+    if not url:
+        return False
+    normalised = _normalise_license_url(url)
+    return any(normalised.startswith(pattern) for pattern in OPEN_LICENSE_PATTERNS)
+
+
 @dataclass(frozen=True)
 class LicenceSpec:
     """How a show's episodes may be redistributed, and how that was established."""
@@ -161,16 +205,24 @@ class LicenceSpec:
     official_url: str | None = None
     #: Internet Archive collections that, by themselves, prove agency origin.
     agency_collections: tuple[str, ...] = ()
+    #: Set per-show, not per-licence: the show's own home collection(s) on the
+    #: Archive. Required by ``declared_open_licence``; see :class:`ShowSpec`.
+    home_collections: tuple[str, ...] = ()
     attribution: str | None = None
     #: Free text recorded on every episode. Required when the basis rests on an
     #: attestation rather than on machine-checkable metadata.
     attestation: str | None = None
 
     def __post_init__(self) -> None:
-        if self.basis not in ("declared_public_domain", "us_government_work"):
+        known_bases = (
+            "declared_public_domain",
+            "declared_open_licence",
+            "us_government_work",
+        )
+        if self.basis not in known_bases:
             raise DiscoveryError(
-                f"unknown licence basis {self.basis!r}; expected "
-                "'declared_public_domain' or 'us_government_work'"
+                f"unknown licence basis {self.basis!r}; expected one of "
+                f"{', '.join(repr(b) for b in known_bases)}"
             )
         if not self.name or not self.url:
             raise DiscoveryError("a licence needs both a name and a url")
@@ -195,18 +247,39 @@ class LicenceSpec:
             "agency": self.agency,
             "official_url": self.official_url,
             "agency_collections": list(self.agency_collections),
+            "home_collections": list(self.home_collections),
             "attribution": self.attribution,
             "attestation": self.attestation,
         }
+
+    def for_show(self, home_collections: Sequence[str]) -> "LicenceSpec":
+        """This licence bound to one show's home collection(s).
+
+        ``declared_open_licence`` is the only basis whose verification depends on
+        the show rather than only on the licence, so the licence block in the
+        plan is shared and the collection list arrives from the show entry.
+        """
+        return replace(self, home_collections=tuple(str(c) for c in home_collections))
 
 
 @dataclass(frozen=True)
 class ShowSpec:
     """One series in the corpus plan.
 
-    ``selection.kind`` is either ``item_files`` (one Internet Archive item whose
-    audio files are the episodes -- how a podcast feed is usually archived) or
-    ``search`` (one item per episode, found by a query).
+    ``selection.kind`` is one of:
+
+    ``item_files``
+        One Internet Archive item whose audio files are the episodes -- how a
+        LibriVox recording or a bulk-uploaded feed is usually archived.
+    ``collection_items``
+        One Archive *collection* whose member items are the episodes -- how a
+        podcast that publishes itself to the Archive is usually laid out, one
+        item per episode. The collection identifier is the precision filter, and
+        a better one than ``creator``: the same show routinely varies its
+        creator string across episodes ("A and B", "A & B", "A, B and guest")
+        while its collection never moves.
+    ``search``
+        One item per episode, found by a query plus an exact ``creator``.
     """
 
     series_id: str
@@ -216,6 +289,9 @@ class ShowSpec:
     kind: str
     max_episodes: int
     identifier: str | None = None
+    #: Archive collection holding this show's episodes. Required for
+    #: ``collection_items``, and the evidence for ``declared_open_licence``.
+    collection: str | None = None
     query: str | None = None
     #: Exact ``creator`` an item must declare to belong to this show. Required
     #: for ``search``: the Archive's query parser tokenizes a quoted
@@ -229,6 +305,14 @@ class ShowSpec:
     #: Substring every accepted file name must contain. Lets one archived feed
     #: with several formats resolve to exactly one file per episode.
     file_name_contains: str | None = None
+    #: How many audio files one item may contribute. Defaults to 1 for
+    #: ``collection_items`` and ``search``, where an item is one episode, and to
+    #: ``max_episodes`` for ``item_files``, where an item is the whole show.
+    max_files_per_item: int | None = None
+    #: The show's own page or feed. Not machine-checkable and never treated as
+    #: evidence: it is recorded so a reader can confirm for themselves that the
+    #: Archive collection this show is drawn from is the show's own.
+    homepage: str | None = None
     notes: str | None = None
 
     def __post_init__(self) -> None:
@@ -236,13 +320,29 @@ class ShowSpec:
             raise DiscoveryError(
                 f"series_id {self.series_id!r} must be a lowercase hyphenated slug"
             )
-        if self.kind not in ("item_files", "search"):
+        if self.kind not in ("item_files", "collection_items", "search"):
             raise DiscoveryError(
-                f"{self.series_id}: selection kind must be 'item_files' or 'search', "
-                f"got {self.kind!r}"
+                f"{self.series_id}: selection kind must be 'item_files', "
+                f"'collection_items' or 'search', got {self.kind!r}"
             )
         if self.kind == "item_files" and not self.identifier:
             raise DiscoveryError(f"{self.series_id}: item_files needs an 'identifier'")
+        if self.kind == "collection_items" and not self.collection:
+            raise DiscoveryError(
+                f"{self.series_id}: collection_items needs a 'collection'"
+            )
+        if self.licence.basis == "declared_open_licence" and not self.collection:
+            raise DiscoveryError(
+                f"{self.series_id}: declared_open_licence needs a 'collection'. The "
+                "basis is 'the show declared this licence in its own home on the "
+                "Archive', and without a collection there is no home to check -- "
+                "which reduces it to 'somebody tagged it', the exact claim this "
+                "corpus does not rest on."
+            )
+        if self.max_files_per_item is not None and self.max_files_per_item < 1:
+            raise DiscoveryError(
+                f"{self.series_id}: max_files_per_item must be positive"
+            )
         if self.kind == "search":
             if not self.query:
                 raise DiscoveryError(f"{self.series_id}: search needs a 'query'")
@@ -262,6 +362,13 @@ class ShowSpec:
                 f"{self.series_id}: need 0 < min_duration_seconds < max_duration_seconds"
             )
 
+    @property
+    def files_per_item(self) -> int:
+        """How many audio files one item may contribute to this show."""
+        if self.max_files_per_item is not None:
+            return self.max_files_per_item
+        return self.max_episodes if self.kind == "item_files" else 1
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "series_id": self.series_id,
@@ -269,6 +376,7 @@ class ShowSpec:
             "content_type": self.content_type,
             "kind": self.kind,
             "identifier": self.identifier,
+            "collection": self.collection,
             "query": self.query,
             "creator": self.creator,
             "max_episodes": self.max_episodes,
@@ -277,6 +385,8 @@ class ShowSpec:
             "min_duration_seconds": self.min_duration_seconds,
             "max_duration_seconds": self.max_duration_seconds,
             "file_name_contains": self.file_name_contains,
+            "max_files_per_item": self.max_files_per_item,
+            "homepage": self.homepage,
             "notes": self.notes,
             "licence": self.licence.to_dict(),
         }
@@ -381,11 +491,16 @@ def load_corpus_plan(path: Path | str) -> CorpusPlan:
         unknown = sorted((set(merged) | set(selection)) - known - {"kind"})
         if unknown:
             raise DiscoveryError(f"shows[{index}]: unknown setting(s) {unknown}")
-        show = ShowSpec(
-            licence=licences[str(licence_key)],
-            kind=str(selection.pop("kind", "")),
-            **{**merged, **selection},
-        )
+        kind = str(selection.pop("kind", ""))
+        merged_settings = {**merged, **selection}
+        licence = licences[str(licence_key)]
+        # `declared_open_licence` verifies against the show's own home
+        # collection, which lives on the show entry, not on the shared licence
+        # block. Bind it here so the ShowSpec carries a fully-specified licence.
+        home = merged_settings.get("collection")
+        if licence.basis == "declared_open_licence" and home:
+            licence = licence.for_show([str(home)])
+        show = ShowSpec(licence=licence, kind=kind, **merged_settings)
         if show.series_id in seen:
             raise DiscoveryError(f"{plan_path}: duplicate series_id {show.series_id!r}")
         seen.add(show.series_id)
@@ -444,15 +559,25 @@ class InternetArchiveClient:
         """Item metadata, including its file table."""
         return self._get_json(_METADATA_URL + urllib.parse.quote(identifier))
 
-    def scrape(self, query: str, count: int) -> list[dict[str, Any]]:
-        """Identifiers matching ``query``, capped at ``count``."""
-        params = urllib.parse.urlencode(
-            {
-                "q": query,
-                "fields": "identifier,title,creator,licenseurl,date",
-                "count": max(100, min(int(count), 10_000)),
-            }
-        )
+    def scrape(
+        self, query: str, count: int, sorts: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Identifiers matching ``query``, capped at ``count``.
+
+        ``sorts`` asks the Archive for a stable server-side ordering. It matters
+        for a collection larger than ``count``: without it, *which* ``count``
+        items come back is up to the search backend, so two runs of the same
+        plan can resolve to different episodes. With ``identifier asc`` the
+        first ``count`` are always the same ``count``.
+        """
+        fields = {
+            "q": query,
+            "fields": "identifier,title,creator,licenseurl,date",
+            "count": max(100, min(int(count), 10_000)),
+        }
+        if sorts:
+            fields["sorts"] = sorts
+        params = urllib.parse.urlencode(fields)
         payload = self._get_json(f"{_SCRAPE_URL}?{params}")
         items = payload.get("items")
         if not isinstance(items, list):
@@ -677,6 +802,24 @@ def _licence_verification(
             return "item_license_url", str(license_url)
         return None
 
+    if licence.basis == "declared_open_licence":
+        # Both halves, or nothing. An open licence on an item outside the show's
+        # own collection is a stranger's tag; membership of the collection
+        # without an open licence is a show that never granted one.
+        if not is_open_license_url(license_url):
+            return None
+        collections = item_metadata.get("collection")
+        if isinstance(collections, str):
+            collections = [collections]
+        present = {str(name) for name in (collections or [])}
+        overlap = sorted(present & set(licence.home_collections))
+        if not overlap:
+            return None
+        return (
+            "open_licence_in_home_collection",
+            f"{license_url} in {','.join(overlap)}",
+        )
+
     collections = item_metadata.get("collection")
     if isinstance(collections, str):
         collections = [collections]
@@ -804,7 +947,7 @@ def _select_from_item(
             "licence_verified_by": verified_by,
             "licence_evidence": evidence,
             "producing_agency": show.licence.agency,
-            "official_programme_url": show.licence.official_url,
+            "official_programme_url": show.licence.official_url or show.homepage,
         }
         selected.append(
             DiscoveredEpisode(
@@ -862,7 +1005,48 @@ def discover(plan: CorpusPlan, client: InternetArchiveClient) -> DiscoveryReport
                 "target-domain corpus only"
             )
         before = len(report.episodes)
-        if show.kind == "item_files":
+        if show.kind == "collection_items":
+            assert show.collection is not None
+            items = client.scrape(
+                f"collection:{show.collection} AND mediatype:audio",
+                plan.scrape_page_size,
+                sorts="identifier asc",
+            )
+            identifiers = sorted(
+                {
+                    str(item["identifier"])
+                    for item in items
+                    if item.get("identifier")
+                }
+            )
+            if not identifiers:
+                report.rejections.append(
+                    {
+                        "series_id": show.series_id,
+                        "collection": show.collection,
+                        "reason": "empty_collection",
+                        "detail": (
+                            "the collection returned no audio items; it may have "
+                            "been renamed or emptied"
+                        ),
+                    }
+                )
+            for identifier in identifiers[: plan.search_scan_limit]:
+                remaining = show.max_episodes - (len(report.episodes) - before)
+                if remaining <= 0:
+                    break
+                metadata = client.metadata(identifier)
+                report.episodes.extend(
+                    _select_from_item(
+                        show,
+                        identifier,
+                        metadata,
+                        min(show.files_per_item, remaining),
+                        taken,
+                        report.rejections,
+                    )
+                )
+        elif show.kind == "item_files":
             assert show.identifier is not None
             metadata = client.metadata(show.identifier)
             report.episodes.extend(
@@ -870,7 +1054,7 @@ def discover(plan: CorpusPlan, client: InternetArchiveClient) -> DiscoveryReport
                     show,
                     show.identifier,
                     metadata,
-                    show.max_episodes,
+                    min(show.files_per_item, show.max_episodes),
                     taken,
                     report.rejections,
                 )
@@ -954,6 +1138,11 @@ _HEADER = """\
 #                       dedication or the Public Domain Mark;
 #   agency_collection   the item is in an official federal agency collection,
 #                       which the item metadata proves;
+#   open_licence_in_home_collection
+#                       the item declares an open Creative Commons licence (CC0,
+#                       Public Domain Mark, CC BY or CC BY-SA) *and* sits in the
+#                       show's own home collection on the Archive, which the
+#                       corpus plan names alongside the show's homepage;
 #   manual_attestation  the corpus plan asserts, naming the agency and the
 #                       programme's official URL, that the recording is a work
 #                       of the United States federal government and therefore in

@@ -1,0 +1,705 @@
+# Corpus plan for the benchmark experiment, v2.
+#
+# WHAT THIS FILE IS. A declarative statement of which shows the corpus is built
+# from, how many episodes each may contribute, and under what licence. It is the
+# input to `slotify-rank dataset discover`, which reads the Internet Archive's
+# public metadata API and writes the concrete source registry
+# (ml/configs/sources_v2.yaml). That generated file is what
+# `dataset fetch` reads, and it is committed, so a clone reproduces exactly this
+# corpus without re-running discovery.
+#
+# ---------------------------------------------------------------------------
+# WHY V2 EXISTS, AND WHAT WAS WRONG WITH V1
+# ---------------------------------------------------------------------------
+#
+# v1 found exactly one genuine podcast series that was both openly licensed and
+# actually downloadable -- Houston We Have a Podcast -- and filled the rest of
+# the corpus with LibriVox dramatic readings and narrated prose. The grouped
+# split then did the only thing it could with that corpus: it put the single
+# podcast series in the test partition, alone, and left train and validation
+# with no podcast-format audio in them at all.
+#
+# That is not a podcast ad-break experiment. It is a cross-domain transfer
+# experiment -- train on audiobooks, test on one NASA interview programme --
+# reported as though it measured the product's actual task. Three separate
+# things were broken by it:
+#
+#   * the test partition was a single show, so the headline metric measured that
+#     show's editing style rather than the task, and a bootstrap over its six
+#     episodes is an interval around one programme;
+#   * the training distribution contained none of the target format, so the
+#     model never saw the thing it is graded on;
+#   * with one test group, "grouped, leakage-safe" was technically true and
+#     practically meaningless.
+#
+# v2 fixes the cause rather than the symptom. A second survey of openly licensed
+# audio on the Internet Archive -- this time not restricted to items whose
+# licence is a public-domain dedication -- found thirteen further genuine
+# podcast and talk-radio series that are self-published to their own collection
+# on the Archive under CC0, the Public Domain Mark, CC BY or CC BY-SA, and whose
+# files actually download. They are listed below under "genuine podcast series".
+#
+# The corpus is still not a corpus of commercial podcasts, and
+# docs/dataset-card.md says so in as many words. It is now a corpus in which the
+# target format is the majority of the audio and is represented in every
+# partition, which is the difference between an evaluation that is narrow and
+# one that is invalid.
+#
+# ---------------------------------------------------------------------------
+# WHY IT IS SHAPED LIKE THIS
+# ---------------------------------------------------------------------------
+#
+# * **Series are shows, and no show may dominate.** The split groups on
+#   series_id, so a show that supplied half the audio would land entirely in one
+#   partition and take half the corpus with it. Every show is therefore capped.
+# * **The target format leads.** Fourteen podcast-format series now carry the
+#   majority of the corpus. The LibriVox material stays: multi-voice dramatic
+#   readings are performed dialogue and narrated volumes supply series breadth,
+#   and both give the split enough independent groups to be meaningful. What
+#   changed is that they are no longer standing in for the real thing.
+# * **Episode length is bounded on both sides.** Below roughly four minutes an
+#   episode yields too few candidates to form within-episode ranking pairs.
+#   The upper bound is per-show: it is set from each show's own measured episode
+#   length so that a show whose episodes really are forty minutes contributes
+#   forty-minute episodes, rather than being excluded for being what it is. Two
+#   episodes per podcast show keeps any one of them from dominating its series.
+#
+# ---------------------------------------------------------------------------
+# LICENSING. Three bases, and discovery records which one applied to each
+# episode (`provenance.licence_verified_by` in the generated registry):
+#
+#   declared_public_domain
+#       The Internet Archive item itself declares a public-domain dedication or
+#       the Public Domain Mark. Discovery checks the item's `licenseurl` and
+#       drops anything that does not match. Used for LibriVox.
+#
+#   us_government_work
+#       The recording is a work of the United States federal government and is
+#       therefore in the public domain in the US under 17 U.S.C. Sec. 105. Here
+#       it is proved by the item's membership of the producing agency's own
+#       Internet Archive collection, which the metadata establishes -- not by an
+#       assertion.
+#
+#   declared_open_licence          (new in v2)
+#       The item declares an OPEN Creative Commons licence -- CC0, the Public
+#       Domain Mark, CC BY or CC BY-SA -- AND it sits in the show's own home
+#       collection on the Archive, which this plan names. Discovery requires
+#       both halves and drops the item if either is missing.
+#
+#       The second half is the whole point. There are tens of thousands of items
+#       where somebody uploaded somebody else's podcast and ticked "public
+#       domain"; a licence applied by a stranger is worth nothing, and v1 was
+#       right to refuse them. A show's own collection is where the show
+#       publishes itself, so a licence declared there is the publisher's own
+#       declaration. Every show below additionally records its `homepage`, which
+#       is NOT treated as evidence by any code -- it is recorded so a reader can
+#       confirm for themselves that the collection is the show's own, and it is
+#       how the third-party archives listed under REJECTED were caught.
+#
+#       NonCommercial and NoDerivatives variants do not qualify. They are
+#       Creative Commons but they are not open, and letting them in would make
+#       "openly licensed" mean two different things inside one corpus.
+#
+# ---------------------------------------------------------------------------
+# WHAT WAS SURVEYED AND REJECTED, so the next person does not repeat it:
+#
+# * **SoundCloud-mirrored NASA and DOE podcast feeds** (Gravity Assist, NASA in
+#   Silicon Valley, NASA EDGE, Curious Universe, Small Steps Giant Leaps, On a
+#   Mission, The Rocket Ranch, Direct Current). Publicly listed, metadata fully
+#   readable, and every file returns 401 on download: the items carry
+#   `access-restricted-item`. Discovery rejects those with reason
+#   `access_restricted` rather than letting the failure surface mid-fetch.
+# * **The whole `podcasts_mirror` tree** (~7,500 items scanned, including the
+#   Voice of America newscast mirrors and `podcasts_mirror_gnuarchives`, which
+#   carries genuinely CC BY-SA shows such as Free as in Freedom and Skeptics
+#   with a K). Every item sampled is `access-restricted-item: true` with
+#   `private: true` on its files. The licences are real; the audio is not
+#   obtainable. Same rejection as the SoundCloud mirrors, same reason.
+# * **NASACast Audio.** Its feed mixes ~100 s bulletins with 60-90 minute
+#   specials; nothing sits in a usable window.
+# * **Daily Tech News Show** (`dtns`). A real, well-known CC-licensed podcast,
+#   and rejected twice over: the licence is CC BY-ND, which is not open, and
+#   seven of eight items sampled are access-restricted anyway.
+# * **The Unofficial Mark and Brian Archive** (`markandbrianarchive`, 2,532
+#   items, uniformly Public Domain Mark). A fan's archive of a commercial
+#   broadcast radio show. The uploader is not the rights holder and the mark is
+#   theirs to apply to nothing. This is the exact category `declared_open_licence`
+#   exists to keep out, and it is kept out by the homepage check, not by code.
+# * **No Quarter** (`podcast_no-quarter_570584682`). Public Domain Mark on every
+#   item; the collection description says outright that it was "archived from
+#   iTunes" and that its items are restricted. Third party, not the publisher.
+# * **Hacker Public Radio** (`hackerpublicradio`, 4,440 items). Genuinely
+#   community-published and genuinely open in spirit, but the dominant declared
+#   licence in the sample is CC BY-NC-SA, which fails the open-licence bar. It
+#   would also be the wrong shape for a series-grouped split even if it passed:
+#   one feed carries hundreds of unrelated contributors recording in hundreds of
+#   rooms, so treating it as one group asserts a shared recording chain that
+#   does not exist, and splitting it into per-contributor groups would assert
+#   independence between episodes that share an editor and a publishing chain.
+# * **Cybersauce World News** (`cybersauce-world-news`). CC BY 4.0, downloadable,
+#   English, ~4 minute episodes -- and generated by a Markov bot. It is not
+#   human conversation and would teach the ranker nothing about where a human
+#   conversation can be interrupted.
+# * **Exploring the Illusion of Free Will** (`exploringtheillusionoffreewill_audio`).
+#   CC0/CC BY, downloadable, 27-minute episodes: it passes every mechanical
+#   check. Rejected because it shares its hosts, format and recording chain with
+#   `freewillsciencereligionpodcast`, which is already in the corpus below.
+#   Series grouping would treat the two as independent evidence when they are
+#   the same people at the same microphones, which is leakage wearing a
+#   different series_id. Only one of the pair is used.
+# * **Occupy Radio** (`occupyradio`). CC BY 3.0 and downloadable, but its files
+#   carry no `length` in the item metadata, so discovery cannot bound episode
+#   duration before fetching and rejects every file with `no_duration_metadata`.
+# * **The Sound Projector Radio Show, Music Manumit, Midnight Metal Monastery.**
+#   Open licences, real shows, predominantly music rather than speech.
+# * **Amicus Lectio, Nigel Simmons, Middlebury College lectures.** Open
+#   licences and real speech, but single-voice readings and lectures -- the
+#   corpus already has more narrated audio than it needs, and none of it is the
+#   target format.
+# * **Radio Continental Drift, the Goa,1556 collection.** Open licences, but
+#   multilingual and not a single show: a collection of field recordings by many
+#   contributors cannot honestly be called one series.
+# * **Third-party podcast uploads carrying uploader-applied public-domain
+#   marks** (~35,000 items in `collection:podcasts`). An uploader marking
+#   someone else's podcast as public domain does not make it so, and this corpus
+#   does not rest on that. `declared_open_licence` does not open this door: it
+#   requires the show's own collection, which these items are not in.
+#
+# Nothing here is a guessed URL: discovery resolves every download link from the
+# item's own file table.
+
+plan_version: corpus-plan-v1.0.0
+corpus_version: corpus-v2
+
+# A `search` show declares BOTH a query and an exact `creator`. The Archive's
+# scrape endpoint tokenizes a quoted `creator:"..."` phrase, so the query alone
+# returns every item sharing a word with the show name. The query is the recall
+# filter; `creator` is the precision filter applied to what comes back.
+#
+# `collection_items` shows need neither: the collection identifier IS the
+# precision filter, and a better one, because a show routinely varies its
+# creator string across episodes ("A and B", "A & B", "A, B and guest") while
+# its collection never moves.
+#
+# scrape_page_size must exceed the result set so filtering runs over the whole
+# of it rather than over an arbitrary first page; discovery also asks the
+# Archive for `sorts=identifier asc`, so for a collection larger than the page
+# size the first page is always the same first page. search_scan_limit then
+# bounds how many surviving items are opened with a metadata call.
+scrape_page_size: 2000
+search_scan_limit: 60
+
+defaults:
+  source_name: "Internet Archive"
+  language: en
+  min_duration_seconds: 300
+  max_duration_seconds: 900
+
+licences:
+  librivox_public_domain:
+    basis: declared_public_domain
+    name: "Public domain (LibriVox dedication / Public Domain Mark 1.0)"
+    url: https://creativecommons.org/publicdomain/mark/1.0/
+    attribution: "Read for LibriVox and released into the public domain; hosted by the Internet Archive."
+
+  nasa_official_upload:
+    basis: us_government_work
+    name: "U.S. Government work (17 U.S.C. Sec. 105) - public domain in the United States"
+    url: https://www.usa.gov/government-works
+    agency: "National Aeronautics and Space Administration"
+    official_url: https://www.nasa.gov/podcasts/houston-we-have-a-podcast/
+    # Machine-checkable: the item is in NASA's own Internet Archive collection,
+    # uploaded by NASA. No attestation is needed and none is offered.
+    agency_collections: [nasaaudiocollection, nasa]
+    attribution: "Produced by NASA. Public domain; uploaded by NASA to the Internet Archive."
+
+  voa_government_broadcast:
+    basis: us_government_work
+    name: "U.S. Government work (17 U.S.C. Sec. 105) - public domain in the United States"
+    url: https://www.usa.gov/government-works
+    agency: "Voice of America (U.S. Agency for Global Media)"
+    official_url: https://www.voanews.com/
+    # The items declare the Public Domain Mark AND name VOA as creator, but the
+    # basis does not rest on either: VOA is a federal broadcaster, so its
+    # programmes are US government works however the Archive record is tagged.
+    # No agency-owned collection exists to point at, so this one is an explicit
+    # attestation rather than a machine check, and says so.
+    attestation: >-
+      Voice of America is the United States' federal international broadcaster,
+      operated by the U.S. Agency for Global Media. Its programmes are works of
+      the United States federal government and are in the public domain in the
+      United States under 17 U.S.C. Sec. 105. The Archive items additionally
+      declare the Public Domain Mark and name VOA as creator, which is
+      corroboration rather than the basis.
+    attribution: "Produced by the Voice of America, a U.S. government agency. Public domain in the United States."
+
+  # New in v2. See the LICENSING note above for why both halves are required.
+  open_licence_self_published:
+    basis: declared_open_licence
+    name: "Open Creative Commons licence declared by the publisher (CC0, PDM, CC BY or CC BY-SA)"
+    url: https://creativecommons.org/
+    attribution: >-
+      Published by its creator to their own Internet Archive collection under an
+      open Creative Commons licence; the exact licence URL declared by each
+      episode is recorded per source entry.
+
+shows:
+  # =========================================================================
+  # GENUINE PODCAST SERIES -- the target format, and the majority of the corpus
+  # =========================================================================
+
+  # -- U.S. government programmes: strongest licence basis available ---------
+
+  - series_id: houston-we-have-a-podcast
+    title: "Houston We Have a Podcast"
+    content_type: podcast
+    licence: nasa_official_upload
+    selection:
+      kind: item_files
+      identifier: Houston-We-Have-a-Podcast
+      max_episodes: 3
+    min_duration_seconds: 900
+    max_duration_seconds: 1800
+    homepage: https://www.nasa.gov/podcasts/houston-we-have-a-podcast/
+    notes: >-
+      NASA Johnson Space Center's interview podcast, uploaded by NASA itself.
+      Capped at 3 episodes in v2, down from 6: with thirteen more podcast series
+      in the corpus it no longer has to carry the format on its own, and at 6
+      episodes it was a quarter of all podcast audio and distorted the split.
+
+  - series_id: voa-our-world
+    title: "VOA Our World"
+    content_type: podcast
+    licence: voa_government_broadcast
+    selection:
+      kind: collection_items
+      collection: voaourworld
+      max_episodes: 2
+    min_duration_seconds: 900
+    max_duration_seconds: 1800
+    homepage: https://www.voanews.com/
+    notes: >-
+      Voice of America's weekly science and technology programme: interviews,
+      news stories and features, ~23 minutes, published as a podcast. 318 items
+      in the collection, none access-restricted.
+
+  # -- Self-published podcasts under open Creative Commons licences ----------
+  #
+  # Every show here declares its own licence in its own Archive collection. The
+  # `homepage` is recorded so a reader can check that claim; it is not evidence
+  # and no code reads it.
+
+  - series_id: the-command-line
+    title: "The Command Line Podcast"
+    content_type: podcast
+    licence: open_licence_self_published
+    selection:
+      kind: collection_items
+      collection: thecommandline
+      max_episodes: 2
+    min_duration_seconds: 360
+    max_duration_seconds: 1500
+    homepage: https://thecommandline.net/
+    notes: >-
+      Thomas Gideon's long-running podcast on programming, politics and
+      technology. CC BY-SA 3.0 US on essentially every item; 183 items, all
+      sampled episodes between 7 and 23 minutes.
+
+  - series_id: rubenerd-show
+    title: "The Rubenerd Show"
+    content_type: podcast
+    licence: open_licence_self_published
+    selection:
+      kind: collection_items
+      collection: rubenerdshow
+      max_episodes: 2
+    min_duration_seconds: 360
+    max_duration_seconds: 1700
+    homepage: https://rubenerd.com/
+    notes: >-
+      Ruben Schade's personal podcast, running since 2005. CC BY-SA 3.0,
+      435 items, episodes clustered around 10 minutes.
+
+  - series_id: what-is-it-about-the-weather
+    title: "What Is It About The Weather?"
+    content_type: podcast
+    licence: open_licence_self_published
+    selection:
+      kind: collection_items
+      collection: whatisitabouttheweather
+      max_episodes: 2
+    min_duration_seconds: 480
+    max_duration_seconds: 1900
+    homepage: https://www.whatisitabouttheweather.com/
+    notes: >-
+      Mark T Jelinek's interview podcast on weather and its effect on daily
+      life. CC BY-SA 4.0 on all 222 items; episodes 9-31 minutes.
+
+  - series_id: free-will-science-and-religion
+    title: "Free Will, Science, and Religion"
+    content_type: podcast
+    licence: open_licence_self_published
+    selection:
+      kind: collection_items
+      collection: freewillsciencereligionpodcast
+      max_episodes: 2
+    min_duration_seconds: 480
+    max_duration_seconds: 1900
+    homepage: http://causalconsciousness.com/
+    notes: >-
+      Multi-host philosophy discussion podcast (Chandler Klebs, George Ortega
+      and rotating guests). Public Domain Mark on all 172 items; genuinely
+      multi-speaker conversation, ~30 minutes. See the REJECTED note about
+      `exploringtheillusionoffreewill_audio`, which shares its hosts and is
+      therefore deliberately absent.
+
+  - series_id: labor-express-radio
+    title: "Labor Express Radio"
+    content_type: podcast
+    licence: open_licence_self_published
+    selection:
+      kind: collection_items
+      collection: LaborExpressRadio
+      max_episodes: 2
+    min_duration_seconds: 600
+    max_duration_seconds: 1800
+    homepage: https://laborexpress.blogspot.com/
+    notes: >-
+      Chicago labour news and current-affairs programme, also published as a
+      podcast. CC BY 4.0 on the majority of items; the NC-licensed minority is
+      dropped by the open-licence check, which is the check working.
+
+  - series_id: the-cinematic-tangent
+    title: "The Cinematic Tangent"
+    content_type: podcast
+    licence: open_licence_self_published
+    selection:
+      kind: collection_items
+      collection: thecinematictangent
+      max_episodes: 2
+    min_duration_seconds: 420
+    max_duration_seconds: 2100
+    homepage: https://cinematictangent.com/
+    notes: >-
+      Two-host conversational film podcast (Chad Michael Van Alstin and Bradley
+      Redder). CC BY-SA 3.0 on the majority; NC and ND episodes are dropped.
+
+  - series_id: open-source-musician
+    title: "The Open Source Musician Podcast"
+    content_type: podcast
+    licence: open_licence_self_published
+    selection:
+      kind: collection_items
+      collection: osmpodcast
+      max_episodes: 2
+    min_duration_seconds: 900
+    max_duration_seconds: 2100
+    homepage: https://osmpodcast.com/
+    notes: >-
+      Interview and discussion podcast on open-source audio tooling. CC BY-SA
+      3.0 on all 81 items. Talk-led despite the subject; music beds are short.
+
+  - series_id: building-bridges-radio
+    title: "Building Bridges: Your Community & Labor Report"
+    content_type: podcast
+    licence: open_licence_self_published
+    selection:
+      kind: collection_items
+      collection: building_bridges
+      max_episodes: 2
+    min_duration_seconds: 900
+    max_duration_seconds: 2100
+    homepage: http://www.buildingbridgesradio.blogspot.com/
+    notes: >-
+      Two-host labour and community interview programme (Mimi Rosenberg and Ken
+      Nash), consistently ~28 minutes. Most items are CC BY-ND and are dropped;
+      the CC BY 3.0/4.0 minority supplies the two episodes.
+
+  - series_id: amiga-ireland
+    title: "Amiga Ireland"
+    content_type: podcast
+    licence: open_licence_self_published
+    selection:
+      kind: collection_items
+      collection: amiga-ireland
+      max_episodes: 2
+    min_duration_seconds: 300
+    max_duration_seconds: 1800
+    homepage: https://amigausers.ie/
+    notes: >-
+      Community podcast and recorded talks from the Amiga Ireland project.
+      CC BY 4.0 on the large majority of its 81 items.
+
+  - series_id: gruesome-hertzogg
+    title: "Gruesome Hertzogg Podcast"
+    content_type: podcast
+    licence: open_licence_self_published
+    selection:
+      kind: collection_items
+      collection: gruesomehertzogg
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 900
+    homepage: https://gruesomehertzogg.podbean.com/
+    notes: >-
+      Horror-film review and interview podcast. CC0 and Public Domain Mark on
+      the large majority of its 1,966 items. Short episodes, which is useful:
+      the corpus should not consist only of half-hour shows.
+
+  - series_id: filibuster-podcast
+    title: "Filibuster - The Black and Red United Podcast"
+    content_type: podcast
+    licence: open_licence_self_published
+    selection:
+      kind: collection_items
+      collection: filibusterpodcast
+      max_episodes: 2
+    min_duration_seconds: 1200
+    max_duration_seconds: 2400
+    homepage: http://blackandredunited.com/
+    notes: >-
+      Panel sports podcast, several speakers per episode. CC BY-SA 4.0 on
+      essentially all 523 items. Longer episodes (30-40 min) by design: real
+      mid-roll placement happens in episodes this length.
+
+  - series_id: the-final-straw-radio
+    title: "The Final Straw Radio"
+    content_type: podcast
+    licence: open_licence_self_published
+    selection:
+      kind: collection_items
+      collection: thefinalstrawradio
+      max_episodes: 2
+    min_duration_seconds: 3300
+    max_duration_seconds: 3900
+    homepage: https://thefinalstrawradio.noblogs.org/
+    notes: >-
+      Weekly interview programme, syndicated to community radio and published as
+      a podcast. Public Domain Mark on the large majority of its 799 items.
+      The longest-form show in the corpus: its episodes are a consistent ~59
+      minutes, so the window is set around that rather than excluding the show
+      for being the length it actually is. Real mid-roll placement happens in
+      episodes this long, and no other show here reaches it.
+
+  # =========================================================================
+  # MULTI-VOICE DRAMATIC READINGS: performed dialogue, one book per series
+  #
+  # A cast reading a novel's dialogue is not a podcast, but it is two or more
+  # people speaking in turn, which is the structure the ranker has to read. Each
+  # book is its own series: different casts, different recording chains. They
+  # are kept from v1 because they give the split enough independent groups; they
+  # are no longer standing in for the target format.
+  # =========================================================================
+
+  - series_id: librivox-dramatic-tom-sawyer
+    title: "The Adventures of Tom Sawyer (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: adventures_of_tom_sawyer_1402_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-agnes-grey
+    title: "Agnes Grey (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: agnes_grey_1208_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-alice-in-wonderland
+    title: "Alice's Adventures in Wonderland (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: aliceinwonderland_1102_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-anne-of-green-gables
+    title: "Anne of Green Gables (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: anneofgreengables_1102_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-black-beauty
+    title: "Black Beauty (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: blackbeautydramatic_1703_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-christmas-carol
+    title: "A Christmas Carol (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: christmascarol_1104_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-daisy-miller
+    title: "Daisy Miller (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: daisy_miller_dramatic_reading_1308_librivox
+      max_episodes: 2
+    min_duration_seconds: 180
+    max_duration_seconds: 1500
+
+  - series_id: librivox-dramatic-doctor-dolittle
+    title: "The Story of Doctor Dolittle (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: doctordolittledramatic_1511_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-jekyll-and-hyde
+    title: "The Strange Case of Jekyll and Hyde (dramatic reading)"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: drjekyllandmrhydedr_1505_librivox
+      max_episodes: 2
+
+  - series_id: librivox-dramatic-scene-and-story-002
+    title: "Dramatic Reading Scene and Story Collection Vol. 002"
+    content_type: conversational
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: dramaticreadingsceneandstorycollectionvolume002_2005_librivox
+      max_episodes: 2
+    min_duration_seconds: 180
+    max_duration_seconds: 1500
+
+  # =========================================================================
+  # LIBRIVOX NARRATED PROSE: series breadth
+  #
+  # Each collection volume is its own series: the volumes share a publisher but
+  # not a reader, a topic or a recording chain, which is exactly the
+  # independence the split needs. Volumes already registered by
+  # configs/sources_real_v1.yaml (013, 064, 067, 072) are deliberately absent.
+  # =========================================================================
+
+  - series_id: librivox-short-nonfiction-030
+    title: "LibriVox Short Nonfiction Collection Vol. 030"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: nonfiction030_1308_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-036
+    title: "LibriVox Short Nonfiction Collection Vol. 036"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: nonfiction036_1501_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-042
+    title: "LibriVox Short Nonfiction Collection Vol. 042"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: nonfiction042_1604_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-048
+    title: "LibriVox Short Nonfiction Collection Vol. 048"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: nonfiction048_1705_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-054
+    title: "LibriVox Short Nonfiction Collection Vol. 054"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: nonfiction054_1801_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-060
+    title: "LibriVox Short Nonfiction Collection Vol. 060"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: nonfiction060_1810_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-066
+    title: "LibriVox Short Nonfiction Collection Vol. 066"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: nonfiction066_1907_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-079
+    title: "LibriVox Short Nonfiction Collection Vol. 079"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: snf079_2101_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-083
+    title: "LibriVox Short Nonfiction Collection Vol. 083"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: snf083_2106_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480
+
+  - series_id: librivox-short-nonfiction-103
+    title: "LibriVox Short Nonfiction Collection Vol. 103"
+    content_type: narrated
+    licence: librivox_public_domain
+    selection:
+      kind: item_files
+      identifier: snf103_2406a_librivox
+      max_episodes: 2
+    min_duration_seconds: 240
+    max_duration_seconds: 480

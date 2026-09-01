@@ -29,8 +29,8 @@ during `pipeline features`.
 ## 0. The whole thing, in two commands
 
 ```powershell
-.\.venv\Scripts\python.exe -m slotify_rank.cli dataset prepare-resume-experiment
-.\.venv\Scripts\python.exe -m slotify_rank.cli label resume-experiment
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset prepare-experiment
+.\.venv\Scripts\python.exe -m slotify_rank.cli label run-experiment
 ```
 
 The first runs every stage in sections 1 and 2 in order and ends with a
@@ -47,7 +47,7 @@ Archive metadata API — real identifier, real file, real licence:
 | Registry | What it holds |
 |---|---|
 | `ml/configs/sources_real_v1.yaml` | The first six LibriVox series (ten episodes), hand-written and verified. |
-| `ml/configs/sources_resume_v1.yaml` | **Generated** by `dataset discover` from `ml/configs/corpus_resume_v1.yaml`: one real interview podcast, ten multi-voice dramatic readings and ten narrated volumes. |
+| `ml/configs/sources_v2.yaml` | **Generated** by `dataset discover` from `ml/configs/corpus_v2.yaml`: one real interview podcast, ten multi-voice dramatic readings and ten narrated volumes. |
 
 Only openly licensed audio is used, and every generated entry records *how* its
 licence was established — see [`dataset-card.md`](dataset-card.md#sources-and-licensing).
@@ -83,9 +83,9 @@ done, so re-running after an interruption costs only what was lost.
 
 # Freeze the series-aware split (v3 is the current corpus; v1 was the smoke
 # split and v2 the first six real series -- a manifest is immutable per version).
-.\.venv\Scripts\python.exe -m slotify_rank.cli dataset split --config configs\splits_v3.yaml
-.\.venv\Scripts\python.exe -m slotify_rank.cli dataset validate --split-version v3
-.\.venv\Scripts\python.exe -m slotify_rank.cli dataset stats    --split-version v3
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset split --config configs\splits_v4.yaml
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset validate --split-version v4
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset stats    --split-version v4
 ```
 
 The measured size of the processed corpus is written to
@@ -104,8 +104,8 @@ and a per-episode cap; every other dimension is reported as coverage.
 
 ```powershell
 .\.venv\Scripts\python.exe -m slotify_rank.cli label queue `
-    --config configs\labelling_queue_resume_v1.yaml --split-version v3 `
-    --output data\labels\queue_resume_v1.json
+    --config configs\labelling_queue_full_v2.yaml --split-version v4 `
+    --output data\labels\queue_full-v2.json
 ```
 
 The artifact records the score-tertile boundaries, the candidate- and
@@ -135,7 +135,7 @@ The queue is immutable once labels are collected against it: to change it, bump
 ## 4. Label
 
 ```powershell
-.\.venv\Scripts\python.exe -m slotify_rank.cli label resume-experiment
+.\.venv\Scripts\python.exe -m slotify_rank.cli label run-experiment
 # -> pre-cuts every clip, prints what is left, serves http://127.0.0.1:8000/
 ```
 
@@ -173,8 +173,8 @@ Check quality and export as you go (both are safe to re-run):
 
 ```powershell
 .\.venv\Scripts\python.exe -m slotify_rank.cli label check  `
-    --queue data\labels\queue_resume_v1.json --split-version v3
-.\.venv\Scripts\python.exe -m slotify_rank.cli label export --dataset-version resume-v1
+    --queue data\labels\queue_full-v2.json --split-version v4
+.\.venv\Scripts\python.exe -m slotify_rank.cli label export --dataset-version full-v2
 ```
 
 `label check` reports invalid ratings, orphaned labels, acceptability
@@ -186,7 +186,7 @@ its first blind repeats — as warnings, never by altering a human judgement.
 
 ```powershell
 .\.venv\Scripts\python.exe -m slotify_rank.cli experiment readiness `
-    --queue data\labels\queue_resume_v1.json --split-version v3
+    --queue data\labels\queue_full-v2.json --split-version v4
 ```
 
 The comparison may begin only when this reports ready. The gate
@@ -202,32 +202,32 @@ When the gate passes, freeze an immutable snapshot before training:
 
 ```powershell
 .\.venv\Scripts\python.exe -m slotify_rank.cli experiment freeze `
-    --snapshot-version resume-v1 --split-version v3 `
-    --queue data\labels\queue_resume_v1.json
+    --snapshot-version full-v2 --split-version v4 `
+    --queue data\labels\queue_full-v2.json
 
 # Then pin the whole experiment -- split hash, label hash, model and baseline
 # configs -- before the test split is read.
 .\.venv\Scripts\python.exe -m slotify_rank.cli experiment manifest --require-ready
 ```
 
-See [`resume-experiment.md`](resume-experiment.md) for what happens next.
+See [`evaluation-evidence.md`](evaluation-evidence.md) for what happens next.
 
 ## 6. Where things are
 
 | Artifact | Location | Committed? |
 |---|---|---|
-| Corpus plan | `ml/configs/corpus_resume_v1.yaml` | yes |
-| Source registries | `ml/configs/sources_real_v1.yaml`, `sources_resume_v1.yaml` (generated) | yes |
-| Queue config | `ml/configs/labelling_queue_resume_v1.yaml` | yes |
-| Split config | `ml/configs/splits_v3.yaml` | yes |
-| Experiment definition | `ml/configs/experiment_resume_v1.yaml` | yes |
+| Corpus plan | `ml/configs/corpus_v2.yaml` | yes |
+| Source registries | `ml/configs/sources_real_v1.yaml`, `sources_v2.yaml` (generated) | yes |
+| Queue config | `ml/configs/labelling_queue_full_v2.yaml` | yes |
+| Split config | `ml/configs/splits_v4.yaml` | yes |
+| Experiment definition | `ml/configs/experiment_v2.yaml` | yes |
 | Fetched audio, normalized WAV | `data/raw/`, `data/normalized/` | no (git-ignored) |
 | Candidate / feature manifests | `data/manifests/` | no |
-| Queue artifact | `data/labels/queue_resume_v1.json` | no |
+| Queue artifact | `data/labels/queue_full-v2.json` | no |
 | Label store | `data/labels/labels.sqlite3` | no |
-| Label export | `data/labels/labels_resume-v1.jsonl` (+ `.meta.json`) | no |
-| Frozen snapshot | `data/labels/label_snapshot_resume-v1.json` | no |
-| Experiment manifest | `artifacts/experiments/experiment-resume-v1.json` | yes |
+| Label export | `data/labels/labels_full-v2.jsonl` (+ `.meta.json`) | no |
+| Frozen snapshot | `data/labels/label_snapshot_full-v2.json` | no |
+| Experiment manifest | `artifacts/experiments/experiment-v2.json` | yes |
 | Readiness report | `artifacts/experiments/readiness_report.json` | yes (no private data) |
 | Dataset statistics | `artifacts/dataset/*.json` | yes |
 
@@ -238,9 +238,8 @@ See [`resume-experiment.md`](resume-experiment.md) for what happens next.
 The machinery is complete and tested, the corpus is processed and the queue is
 built. The one thing no command can do is form judgements, so the current human
 label count is whatever the label store holds — read it from
-`artifacts/dataset/label_statistics.json`, or from the checklist in
-`artifacts/reports/resume_evidence.md`, rather than from this sentence.
+`artifacts/dataset/label_statistics.json` rather than from this sentence.
 
 Until that count clears the gate, the readiness report says so and the held-out
 comparison refuses to publish. The single remaining action is `label
-resume-experiment` (§4).
+run-experiment` (§4).

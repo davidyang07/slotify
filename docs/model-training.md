@@ -24,7 +24,7 @@ be learnable, nothing more.
 The ablation matrix *is* built here, by `experiment train` — see
 [Real training](#real-training-once-the-human-labels-exist) — but which of its
 runs may be quoted, and against what, is decided by
-[`resume-experiment.md`](resume-experiment.md).
+[`evaluation-evidence.md`](evaluation-evidence.md).
 
 ---
 
@@ -334,20 +334,20 @@ the selection rule:
 cd ml
 
 # 1. Export the human labels and confirm the gate the experiment declares.
-python -m slotify_rank.cli label export --dataset-version resume-v1
-python -m slotify_rank.cli experiment readiness --split-version v3 \
-    --experiment-config configs/experiment_resume_v1.yaml --require-ready
+python -m slotify_rank.cli label export --dataset-version full-v2
+python -m slotify_rank.cli experiment readiness --split-version v4 \
+    --experiment-config configs/experiment_v2.yaml --require-ready
 
 # 2. Confirm the features are current, recomputing nothing already cached.
 python -m slotify_rank.cli pipeline features
 
 # 3. Every declared ablation at every declared seed, in one command.
 python -m slotify_rank.cli experiment train \
-    --labels ../data/labels/labels_resume-v1.jsonl --split-version v3
+    --labels ../data/labels/labels_full-v2.jsonl --split-version v4
 ```
 
 That writes one run directory per (variant, seed) cell plus
-`artifacts/experiments/experiment-resume-v1-training-matrix.json`, which carries
+`artifacts/experiments/experiment-v2-training-matrix.json`, which carries
 every run's validation NDCG@3, the per-variant spread, and the run it nominates.
 
 **The nominated run is the median seed by validation NDCG@3, not the best.**
@@ -363,7 +363,7 @@ The resulting `training_summary.json` files carry `data_provenance: real` and
 be quoted as measurements of this system. The comparison against
 `heuristic_offline_v1` and the headline NDCG improvement belong to
 `evaluation compare`, on the test split, once — see
-[`resume-experiment.md`](resume-experiment.md).
+[`evaluation-evidence.md`](evaluation-evidence.md).
 
 ## How training differs from evaluation
 

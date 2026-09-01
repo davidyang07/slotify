@@ -1,4 +1,4 @@
-# Labelling queue for the resume experiment.
+# Labelling queue for the benchmark experiment.
 #
 # A queue built from this file is deterministic: the same candidate manifest, the
 # same split and this config produce a byte-identical queue on any machine. Bump
@@ -38,7 +38,7 @@
 #     more without letting any one of them dominate the labelled set.
 
 queue:
-  version: resume-v1
+  version: full-v1
   seed: 20260829
 
   target_unique: 2400

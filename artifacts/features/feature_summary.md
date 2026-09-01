@@ -6,12 +6,12 @@ Pipeline version `featurepipeline-v1.0.0`, feature spec `featurespec-v1.1.0`.
 
 | Quantity | Value |
 | --- | ---: |
-| Episodes selected | 13 |
-| Episodes with feature records | 13 |
-| Episodes transcribed | 13 |
+| Episodes selected | 77 |
+| Episodes with feature records | 77 |
+| Episodes transcribed | 84 |
 | Transcription failures | 0 |
-| Transcript segments | 743 |
-| Transcribed audio (hours) | 0.8213 |
+| Transcript segments | 17056 |
+| Transcribed audio (hours) | 17.7692 |
 
 ## Candidates
 
@@ -20,9 +20,9 @@ usable training example with a mask, but it is not a complete one.
 
 | Status | Count |
 | --- | ---: |
-| Processed | 595 |
-| Complete multimodal | 583 |
-| Audio only | 12 |
+| Processed | 13176 |
+| Complete multimodal | 12930 |
+| Audio only | 246 |
 | Text only | 0 |
 | Handcrafted only (no learned modality) | 0 |
 | Failed | 0 |
@@ -31,18 +31,17 @@ usable training example with a mask, but it is not a complete one.
 
 | Split | Count |
 | --- | ---: |
-| test | 268 |
-| train | 260 |
-| validation | 67 |
+| test | 2275 |
+| train | 8892 |
+| validation | 2009 |
 
 ### By content type
 
 | Content type | Count |
 | --- | ---: |
-| conversational | 274 |
-| music | 4 |
-| narrated | 314 |
-| podcast | 3 |
+| conversational | 3240 |
+| narrated | 1899 |
+| podcast | 8037 |
 
 ## Dimensions
 
@@ -62,27 +61,28 @@ four concatenated blocks of MiniLM's native output.
 
 | Quantity | Value |
 | --- | ---: |
-| Hits | 0 |
-| Misses | 0 |
-| Hit rate | n/a |
-| Total runtime (s) | 0 |
+| Hits | 36 |
+| Misses | 272 |
+| Hit rate | 0.1169 |
+| Total runtime (s) | 21144.014 |
 
 ## Features with missing values
 
 | Feature | Missing rate |
 | --- | ---: |
 | `sentence_end` | 1.000 |
-| `context_cosine_similarity` | 0.020 |
-| `semantic_change_score` | 0.020 |
-| `transcript_inter_segment_pause_ms` | 0.020 |
-| `chars_before` | 0.018 |
-| `prior_segment_duration_ms` | 0.018 |
-| `terminal_punctuation_ordinal` | 0.018 |
-| `transcript_gap_before_ms` | 0.018 |
-| `transcript_sentence_end` | 0.018 |
-| `words_before` | 0.018 |
-| `chars_after` | 0.002 |
-| `following_segment_duration_ms` | 0.002 |
-| `transcript_gap_after_ms` | 0.002 |
-| `words_after` | 0.002 |
+| `context_cosine_similarity` | 0.019 |
+| `semantic_change_score` | 0.019 |
+| `transcript_inter_segment_pause_ms` | 0.019 |
+| `chars_before` | 0.014 |
+| `prior_segment_duration_ms` | 0.014 |
+| `terminal_punctuation_ordinal` | 0.014 |
+| `transcript_gap_before_ms` | 0.014 |
+| `transcript_sentence_end` | 0.014 |
+| `words_before` | 0.014 |
+| `chars_after` | 0.007 |
+| `following_segment_duration_ms` | 0.007 |
+| `transcript_gap_after_ms` | 0.007 |
+| `words_after` | 0.007 |
+| `ms_until_next_speech` | 0.000 |
 

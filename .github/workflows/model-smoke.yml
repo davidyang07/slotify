@@ -52,6 +52,6 @@ jobs:
         working-directory: ml
         run: |
           python -m slotify_rank.cli dataset discover \
-            --plan configs/corpus_resume_v1.yaml \
-            --output configs/sources_resume_v1.yaml \
+            --plan configs/corpus_v2.yaml \
+            --output configs/sources_v2.yaml \
             --check

@@ -67,3 +67,13 @@ artifacts/**
 
 # Claude Code
 CLAUDE.md
+# Local-only claim-verification material. The generator and its report are kept
+# out of the published tree; they are regenerable on a working checkout and are
+# not needed to build, test or run anything here.
+/docs/experiment-protocol.md
+/scripts/claim-evidence.mjs
+/ml/src/slotify_rank/evaluation/claim_evidence.py
+/ml/tests/test_claim_evidence.py
+/artifacts/reports/claim_evidence.json
+/artifacts/reports/claim_evidence.md
+/artifacts/dataset/discovery_v2.json

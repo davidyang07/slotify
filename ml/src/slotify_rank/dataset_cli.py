@@ -142,7 +142,7 @@ def _cmd_discover(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_prepare_resume_experiment(args: argparse.Namespace) -> int:
+def _cmd_prepare_experiment(args: argparse.Namespace) -> int:
     """Take the committed corpus plan all the way to "ready to label".
 
     Fetch, probe, normalize, generate, split, transcribe, featurise, embed,
@@ -157,7 +157,7 @@ def _cmd_prepare_resume_experiment(args: argparse.Namespace) -> int:
 
     paths = _paths(args)
     # The queue file is named after the queue CONFIG's version, not this
-    # command's arguments, so `label resume-experiment` looks in the same place
+    # command's arguments, so `label run-experiment` looks in the same place
     # `label queue` wrote to. Passing --queue-output overrides both.
     queue_output = args.queue_output or str(
         paths.labels_dir / f"queue_{args.queue_version}.json"
@@ -181,7 +181,7 @@ def _cmd_prepare_resume_experiment(args: argparse.Namespace) -> int:
         limit=args.limit,
     )
 
-    print(f"Preparing the resume experiment corpus ({len(steps)} steps).")
+    print(f"Preparing the benchmark experiment corpus ({len(steps)} steps).")
     report = run_preparation(steps, corpus_version=args.corpus_version)
 
     readiness = summarise_readiness(
@@ -290,6 +290,39 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
         f"Fetched {len(fetched)} source(s): {added} new, {updated} updated, "
         f"{total} episode(s) in the manifest."
     )
+    return 0
+
+
+def _cmd_reconcile(args: argparse.Namespace) -> int:
+    """Drop manifest episodes no committed registry declares."""
+    from slotify_rank.data.reconcile import reconcile_manifest, write_report
+
+    paths = _paths(args)
+    registries = list(args.sources or getattr(args, "sources_default", []))
+    if not registries:
+        print("error: no source registry given", file=sys.stderr)
+        return 1
+
+    report = reconcile_manifest(
+        episodes_path=paths.episodes_manifest,
+        candidates_path=paths.candidates_manifest,
+        features_path=paths.features_manifest,
+        registries=registries,
+        keep_local=not args.drop_local,
+        dry_run=args.check,
+    )
+    for line in report.lines():
+        print(line)
+    if args.report:
+        write_report(Path(args.report), report)
+        print(f"Wrote {args.report}")
+    if args.check and report.changed:
+        print(
+            "error: the episode manifest holds episodes no committed registry "
+            "declares. Re-run without --check to remove them.",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
@@ -734,7 +767,7 @@ def _cmd_label_serve(args: argparse.Namespace) -> int:
     return _serve_labelling_app(args, paths, episodes, eligible, queue)
 
 
-def _cmd_label_resume_experiment(args: argparse.Namespace) -> int:
+def _cmd_label_run_experiment(args: argparse.Namespace) -> int:
     """One command that leaves nothing to do but the labelling itself.
 
     Everything that can be prepared mechanically is prepared here -- the queue is
@@ -753,10 +786,10 @@ def _cmd_label_resume_experiment(args: argparse.Namespace) -> int:
     if not Path(args.queue).is_file():
         print(
             f"error: no labelling queue at {args.queue}. Build the corpus with:\n"
-            "    slotify-rank dataset prepare-resume-experiment\n"
+            "    slotify-rank dataset prepare-experiment\n"
             "or, if it is already prepared, just the queue:\n"
             "    slotify-rank label queue "
-            "--config ml/configs/labelling_queue_resume_v1.yaml --split-version v3",
+            "--config ml/configs/labelling_queue_full_v2.yaml --split-version v4",
             file=sys.stderr,
         )
         return 1
@@ -768,7 +801,7 @@ def _cmd_label_resume_experiment(args: argparse.Namespace) -> int:
     if not eligible:
         print(
             "error: the queue names no candidate present in the manifest. Run "
-            "`dataset prepare-resume-experiment` first.",
+            "`dataset prepare-experiment` first.",
             file=sys.stderr,
         )
         return 1
@@ -982,12 +1015,12 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     discover_parser.add_argument(
         "--plan",
-        default="ml/configs/corpus_resume_v1.yaml",
+        default="ml/configs/corpus_v2.yaml",
         help="Corpus plan to resolve.",
     )
     discover_parser.add_argument(
         "--output",
-        default="ml/configs/sources_resume_v1.yaml",
+        default="ml/configs/sources_v2.yaml",
         help="Source registry to write (committed).",
     )
     discover_parser.add_argument(
@@ -1002,10 +1035,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     discover_parser.set_defaults(func=_cmd_discover)
 
     prepare_parser = dataset_sub.add_parser(
-        "prepare-resume-experiment",
+        "prepare-experiment",
         help=(
             "One command: acquire, generate, featurise, split, validate, count "
-            "and queue the corpus for the resume experiment."
+            "and queue the corpus for the benchmark experiment."
         ),
     )
     _add_common(prepare_parser)
@@ -1015,7 +1048,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         default=None,
         help=(
             "Source registry to fetch (repeatable). Defaults to the two committed "
-            "registries: sources_real_v1.yaml and sources_resume_v1.yaml."
+            "registries: sources_real_v1.yaml and sources_v2.yaml."
         ),
     )
     prepare_parser.add_argument(
@@ -1026,22 +1059,22 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     prepare_parser.add_argument(
         "--dataset-config", default="ml/configs/dataset_v1.yaml"
     )
-    prepare_parser.add_argument("--split-config", default="ml/configs/splits_v3.yaml")
-    prepare_parser.add_argument("--split-version", default="v3")
+    prepare_parser.add_argument("--split-config", default="ml/configs/splits_v4.yaml")
+    prepare_parser.add_argument("--split-version", default="v4")
     prepare_parser.add_argument(
-        "--queue-config", default="ml/configs/labelling_queue_resume_v1.yaml"
+        "--queue-config", default="ml/configs/labelling_queue_full_v2.yaml"
     )
     prepare_parser.add_argument("--queue-output", default=None)
     prepare_parser.add_argument(
         "--queue-version",
-        default="resume-v1",
+        default="full-v2",
         dest="queue_version",
         help=(
             "Must match `queue.version` in the queue config; it names the queue "
-            "file that `label resume-experiment` then opens."
+            "file that `label run-experiment` then opens."
         ),
     )
-    prepare_parser.add_argument("--corpus-version", default="corpus-resume-v1")
+    prepare_parser.add_argument("--corpus-version", default="corpus-v2")
     prepare_parser.add_argument(
         "--target-labels",
         type=int,
@@ -1082,10 +1115,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Exit non-zero when the corpus cannot support the labelling target.",
     )
     prepare_parser.set_defaults(
-        func=_cmd_prepare_resume_experiment,
+        func=_cmd_prepare_experiment,
         sources_default=[
             "ml/configs/sources_real_v1.yaml",
-            "ml/configs/sources_resume_v1.yaml",
+            "ml/configs/sources_v2.yaml",
         ],
     )
 
@@ -1111,6 +1144,42 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--timeout", type=float, default=120.0, help="Per-request timeout in seconds."
     )
     fetch_parser.set_defaults(func=_cmd_fetch)
+
+    reconcile_parser = dataset_sub.add_parser(
+        "reconcile",
+        help=(
+            "Remove episodes the committed registries no longer declare "
+            "(fetch is additive, so a corpus version bump leaves strays)."
+        ),
+    )
+    _add_common(reconcile_parser)
+    reconcile_parser.add_argument(
+        "--sources",
+        action="append",
+        default=None,
+        help="Source registry that defines the corpus (repeatable).",
+    )
+    reconcile_parser.add_argument(
+        "--drop-local",
+        action="store_true",
+        help=(
+            "Also drop locally imported files and repository fixtures. Off by "
+            "default: no remote registry can declare them."
+        ),
+    )
+    reconcile_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Report drift and exit non-zero instead of removing anything.",
+    )
+    reconcile_parser.add_argument("--report", default=None)
+    reconcile_parser.set_defaults(
+        func=_cmd_reconcile,
+        sources_default=[
+            "ml/configs/sources_real_v1.yaml",
+            "ml/configs/sources_v2.yaml",
+        ],
+    )
 
     probe_parser = dataset_sub.add_parser(
         "probe", help="Measure duration, sample rate, channels and format with ffprobe."
@@ -1152,7 +1221,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     validate_parser.add_argument(
         "--deep", action="store_true", help="Also re-verify every SHA-256 (slow)."
     )
-    validate_parser.add_argument("--split-version", default="v1")
+    validate_parser.add_argument("--split-version", default="v4")
     validate_parser.add_argument("--output", default=None)
     validate_parser.set_defaults(func=_cmd_validate)
 
@@ -1160,7 +1229,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "stats", help="Compute dataset, candidate, label and split statistics."
     )
     _add_common(stats_parser)
-    stats_parser.add_argument("--split-version", default="v1")
+    stats_parser.add_argument("--split-version", default="v4")
     stats_parser.add_argument("--output-dir", default=None)
     stats_parser.add_argument(
         "--acceptable-threshold", type=int, default=DEFAULT_ACCEPTABLE_THRESHOLD
@@ -1225,22 +1294,22 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     serve_parser.set_defaults(func=_cmd_label_serve)
 
-    resume_parser = label_sub.add_parser(
-        "resume-experiment",
+    run_experiment_parser = label_sub.add_parser(
+        "run-experiment",
         help=(
-            "Prepare and open the labelling session for the resume experiment: "
+            "Prepare and open the labelling session for the benchmark experiment: "
             "pre-cut every clip, report what is left, and serve the UI."
         ),
     )
-    _add_common(resume_parser)
-    resume_parser.add_argument("--host", default="127.0.0.1")
-    resume_parser.add_argument("--port", type=int, default=8000)
-    resume_parser.add_argument("--context-before-ms", type=int, default=10_000)
-    resume_parser.add_argument("--context-after-ms", type=int, default=10_000)
-    resume_parser.add_argument(
+    _add_common(run_experiment_parser)
+    run_experiment_parser.add_argument("--host", default="127.0.0.1")
+    run_experiment_parser.add_argument("--port", type=int, default=8000)
+    run_experiment_parser.add_argument("--context-before-ms", type=int, default=10_000)
+    run_experiment_parser.add_argument("--context-after-ms", type=int, default=10_000)
+    run_experiment_parser.add_argument(
         "--acceptable-threshold", type=int, default=DEFAULT_ACCEPTABLE_THRESHOLD
     )
-    resume_parser.add_argument(
+    run_experiment_parser.add_argument(
         "--queue",
         default=None,
         help=(
@@ -1248,29 +1317,29 @@ def register(subparsers: argparse._SubParsersAction) -> None:
             "<data-root>/labels/queue_<queue-version>.json."
         ),
     )
-    resume_parser.add_argument(
-        "--queue-version", default="resume-v1", dest="queue_version"
+    run_experiment_parser.add_argument(
+        "--queue-version", default="full-v2", dest="queue_version"
     )
-    resume_parser.add_argument(
+    run_experiment_parser.add_argument(
         "--stage", choices=("all", "pilot", "primary"), default="all"
     )
-    resume_parser.add_argument(
+    run_experiment_parser.add_argument(
         "--target",
         type=int,
         default=None,
         help="Unique human labels this round is aiming for (default: the queue size).",
     )
-    resume_parser.add_argument(
+    run_experiment_parser.add_argument(
         "--reveal-hints",
         action="store_true",
         help="Show the heuristic score and candidate sources (biases the annotator).",
     )
-    resume_parser.add_argument(
+    run_experiment_parser.add_argument(
         "--no-serve",
         action="store_true",
         help="Prepare everything and report readiness without starting the server.",
     )
-    resume_parser.set_defaults(func=_cmd_label_resume_experiment)
+    run_experiment_parser.set_defaults(func=_cmd_label_run_experiment)
 
     queue_parser = label_sub.add_parser(
         "queue", help="Build a deterministic, stratified labelling queue."
@@ -1297,7 +1366,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     _add_common(check_parser)
     check_parser.add_argument("--queue", default=None, help="Assigned queue artifact.")
-    check_parser.add_argument("--split-version", default="v2")
+    check_parser.add_argument("--split-version", default="v4")
     check_parser.add_argument("--output", default=None)
     check_parser.add_argument(
         "--acceptable-threshold", type=int, default=DEFAULT_ACCEPTABLE_THRESHOLD

@@ -96,7 +96,7 @@ def _label_target(repo_root: Path | None = None) -> tuple[int | None, str]:
     from slotify_rank.config.settings import find_repo_root
 
     root = repo_root or find_repo_root()
-    config_path = root / "ml" / "configs" / "experiment_resume_v1.yaml"
+    config_path = root / "ml" / "configs" / "experiment_v2.yaml"
     try:
         from slotify_rank.experiment.canonical import load_experiment_config
 

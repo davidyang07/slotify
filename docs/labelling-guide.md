@@ -41,7 +41,7 @@ label and recorded in the export metadata, so changing it later cannot silently 
 
 ```powershell
 cd ml
-.\.venv\Scripts\python.exe -m slotify_rank.cli label resume-experiment
+.\.venv\Scripts\python.exe -m slotify_rank.cli label run-experiment
 ```
 
 That pre-cuts every clip so no rating waits on FFmpeg, prints how many labels
@@ -169,7 +169,7 @@ Labelling is staged so problems surface before hours are sunk into them.
 |---|---|---|
 | Pilot | 30 | Prove the loop works and the rubric is usable. Expect to revise the rubric here — that is what it is for. |
 | Readiness gate | 200 | The generic minimum for any held-out comparison: enough episodes, series and within-episode pairs to be meaningful. |
-| The resume experiment | 2 400 | The gate declared in `ml/configs/experiment_resume_v1.yaml`. Roughly 7–10 hours of attention at 10–15 s an item. |
+| the benchmark experiment | 2 400 | The gate declared in `ml/configs/experiment_v2.yaml`. Roughly 7–10 hours of attention at 10–15 s an item. |
 
 These are **targets, not results.** The measured count lives in
 `artifacts/dataset/label_statistics.json` as `human_labelled_candidate_count`, and it is the only
@@ -181,10 +181,10 @@ can see the distance; it is not a claim about anything until the round finishes.
 ## Exporting
 
 ```powershell
-.\.venv\Scripts\python.exe -m slotify_rank.cli label export --dataset-version resume-v1
+.\.venv\Scripts\python.exe -m slotify_rank.cli label export --dataset-version full-v2
 ```
 
-Writes `data/labels/labels_resume-v1.jsonl` plus a `.meta.json` sidecar recording the rubric
+Writes `data/labels/labels_full-v2.jsonl` plus a `.meta.json` sidecar recording the rubric
 version, the label schema version, the acceptability rule in force, the graded-relevance rule, any
 orphaned labels, and how many blind repeats were excluded. Every exported row is a human judgement:
 weak and heuristic labels are never written to this file, and neither are the consistency

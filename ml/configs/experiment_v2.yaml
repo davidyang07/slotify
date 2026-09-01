@@ -1,4 +1,4 @@
-# The canonical resume experiment, defined before the test set is touched.
+# The canonical benchmark experiment, v2, defined before the test set is touched.
 #
 # WHY THIS FILE EXISTS. An experiment decided after seeing the result is not an
 # experiment. Everything that could be tuned to flatter the headline number --
@@ -8,48 +8,87 @@
 # test split is read for the first time.
 #
 # `slotify-rank experiment manifest` resolves this file into
-# artifacts/experiments/experiment_resume_v1.json, which pins the actual bytes:
+# artifacts/experiments/experiment_v2.json, which pins the actual bytes:
 # the split manifest hash, the candidate manifest hash, the label snapshot hash,
 # the feature schema versions and the resolved model configuration. A result
-# reported against experiment-resume-v1 always means those bytes.
+# reported against experiment-v2 always means those bytes.
+#
+# ---------------------------------------------------------------------------
+# WHY V2, AND WHY V1 IS STILL ON DISK
+# ---------------------------------------------------------------------------
+#
+# experiment_v1.yaml is left committed and unedited. It is the record of
+# what was planned, and superseding it by rewriting it would destroy exactly the
+# audit trail this file exists to create. It is superseded, not wrong to have
+# written.
+#
+# What superseded it was not a result -- no held-out number has ever been
+# produced under v1, no experiment manifest was ever resolved, and the only
+# training runs against split v3 used weak heuristic labels, which the evidence
+# report has always reported as a FAIL rather than a result. What superseded it
+# was a defect in the corpus that made v1's own protocol incapable of supporting
+# v1's own claim:
+#
+#   * the corpus held exactly one podcast-format series;
+#   * so split v3 put that series in the test partition, alone;
+#   * so train and validation contained no podcast audio whatsoever;
+#   * so the headline NDCG@3 would have been measured on one show, bootstrapped
+#     over its six episodes, for a model that had never seen the target format
+#     in training.
+#
+# That is a cross-domain transfer experiment -- train on audiobooks, test on one
+# NASA interview programme -- and reporting it as a measurement of podcast ad
+# placement would have been the kind of overstatement the rest of this
+# repository exists to prevent. The fix is in the corpus and the split, not in
+# the claim: corpus_v2.yaml adds thirteen further genuine podcast series
+# that are openly licensed and actually downloadable, and splits_v4.yaml adds
+# the rules that would have caught v3 (see that file's header).
+#
+# NOTHING IN THE CLAIM WAS WEAKENED. The label gate is still 2,400 human
+# labels. The improvement threshold is still 18 %. The baseline is still the
+# same frozen heuristic. The test partition got *stricter*, not looser: it now
+# holds podcast-format series only, so it is smaller and the claim is harder to
+# support than it was under v1.
 #
 # WHAT MAY STILL CHANGE AFTER THIS IS WRITTEN. Model architecture, features and
 # training hyperparameters -- tuned on train and *validation* only. That is
 # ordinary model development and it is why a validation split exists. What may
 # not change is anything below marked FROZEN.
 
-experiment_version: experiment-resume-v1
+experiment_version: experiment-v2
 schema_version: experiment-config-v1.0.0
+supersedes: experiment-v1
 
 corpus:
-  plan: ml/configs/corpus_resume_v1.yaml
+  plan: ml/configs/corpus_v2.yaml
   source_registries:
     - ml/configs/sources_real_v1.yaml
-    - ml/configs/sources_resume_v1.yaml
+    - ml/configs/sources_v2.yaml
   candidate_generation_config: ml/configs/dataset_v1.yaml
 
 # FROZEN. The split is a commitment: models are trained against it and results
 # are reported against it.
 split:
-  config: ml/configs/splits_v3.yaml
-  version: v3
+  config: ml/configs/splits_v4.yaml
+  version: v4
   # Restated here so the manifest records what the experiment believed it was
   # using; `experiment manifest` fails if the split manifest disagrees.
   group_by: series
   seed: 42
+  algorithm_version: split-stratified-greedy-v1.0.0
   ratios:
     train: 0.70
     validation: 0.15
     test: 0.15
 
 labels:
-  queue_config: ml/configs/labelling_queue_resume_v1.yaml
-  queue_artifact: data/labels/queue_resume_v1.json
-  snapshot_version: resume-v1
+  queue_config: ml/configs/labelling_queue_full_v2.yaml
+  queue_artifact: data/labels/queue_full-v2.json
+  snapshot_version: full-v2
   rubric: docs/labelling-guide.md
   # FROZEN. The experiment does not begin until this many unique human-labelled
   # candidates exist. It is a gate, not a target to be relaxed if labelling is
-  # slow.
+  # slow. Unchanged from v1.
   minimum_human_labels: 2400
   # Only human judgements. Named explicitly so a weak-label run can never be
   # mistaken for this experiment.

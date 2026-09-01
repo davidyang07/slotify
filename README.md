@@ -209,10 +209,8 @@ state. Two generated reports are the authority; neither is written by hand.
 
 ```bash
 npm run evidence          # what each capability's artifacts currently establish
-npm run resume-evidence   # PASS / FAIL / NOT MEASURED for every headline claim
 
 cat artifacts/reports/model_evidence.md
-cat artifacts/reports/resume_evidence.md
 ```
 
 Re-run those for current values. **Every number in this section is read from
@@ -249,11 +247,14 @@ The guard rails, all tested:
 | The headline metric must agree with an independent implementation (`sklearn.metrics.ndcg_score`) or publication is blocked | `evaluation/crosscheck.py` |
 | A zero baseline yields `None`, never an infinite improvement | `evaluation/compare.py` |
 | An unmeasured metric renders `NOT YET AVAILABLE`; a measured zero renders `0` | `evaluation/evidence.py` |
-| An unmeasured claim renders `NOT MEASURED`, which is not `PASS` and not `FAIL` | `evaluation/resume_evidence.py` |
-| A claimed library needs a declaration, a real import and an artifact recording it ran | `evaluation/resume_evidence.py` |
 | Blind consistency repeats are excluded from the label export, so a quality control cannot become supervision | `labelling/export.py` |
 | Synthetic candidates can never be labelled, featurised or evaluated | `data/schema.py`, `pipeline/stages.py` |
 | Normalization statistics are fitted on the train split only, and refuse others | `datasets/normalizer.py` |
+| A partition holding fewer than three independent series fails the split outright, rather than warning | `data/splits.py` |
+| The held-out partition holds the target format only, so the headline measures the product's task | `data/splits.py` |
+| No single series may occupy more than half a partition's hours | `data/splits.py` |
+| An episode no committed source registry declares is removed before it can be split, counted or labelled | `data/reconcile.py` |
+| An open licence counts only when the show declared it in the show's own collection | `data/discover.py` |
 | The product never invents a recommendation, a score or a reason | `backend/src/lib/`, `frontend/src/lib/` |
 
 CI regenerates both reports from the committed artifacts and fails if either has
@@ -261,16 +262,14 @@ drifted — the one failure a generated report cannot catch by itself is being
 true when written and not any more.
 
 See [`docs/evaluation-evidence.md`](docs/evaluation-evidence.md) for the full
-capability-to-artifact mapping and
-[`docs/resume-experiment.md`](docs/resume-experiment.md) for the experiment those
-claims are measured by.
+capability-to-artifact mapping and the experiment those claims are measured by.
 
 ### Running the experiment
 
 ```bash
 cd ml
-python -m slotify_rank.cli dataset prepare-resume-experiment   # acquire → featurise → queue
-python -m slotify_rank.cli label resume-experiment             # the only manual step
+python -m slotify_rank.cli dataset prepare-experiment   # acquire → featurise → queue
+python -m slotify_rank.cli label run-experiment             # the only manual step
 ```
 
 The first command does everything mechanical and ends with a *measured*
@@ -278,7 +277,7 @@ readiness summary. The second pre-cuts every clip, says how many labels remain,
 and opens the labelling UI; after it prints its banner the only remaining work is
 human judgement. The protocol — split, seeds, baseline, metric, thresholds — is
 fixed in advance in
-[`ml/configs/experiment_resume_v1.yaml`](ml/configs/experiment_resume_v1.yaml)
+[`ml/configs/experiment_v2.yaml`](ml/configs/experiment_v2.yaml)
 and hashed into a manifest before the test split is read.
 
 ---
@@ -340,7 +339,6 @@ CI runs all of the above except model-smoke on every push, with no credentials.
 | [`docs/model-inference.md`](docs/model-inference.md) | How a request becomes a learned ranking |
 | [`docs/model-training.md`](docs/model-training.md) | The training system |
 | [`docs/feature-pipeline.md`](docs/feature-pipeline.md) | The multimodal feature pipeline |
-| [`docs/resume-experiment.md`](docs/resume-experiment.md) | The experiment: protocol, labelling, what "supported" means |
 | [`docs/dataset-card.md`](docs/dataset-card.md) | Corpus, licences, splits |
 | [`docs/human-labelling-workflow.md`](docs/human-labelling-workflow.md) | The FastAPI labelling loop |
 | [`ml/README.md`](ml/README.md) | Every ML command |

@@ -70,7 +70,7 @@ def test_a_raising_step_is_recorded_rather_than_propagated():
 def test_the_default_step_list_is_in_dependency_order():
     steps = build_steps(
         data_root=None,
-        source_registries=["ml/configs/sources_resume_v1.yaml"],
+        source_registries=["ml/configs/sources_v1.yaml"],
         dataset_config=None,
         split_config=None,
         split_version="v3",
@@ -86,7 +86,8 @@ def test_the_default_step_list_is_in_dependency_order():
     )
     names = [step.name for step in steps]
     assert names == [
-        "fetch:sources_resume_v1",
+        "fetch:sources_v1",
+        "reconcile",
         "probe",
         "normalize",
         "candidates",

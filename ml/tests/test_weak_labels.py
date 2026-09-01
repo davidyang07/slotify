@@ -188,7 +188,7 @@ def test_the_canonical_experiment_cannot_name_a_weak_source(tmp_path: Path) -> N
     from slotify_rank.config.settings import find_repo_root
 
     committed = (
-        find_repo_root() / "ml" / "configs" / "experiment_resume_v1.yaml"
+        find_repo_root() / "ml" / "configs" / "experiment_v1.yaml"
     )
     assert list(
         load_experiment_config(committed).labels["allowed_label_sources"]
@@ -226,39 +226,3 @@ def test_a_weakly_trained_run_cannot_be_nominated_by_the_matrix() -> None:
     assert any("weak_heuristic" in reason for reason in weak.blocking_reasons)
 
 
-def test_a_weakly_trained_model_cannot_reach_the_resume_report(tmp_path: Path) -> None:
-    """Even with a comparison present, the checkpoint row must fail."""
-    import json
-
-    from slotify_rank.evaluation.resume_evidence import (
-        FAIL,
-        collect_resume_evidence,
-    )
-    from slotify_rank.config.settings import find_repo_root
-
-    artifacts = tmp_path / "artifacts"
-    run = artifacts / "training" / "run-1"
-    run.mkdir(parents=True)
-    (run / "training_summary.json").write_text(
-        json.dumps(
-            {
-                "run_id": "run-1",
-                "generated_at": "2026-08-29T00:00:00+00:00",
-                "model_variant": "gated",
-                "model_parameter_count": 489477,
-                "label_source": "weak_heuristic",
-            }
-        ),
-        encoding="utf-8",
-    )
-    (tmp_path / "README.md").write_text(
-        "UofTHacks 13 - MLH Best Use of ElevenLabs\n", encoding="utf-8"
-    )
-    evidence = collect_resume_evidence(
-        repo_root=tmp_path,
-        artifacts_root=artifacts,
-        experiment_config_path=(
-            find_repo_root() / "ml" / "configs" / "experiment_resume_v1.yaml"
-        ),
-    )
-    assert evidence.check("human_trained_checkpoint").status == FAIL

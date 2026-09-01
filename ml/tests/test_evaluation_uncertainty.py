@@ -295,14 +295,14 @@ def test_artifact_hashes_and_the_experiment_are_recorded():
         baseline_scores=baseline,
         model_scores=model,
         inputs=inputs(
-            experiment_version="experiment-resume-v1",
+            experiment_version="experiment-v1",
             experiment_config_digest="c" * 64,
             artifact_hashes={"model_checkpoint": "d" * 64, "label_export": None},
         ),
         evaluation_id="eval-prov",
     )
     payload = result.to_dict()["inputs"]
-    assert payload["experiment_version"] == "experiment-resume-v1"
+    assert payload["experiment_version"] == "experiment-v1"
     assert payload["artifact_hashes"]["model_checkpoint"] == "d" * 64
     # A missing artifact is recorded as missing, not omitted.
     assert payload["artifact_hashes"]["label_export"] is None

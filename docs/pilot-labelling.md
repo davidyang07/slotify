@@ -12,9 +12,9 @@ middle grades are ambiguous, means discarding real human effort. Thirty items
 costs ten minutes.
 
 See [`human-labelling-workflow.md`](human-labelling-workflow.md) for how the
-corpus and queue were built, [`resume-experiment.md`](resume-experiment.md) for
-what the labels are for, and [`labelling-guide.md`](labelling-guide.md) for the
-full rubric.
+corpus and queue were built, [`evaluation-evidence.md`](evaluation-evidence.md)
+for what the labels are for, and [`labelling-guide.md`](labelling-guide.md) for
+the full rubric.
 
 All commands run from the `ml/` directory with its own Python 3.12 virtual
 environment. CPU-only; nothing here reaches the network or a paid API.
@@ -28,7 +28,7 @@ cd ml
 .\.venv\Scripts\Activate.ps1        # or call .\.venv\Scripts\python.exe directly
 
 # Pre-cuts every clip, reports what is left, then serves the UI.
-.\.venv\Scripts\python.exe -m slotify_rank.cli label resume-experiment `
+.\.venv\Scripts\python.exe -m slotify_rank.cli label run-experiment `
     --stage pilot --host 127.0.0.1 --port 8000
 ```
 
@@ -36,8 +36,8 @@ cd ml
 |---|---|
 | Working directory | `ml/` |
 | Python environment | `ml/.venv` (activate `.\.venv\Scripts\Activate.ps1`) |
-| Command | `slotify_rank.cli label resume-experiment` |
-| Queue argument | defaults to `data/labels/queue_resume-v1.json` under the data root |
+| Command | `slotify_rank.cli label run-experiment` |
+| Queue argument | defaults to `data/labels/queue_full-v2.json` under the data root |
 | Stage argument | `--stage pilot` (serves **only** the 30 pilot candidates) |
 | Host / port | `127.0.0.1` / `8000` (localhost only) |
 | Local URL | <http://127.0.0.1:8000/> |
@@ -129,15 +129,15 @@ Safe to re-run at any time.
 
 ```powershell
 # Export human labels to versioned JSONL (+ .meta.json sidecar).
-.\.venv\Scripts\python.exe -m slotify_rank.cli label export --dataset-version resume-v1
+.\.venv\Scripts\python.exe -m slotify_rank.cli label export --dataset-version full-v2
 
 # Quality check: invalid ratings, orphans, out-of-queue labels, manifest drift.
 .\.venv\Scripts\python.exe -m slotify_rank.cli label check `
-    --queue ..\data\labels\queue_resume-v1.json --split-version v3
+    --queue ..\data\labels\queue_full-v2.json --split-version v4
 
 # Readiness gate (reports zero labels as blocked, honestly).
 .\.venv\Scripts\python.exe -m slotify_rank.cli experiment readiness `
-    --queue ..\data\labels\queue_resume-v1.json --split-version v3
+    --queue ..\data\labels\queue_full-v2.json --split-version v4
 ```
 
 Once the pilot has at least 20 genuine usable labels, run the post-pilot
@@ -169,8 +169,8 @@ If accepted, freeze an immutable snapshot before anything else:
 
 ```powershell
 .\.venv\Scripts\python.exe -m slotify_rank.cli experiment freeze `
-    --snapshot-version resume-v1 --split-version v3 `
-    --queue ..\data\labels\queue_resume-v1.json
+    --snapshot-version full-v2 --split-version v4 `
+    --queue ..\data\labels\queue_full-v2.json
 ```
 
 ---
@@ -210,8 +210,8 @@ complete multimodal feature record for every labelled candidate. The thresholds
 are fixed in `ReadinessGate` and are **not** to be weakened to advance past
 them.
 
-The resume experiment sets a second, higher bar on top of that one: 2,400 unique
-human labels, declared in `ml/configs/experiment_resume_v1.yaml`. Until both are
+the benchmark experiment sets a second, higher bar on top of that one: 2,400 unique
+human labels, declared in `ml/configs/experiment_v2.yaml`. Until both are
 met, no model is trained on human labels and no NDCG comparison against
 `heuristic_offline_v1` is computed or implied. A pilot of thirty labels is a
 workflow validation, not a dataset.
@@ -230,7 +230,7 @@ Read the current numbers from the artifact rather than from here — they change
 whenever the corpus does:
 
 ```powershell
-.\.venv\Scripts\python.exe -c "import json,sys; q=json.load(open(r'..\data\labels\queue_resume-v1.json')); c=q['coverage']; print(q['queue_version'], q['unique_candidate_count']); print(c['by_split']); print(c['by_score_stratum']); print(c['by_primary_source'])"
+.\.venv\Scripts\python.exe -c "import json,sys; q=json.load(open(r'..\data\labels\queue_full-v2.json')); c=q['coverage']; print(q['queue_version'], q['unique_candidate_count']); print(c['by_split']); print(c['by_score_stratum']); print(c['by_primary_source'])"
 ```
 
 Whatever they say, these are **generated, unlabelled** candidates — not labels,

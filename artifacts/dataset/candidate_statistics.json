@@ -1,35 +1,79 @@
 {
-  "generated_at": "2026-08-19T17:33:49+00:00",
+  "generated_at": "2026-08-30T02:05:29+00:00",
   "package_version": "0.2.0",
   "candidate_generation_version": "candgen-v1.0.0",
-  "generated_candidate_count": 595,
-  "eligible_for_evaluation_count": 595,
+  "generated_candidate_count": 13176,
+  "eligible_for_evaluation_count": 13176,
   "synthetic_product_padding_count": 0,
   "synthetic_excluded_from_all_counts": true,
-  "episodes_with_candidates": 13,
-  "candidates_per_minute": 11.8245,
-  "count_before_merge": 1767,
-  "count_after_merge": 1239,
-  "merge_reduction_count": 528,
-  "merge_reduction_pct": 29.88,
-  "dropped_by_edge_guard": 78,
-  "dropped_by_density_cap": 644,
+  "episodes_with_candidates": 77,
+  "candidates_per_minute": 11.7979,
+  "count_before_merge": 40089,
+  "count_after_merge": 26103,
+  "merge_reduction_count": 13986,
+  "merge_reduction_pct": 34.89,
+  "dropped_by_edge_guard": 471,
+  "dropped_by_density_cap": 12927,
   "candidates_by_source_flag": {
-    "fixed_interval": 35,
-    "pause": 88,
-    "rms_minimum": 377,
-    "silence": 426
+    "fixed_interval": 938,
+    "pause": 5915,
+    "rms_minimum": 7734,
+    "silence": 6861
   },
   "candidates_by_primary_source": {
-    "fixed_interval": 28,
-    "pause": 62,
-    "rms_minimum": 163,
-    "silence": 342
+    "fixed_interval": 795,
+    "pause": 4346,
+    "rms_minimum": 2880,
+    "silence": 5155
   },
-  "fixed_interval_only_count": 20,
-  "fixed_interval_only_pct": 3.36,
+  "fixed_interval_only_count": 646,
+  "fixed_interval_only_pct": 4.9,
   "synthetic_or_invalid_pct": 0.0,
   "per_episode_generation": [
+    {
+      "episode_id": "amiga-ireland-amigaireland-s5e1-floppy-fodder_12c22bdd8ac6",
+      "duration_ms": 1466493,
+      "count_by_source_before_merge": {
+        "fixed_interval": 48,
+        "pause": 405,
+        "rms_minimum": 268,
+        "silence": 125
+      },
+      "count_before_merge": 846,
+      "count_after_merge": 563,
+      "count_after_density_cap": 293,
+      "dropped_edge_guard": 1,
+      "dropped_density_cap": 270,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9878,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 293 of 563 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "amiga-ireland-amigaireland-s5e10-grand-opening_0e9429514d23",
+      "duration_ms": 1065026,
+      "count_by_source_before_merge": {
+        "fixed_interval": 35,
+        "pause": 220,
+        "rms_minimum": 193,
+        "silence": 67
+      },
+      "count_before_merge": 515,
+      "count_after_merge": 348,
+      "count_after_density_cap": 213,
+      "dropped_edge_guard": 4,
+      "dropped_density_cap": 135,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9997,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 213 of 348 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
     {
       "episode_id": "the-art-of-war-chapters-3-4-sun-tzu-tr-giles_77496808b036",
       "duration_ms": 465397,
@@ -51,144 +95,1210 @@
       ]
     },
     {
-      "episode_id": "fixture-cats-versus-dogs-debate_52a83dd90eca",
-      "duration_ms": 18261,
+      "episode_id": "building-bridges-your-community-labor-report-2he_685982f44ab1",
+      "duration_ms": 1720158,
       "count_by_source_before_merge": {
-        "pause": 10,
-        "rms_minimum": 5,
-        "silence": 4
+        "fixed_interval": 57,
+        "pause": 664,
+        "rms_minimum": 355,
+        "silence": 87
       },
-      "count_before_merge": 19,
-      "count_after_merge": 4,
-      "count_after_density_cap": 3,
-      "dropped_edge_guard": 11,
-      "dropped_density_cap": 1,
+      "count_before_merge": 1163,
+      "count_after_merge": 768,
+      "count_after_density_cap": 344,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 424,
       "synthetic_recorded": 0,
       "transcript_available": false,
-      "candidates_per_minute": 9.8571,
+      "candidates_per_minute": 11.9989,
       "notes": [
         "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
-        "density cap of 12.0/min kept 3 of 4 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+        "density cap of 12.0/min kept 344 of 768 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
       ]
     },
     {
-      "episode_id": "fixture-two-speaker-conversation_c2c631e09775",
-      "duration_ms": 15786,
+      "episode_id": "building-bridges-your-community-labor-report-att_26fb895a15eb",
+      "duration_ms": 1676193,
       "count_by_source_before_merge": {
-        "pause": 5,
-        "rms_minimum": 3,
-        "silence": 2
+        "fixed_interval": 55,
+        "pause": 263,
+        "rms_minimum": 269,
+        "silence": 87
       },
-      "count_before_merge": 10,
-      "count_after_merge": 4,
-      "count_after_density_cap": 3,
-      "dropped_edge_guard": 5,
-      "dropped_density_cap": 1,
+      "count_before_merge": 674,
+      "count_after_merge": 412,
+      "count_after_density_cap": 335,
+      "dropped_edge_guard": 6,
+      "dropped_density_cap": 77,
       "synthetic_recorded": 0,
       "transcript_available": false,
-      "candidates_per_minute": 11.4025,
+      "candidates_per_minute": 11.9915,
       "notes": [
         "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
-        "density cap of 12.0/min kept 3 of 4 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+        "density cap of 12.0/min kept 335 of 412 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
       ]
     },
     {
-      "episode_id": "fixture-music-clip-drake_985dc58a5ee3",
-      "duration_ms": 15872,
+      "episode_id": "filibuster-the-black-and-red-united-podcast-epis_8e5ea474d458",
+      "duration_ms": 1894164,
       "count_by_source_before_merge": {
-        "rms_minimum": 2
+        "fixed_interval": 63,
+        "pause": 803,
+        "rms_minimum": 370,
+        "silence": 195
       },
-      "count_before_merge": 2,
-      "count_after_merge": 1,
-      "count_after_density_cap": 1,
+      "count_before_merge": 1431,
+      "count_after_merge": 972,
+      "count_after_density_cap": 378,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 594,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9736,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 378 of 972 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "filibuster-the-black-and-red-united-podcast-epis_d006bd7d7990",
+      "duration_ms": 1712424,
+      "count_by_source_before_merge": {
+        "fixed_interval": 57,
+        "pause": 559,
+        "rms_minimum": 319,
+        "silence": 223
+      },
+      "count_before_merge": 1158,
+      "count_after_merge": 781,
+      "count_after_density_cap": 342,
+      "dropped_edge_guard": 4,
+      "dropped_density_cap": 439,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.983,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 342 of 781 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "free-will-science-and-religion-3-17-2015_23fc7fa1c399",
+      "duration_ms": 1800000,
+      "count_by_source_before_merge": {
+        "fixed_interval": 59,
+        "pause": 695,
+        "rms_minimum": 371,
+        "silence": 121
+      },
+      "count_before_merge": 1246,
+      "count_after_merge": 809,
+      "count_after_density_cap": 360,
+      "dropped_edge_guard": 4,
+      "dropped_density_cap": 449,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 12.0,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 360 of 809 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "free-will-science-and-religion-3-31-2015_bf7a0ffdddb8",
+      "duration_ms": 1794000,
+      "count_by_source_before_merge": {
+        "fixed_interval": 59,
+        "pause": 1049,
+        "rms_minimum": 335,
+        "silence": 345
+      },
+      "count_before_merge": 1788,
+      "count_after_merge": 1126,
+      "count_after_density_cap": 358,
+      "dropped_edge_guard": 4,
+      "dropped_density_cap": 768,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9732,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 358 of 1126 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "gruesome-hertzogg-podcast-100-bloody-acres-2012_15d2bd4e732e",
+      "duration_ms": 319766,
+      "count_by_source_before_merge": {
+        "fixed_interval": 10,
+        "pause": 14,
+        "rms_minimum": 29,
+        "silence": 8
+      },
+      "count_before_merge": 61,
+      "count_after_merge": 44,
+      "count_after_density_cap": 44,
       "dropped_edge_guard": 1,
       "dropped_density_cap": 0,
       "synthetic_recorded": 0,
       "transcript_available": false,
-      "candidates_per_minute": 3.7802,
+      "candidates_per_minute": 8.256,
       "notes": [
         "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)"
       ]
     },
     {
-      "episode_id": "fixture-music-clip-ryan-rap_2dd097f42519",
-      "duration_ms": 19626,
+      "episode_id": "gruesome-hertzogg-podcast-100-degrees-below-zero_d6d767e1af06",
+      "duration_ms": 283133,
       "count_by_source_before_merge": {
-        "pause": 12,
-        "rms_minimum": 4
-      },
-      "count_before_merge": 16,
-      "count_after_merge": 6,
-      "count_after_density_cap": 3,
-      "dropped_edge_guard": 7,
-      "dropped_density_cap": 3,
-      "synthetic_recorded": 0,
-      "transcript_available": false,
-      "candidates_per_minute": 9.1715,
-      "notes": [
-        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
-        "density cap of 12.0/min kept 3 of 6 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
-      ]
-    },
-    {
-      "episode_id": "fixture-narrated-speech-david_4ae18ba65aeb",
-      "duration_ms": 20073,
-      "count_by_source_before_merge": {
-        "pause": 4,
-        "rms_minimum": 4,
-        "silence": 5
-      },
-      "count_before_merge": 13,
-      "count_after_merge": 3,
-      "count_after_density_cap": 3,
-      "dropped_edge_guard": 6,
-      "dropped_density_cap": 0,
-      "synthetic_recorded": 0,
-      "transcript_available": false,
-      "candidates_per_minute": 8.9673,
-      "notes": [
-        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)"
-      ]
-    },
-    {
-      "episode_id": "fixture-narrated-speech-ryan_af62f43d417f",
-      "duration_ms": 22869,
-      "count_by_source_before_merge": {
+        "fixed_interval": 9,
         "pause": 3,
-        "rms_minimum": 6,
-        "silence": 5
+        "rms_minimum": 44,
+        "silence": 1
       },
-      "count_before_merge": 14,
-      "count_after_merge": 4,
-      "count_after_density_cap": 4,
-      "dropped_edge_guard": 7,
+      "count_before_merge": 57,
+      "count_after_merge": 50,
+      "count_after_density_cap": 50,
+      "dropped_edge_guard": 4,
       "dropped_density_cap": 0,
       "synthetic_recorded": 0,
       "transcript_available": false,
-      "candidates_per_minute": 10.4946,
+      "candidates_per_minute": 10.5957,
       "notes": [
         "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)"
       ]
     },
     {
-      "episode_id": "fixture-podcast-style-monologue_eefa0528f230",
-      "duration_ms": 19086,
+      "episode_id": "houston-we-have-a-podcast-ep100-apollo-11-to-now_2b4eb002b470",
+      "duration_ms": 1140528,
       "count_by_source_before_merge": {
-        "pause": 6,
-        "rms_minimum": 3,
-        "silence": 5
+        "fixed_interval": 38,
+        "pause": 294,
+        "rms_minimum": 224,
+        "silence": 87
       },
-      "count_before_merge": 14,
-      "count_after_merge": 6,
-      "count_after_density_cap": 3,
-      "dropped_edge_guard": 5,
-      "dropped_density_cap": 3,
+      "count_before_merge": 643,
+      "count_after_merge": 398,
+      "count_after_density_cap": 228,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 170,
       "synthetic_recorded": 0,
       "transcript_available": false,
-      "candidates_per_minute": 9.431,
+      "candidates_per_minute": 11.9944,
       "notes": [
         "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
-        "density cap of 12.0/min kept 3 of 6 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+        "density cap of 12.0/min kept 228 of 398 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "houston-we-have-a-podcast-ep115-air-to-space_abc66c861b04",
+      "duration_ms": 1705176,
+      "count_by_source_before_merge": {
+        "fixed_interval": 56,
+        "pause": 538,
+        "rms_minimum": 317,
+        "silence": 85
+      },
+      "count_before_merge": 996,
+      "count_after_merge": 607,
+      "count_after_density_cap": 341,
+      "dropped_edge_guard": 8,
+      "dropped_density_cap": 266,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9988,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 341 of 607 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "houston-we-have-a-podcast-ep165-astronautandmicr_0815d90122d1",
+      "duration_ms": 1344912,
+      "count_by_source_before_merge": {
+        "fixed_interval": 44,
+        "pause": 344,
+        "rms_minimum": 265,
+        "silence": 47
+      },
+      "count_before_merge": 700,
+      "count_after_merge": 445,
+      "count_after_density_cap": 268,
+      "dropped_edge_guard": 5,
+      "dropped_density_cap": 177,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9562,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 268 of 445 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "labor-express-radio-ai-jen-poo-of-domestic-worke_bcc10aaaf0b0",
+      "duration_ms": 706246,
+      "count_by_source_before_merge": {
+        "fixed_interval": 23,
+        "pause": 52,
+        "rms_minimum": 102,
+        "silence": 28
+      },
+      "count_before_merge": 205,
+      "count_after_merge": 137,
+      "count_after_density_cap": 137,
+      "dropped_edge_guard": 3,
+      "dropped_density_cap": 0,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.639,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)"
+      ]
+    },
+    {
+      "episode_id": "labor-express-radio-stewart-acuff-at-the-ussf_87148942f01c",
+      "duration_ms": 1047562,
+      "count_by_source_before_merge": {
+        "fixed_interval": 34,
+        "pause": 138,
+        "rms_minimum": 158,
+        "silence": 85
+      },
+      "count_before_merge": 415,
+      "count_after_merge": 252,
+      "count_after_density_cap": 209,
+      "dropped_edge_guard": 2,
+      "dropped_density_cap": 43,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9707,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 209 of 252 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "agnes-grey-dramatic-reading-02-chapter-2_bb12f262060f",
+      "duration_ms": 848485,
+      "count_by_source_before_merge": {
+        "fixed_interval": 28,
+        "pause": 330,
+        "rms_minimum": 186,
+        "silence": 82
+      },
+      "count_before_merge": 626,
+      "count_after_merge": 400,
+      "count_after_density_cap": 169,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 231,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9507,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 169 of 400 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "agnes-grey-dramatic-reading-05-chapter-5_c5c2709cf3c7",
+      "duration_ms": 764683,
+      "count_by_source_before_merge": {
+        "fixed_interval": 25,
+        "pause": 281,
+        "rms_minimum": 167,
+        "silence": 66
+      },
+      "count_before_merge": 539,
+      "count_after_merge": 348,
+      "count_after_density_cap": 152,
+      "dropped_edge_guard": 6,
+      "dropped_density_cap": 196,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9265,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 152 of 348 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "alice-s-adventures-in-wonderland-dramatic-readin_48287116b158",
+      "duration_ms": 740212,
+      "count_by_source_before_merge": {
+        "fixed_interval": 24,
+        "pause": 230,
+        "rms_minimum": 158,
+        "silence": 113
+      },
+      "count_before_merge": 525,
+      "count_after_merge": 334,
+      "count_after_density_cap": 148,
+      "dropped_edge_guard": 8,
+      "dropped_density_cap": 186,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9966,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 148 of 334 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "alice-s-adventures-in-wonderland-dramatic-readin_e09c67bf9c66",
+      "duration_ms": 687281,
+      "count_by_source_before_merge": {
+        "fixed_interval": 22,
+        "pause": 226,
+        "rms_minimum": 144,
+        "silence": 102
+      },
+      "count_before_merge": 494,
+      "count_after_merge": 306,
+      "count_after_density_cap": 137,
+      "dropped_edge_guard": 9,
+      "dropped_density_cap": 169,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9602,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 137 of 306 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "anne-of-green-gables-dramatic-reading-03-marilla_7b2b58ce6786",
+      "duration_ms": 752577,
+      "count_by_source_before_merge": {
+        "fixed_interval": 25,
+        "pause": 258,
+        "rms_minimum": 163,
+        "silence": 102
+      },
+      "count_before_merge": 548,
+      "count_after_merge": 341,
+      "count_after_density_cap": 150,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 191,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9589,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 150 of 341 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "anne-of-green-gables-dramatic-reading-04-morning_fe7ff35779b1",
+      "duration_ms": 752820,
+      "count_by_source_before_merge": {
+        "fixed_interval": 25,
+        "pause": 228,
+        "rms_minimum": 153,
+        "silence": 87
+      },
+      "count_before_merge": 493,
+      "count_after_merge": 304,
+      "count_after_density_cap": 150,
+      "dropped_edge_guard": 6,
+      "dropped_density_cap": 154,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.955,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 150 of 304 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "black-beauty-dramatic-reading-02-the-hunt_8f9ee7f3946c",
+      "duration_ms": 342349,
+      "count_by_source_before_merge": {
+        "fixed_interval": 11,
+        "pause": 117,
+        "rms_minimum": 69,
+        "silence": 60
+      },
+      "count_before_merge": 257,
+      "count_after_merge": 171,
+      "count_after_density_cap": 68,
+      "dropped_edge_guard": 8,
+      "dropped_density_cap": 103,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9177,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 68 of 171 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "black-beauty-dramatic-reading-03-my-breaking-in_78b939f82a16",
+      "duration_ms": 446083,
+      "count_by_source_before_merge": {
+        "fixed_interval": 14,
+        "pause": 137,
+        "rms_minimum": 92,
+        "silence": 57
+      },
+      "count_before_merge": 300,
+      "count_after_merge": 189,
+      "count_after_density_cap": 89,
+      "dropped_edge_guard": 6,
+      "dropped_density_cap": 100,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9709,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 89 of 189 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "a-christmas-carol-dramatic-reading-5-the-end-of_4fc1ef62357b",
+      "duration_ms": 882033,
+      "count_by_source_before_merge": {
+        "fixed_interval": 29,
+        "pause": 308,
+        "rms_minimum": 184,
+        "silence": 162
+      },
+      "count_before_merge": 683,
+      "count_after_merge": 433,
+      "count_after_density_cap": 176,
+      "dropped_edge_guard": 5,
+      "dropped_density_cap": 257,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9723,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 176 of 433 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "daisy-miller-dramatic-reading-1-section-1_99dd07215a41",
+      "duration_ms": 1261869,
+      "count_by_source_before_merge": {
+        "fixed_interval": 42,
+        "pause": 392,
+        "rms_minimum": 259,
+        "silence": 172
+      },
+      "count_before_merge": 865,
+      "count_after_merge": 552,
+      "count_after_density_cap": 252,
+      "dropped_edge_guard": 8,
+      "dropped_density_cap": 300,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9822,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 252 of 552 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "daisy-miller-dramatic-reading-2-section-2_434ffad7bce1",
+      "duration_ms": 1095599,
+      "count_by_source_before_merge": {
+        "fixed_interval": 36,
+        "pause": 302,
+        "rms_minimum": 223,
+        "silence": 183
+      },
+      "count_before_merge": 744,
+      "count_after_merge": 473,
+      "count_after_density_cap": 219,
+      "dropped_edge_guard": 9,
+      "dropped_density_cap": 254,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9934,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 219 of 473 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-story-of-doctor-dolittle-dramatic-reading-00_864ff21629c3",
+      "duration_ms": 516111,
+      "count_by_source_before_merge": {
+        "fixed_interval": 17,
+        "pause": 182,
+        "rms_minimum": 100,
+        "silence": 77
+      },
+      "count_before_merge": 376,
+      "count_after_merge": 258,
+      "count_after_density_cap": 103,
+      "dropped_edge_guard": 8,
+      "dropped_density_cap": 155,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9742,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 103 of 258 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-story-of-doctor-dolittle-dramatic-reading-02_e5889c1b02d8",
+      "duration_ms": 646776,
+      "count_by_source_before_merge": {
+        "fixed_interval": 21,
+        "pause": 269,
+        "rms_minimum": 128,
+        "silence": 75
+      },
+      "count_before_merge": 493,
+      "count_after_merge": 333,
+      "count_after_density_cap": 129,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 204,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.967,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 129 of 333 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-strange-case-of-jekyll-and-hyde-dramatic-rea_2f42990a823d",
+      "duration_ms": 617598,
+      "count_by_source_before_merge": {
+        "fixed_interval": 20,
+        "pause": 191,
+        "rms_minimum": 129,
+        "silence": 59
+      },
+      "count_before_merge": 399,
+      "count_after_merge": 255,
+      "count_after_density_cap": 123,
+      "dropped_edge_guard": 3,
+      "dropped_density_cap": 132,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9495,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 123 of 255 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-strange-case-of-jekyll-and-hyde-dramatic-rea_33946ccb2ba2",
+      "duration_ms": 609351,
+      "count_by_source_before_merge": {
+        "fixed_interval": 20,
+        "pause": 207,
+        "rms_minimum": 131,
+        "silence": 80
+      },
+      "count_before_merge": 438,
+      "count_after_merge": 279,
+      "count_after_density_cap": 121,
+      "dropped_edge_guard": 4,
+      "dropped_density_cap": 158,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9143,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 121 of 279 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "dramatic-reading-scene-and-story-collection-vol_5f79796af96a",
+      "duration_ms": 1169961,
+      "count_by_source_before_merge": {
+        "fixed_interval": 38,
+        "pause": 353,
+        "rms_minimum": 243,
+        "silence": 230
+      },
+      "count_before_merge": 864,
+      "count_after_merge": 560,
+      "count_after_density_cap": 233,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 327,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9491,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 233 of 560 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "dramatic-reading-scene-and-story-collection-vol_725d37b9dbdc",
+      "duration_ms": 1138332,
+      "count_by_source_before_merge": {
+        "fixed_interval": 37,
+        "pause": 226,
+        "rms_minimum": 218,
+        "silence": 273
+      },
+      "count_before_merge": 754,
+      "count_after_merge": 507,
+      "count_after_density_cap": 227,
+      "dropped_edge_guard": 8,
+      "dropped_density_cap": 280,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9649,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 227 of 507 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-adventures-of-tom-sawyer-dramatic-reading-02_1dbb9d2cc95a",
+      "duration_ms": 758191,
+      "count_by_source_before_merge": {
+        "fixed_interval": 25,
+        "pause": 221,
+        "rms_minimum": 153,
+        "silence": 100
+      },
+      "count_before_merge": 499,
+      "count_after_merge": 333,
+      "count_after_density_cap": 151,
+      "dropped_edge_guard": 6,
+      "dropped_density_cap": 182,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9495,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 151 of 333 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-adventures-of-tom-sawyer-dramatic-reading-03_1dd66cf3c09d",
+      "duration_ms": 877479,
+      "count_by_source_before_merge": {
+        "fixed_interval": 29,
+        "pause": 215,
+        "rms_minimum": 171,
+        "silence": 120
+      },
+      "count_before_merge": 535,
+      "count_after_merge": 333,
+      "count_after_density_cap": 175,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 158,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9661,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 175 of 333 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-030-13_997f56810bbb",
+      "duration_ms": 470832,
+      "count_by_source_before_merge": {
+        "fixed_interval": 15,
+        "pause": 134,
+        "rms_minimum": 92,
+        "silence": 39
+      },
+      "count_before_merge": 280,
+      "count_after_merge": 173,
+      "count_after_density_cap": 94,
+      "dropped_edge_guard": 6,
+      "dropped_density_cap": 79,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9788,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 94 of 173 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-030-14_7e375aabde28",
+      "duration_ms": 435645,
+      "count_by_source_before_merge": {
+        "fixed_interval": 14,
+        "pause": 107,
+        "rms_minimum": 84,
+        "silence": 48
+      },
+      "count_before_merge": 253,
+      "count_after_merge": 158,
+      "count_after_density_cap": 87,
+      "dropped_edge_guard": 6,
+      "dropped_density_cap": 71,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9822,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 87 of 158 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-036-02_6caf1ae2e6e4",
+      "duration_ms": 246286,
+      "count_by_source_before_merge": {
+        "fixed_interval": 8,
+        "pause": 95,
+        "rms_minimum": 50,
+        "silence": 44
+      },
+      "count_before_merge": 197,
+      "count_after_merge": 141,
+      "count_after_density_cap": 49,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 92,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9373,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 49 of 141 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-036-06_ca9ee2876130",
+      "duration_ms": 432623,
+      "count_by_source_before_merge": {
+        "fixed_interval": 14,
+        "pause": 100,
+        "rms_minimum": 87,
+        "silence": 85
+      },
+      "count_before_merge": 286,
+      "count_after_merge": 184,
+      "count_after_density_cap": 86,
+      "dropped_edge_guard": 5,
+      "dropped_density_cap": 98,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9272,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 86 of 184 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-042-04_6e33a9355a56",
+      "duration_ms": 364444,
+      "count_by_source_before_merge": {
+        "fixed_interval": 12,
+        "pause": 175,
+        "rms_minimum": 77,
+        "silence": 38
+      },
+      "count_before_merge": 302,
+      "count_after_merge": 210,
+      "count_after_density_cap": 72,
+      "dropped_edge_guard": 10,
+      "dropped_density_cap": 138,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.8537,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 72 of 210 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-042-10_43338c47bcba",
+      "duration_ms": 400988,
+      "count_by_source_before_merge": {
+        "fixed_interval": 13,
+        "pause": 93,
+        "rms_minimum": 65,
+        "silence": 63
+      },
+      "count_before_merge": 234,
+      "count_after_merge": 153,
+      "count_after_density_cap": 80,
+      "dropped_edge_guard": 10,
+      "dropped_density_cap": 73,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9704,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 80 of 153 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-048-02_e3118b920708",
+      "duration_ms": 263792,
+      "count_by_source_before_merge": {
+        "fixed_interval": 8,
+        "pause": 65,
+        "rms_minimum": 53,
+        "silence": 60
+      },
+      "count_before_merge": 186,
+      "count_after_merge": 120,
+      "count_after_density_cap": 52,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 68,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.8275,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 52 of 120 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-048-13_f62109dffd0b",
+      "duration_ms": 329169,
+      "count_by_source_before_merge": {
+        "fixed_interval": 10,
+        "pause": 128,
+        "rms_minimum": 63,
+        "silence": 44
+      },
+      "count_before_merge": 245,
+      "count_after_merge": 173,
+      "count_after_density_cap": 65,
+      "dropped_edge_guard": 9,
+      "dropped_density_cap": 108,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.848,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 65 of 173 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-054-02_9834a8ea7a2f",
+      "duration_ms": 386021,
+      "count_by_source_before_merge": {
+        "fixed_interval": 12,
+        "pause": 59,
+        "rms_minimum": 76,
+        "silence": 73
+      },
+      "count_before_merge": 220,
+      "count_after_merge": 139,
+      "count_after_density_cap": 77,
+      "dropped_edge_guard": 8,
+      "dropped_density_cap": 62,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9683,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 77 of 139 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-054-04_747c35a85cc4",
+      "duration_ms": 427787,
+      "count_by_source_before_merge": {
+        "fixed_interval": 14,
+        "pause": 129,
+        "rms_minimum": 85,
+        "silence": 60
+      },
+      "count_before_merge": 288,
+      "count_after_merge": 192,
+      "count_after_density_cap": 85,
+      "dropped_edge_guard": 6,
+      "dropped_density_cap": 107,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9218,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 85 of 192 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-060-02_750ae808eb21",
+      "duration_ms": 388223,
+      "count_by_source_before_merge": {
+        "fixed_interval": 12,
+        "pause": 104,
+        "rms_minimum": 79,
+        "silence": 40
+      },
+      "count_before_merge": 235,
+      "count_after_merge": 144,
+      "count_after_density_cap": 77,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 67,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9004,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 77 of 144 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-060-04_34b26e07afa9",
+      "duration_ms": 364016,
+      "count_by_source_before_merge": {
+        "fixed_interval": 12,
+        "pause": 73,
+        "rms_minimum": 68,
+        "silence": 98
+      },
+      "count_before_merge": 251,
+      "count_after_merge": 172,
+      "count_after_density_cap": 72,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 100,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.8676,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 72 of 172 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-066-12_a768918f9fe3",
+      "duration_ms": 257752,
+      "count_by_source_before_merge": {
+        "fixed_interval": 8,
+        "pause": 48,
+        "rms_minimum": 51,
+        "silence": 30
+      },
+      "count_before_merge": 137,
+      "count_after_merge": 86,
+      "count_after_density_cap": 51,
+      "dropped_edge_guard": 6,
+      "dropped_density_cap": 35,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.8719,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 51 of 86 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-066-15_9cfdd52a3911",
+      "duration_ms": 342035,
+      "count_by_source_before_merge": {
+        "fixed_interval": 11,
+        "pause": 65,
+        "rms_minimum": 68,
+        "silence": 64
+      },
+      "count_before_merge": 208,
+      "count_after_merge": 129,
+      "count_after_density_cap": 68,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 61,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9286,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 68 of 129 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-079-05_8c912ccd336b",
+      "duration_ms": 292014,
+      "count_by_source_before_merge": {
+        "fixed_interval": 9,
+        "pause": 87,
+        "rms_minimum": 58,
+        "silence": 41
+      },
+      "count_before_merge": 195,
+      "count_after_merge": 127,
+      "count_after_density_cap": 58,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 69,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9172,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 58 of 127 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-079-10_ff3a03eaa024",
+      "duration_ms": 336875,
+      "count_by_source_before_merge": {
+        "fixed_interval": 11,
+        "pause": 128,
+        "rms_minimum": 74,
+        "silence": 17
+      },
+      "count_before_merge": 230,
+      "count_after_merge": 148,
+      "count_after_density_cap": 67,
+      "dropped_edge_guard": 4,
+      "dropped_density_cap": 81,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9332,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 67 of 148 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-083-16_d4d6cc41c446",
+      "duration_ms": 258627,
+      "count_by_source_before_merge": {
+        "fixed_interval": 8,
+        "pause": 51,
+        "rms_minimum": 49,
+        "silence": 49
+      },
+      "count_before_merge": 157,
+      "count_after_merge": 96,
+      "count_after_density_cap": 51,
+      "dropped_edge_guard": 6,
+      "dropped_density_cap": 45,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.8317,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 51 of 96 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-083-19_be98ade17c61",
+      "duration_ms": 353988,
+      "count_by_source_before_merge": {
+        "fixed_interval": 11,
+        "pause": 95,
+        "rms_minimum": 79,
+        "silence": 67
+      },
+      "count_before_merge": 252,
+      "count_after_merge": 156,
+      "count_after_density_cap": 70,
+      "dropped_edge_guard": 9,
+      "dropped_density_cap": 86,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.8648,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 70 of 156 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "librivox-short-nonfiction-collection-vol-103-08_a1fb7d7364ca",
+      "duration_ms": 284029,
+      "count_by_source_before_merge": {
+        "fixed_interval": 9,
+        "pause": 67,
+        "rms_minimum": 58,
+        "silence": 79
+      },
+      "count_before_merge": 213,
+      "count_after_merge": 137,
+      "count_after_density_cap": 56,
+      "dropped_edge_guard": 9,
+      "dropped_density_cap": 81,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.8298,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 56 of 137 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-open-source-musician-podcast-mistakes-and-co_b420996caa4e",
+      "duration_ms": 1745782,
+      "count_by_source_before_merge": {
+        "fixed_interval": 58,
+        "pause": 424,
+        "rms_minimum": 337,
+        "silence": 321
+      },
+      "count_before_merge": 1140,
+      "count_after_merge": 760,
+      "count_after_density_cap": 349,
+      "dropped_edge_guard": 4,
+      "dropped_density_cap": 411,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9946,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 349 of 760 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-open-source-musician-podcast-osmpepisode1_c8cad45edb5e",
+      "duration_ms": 1073731,
+      "count_by_source_before_merge": {
+        "fixed_interval": 35,
+        "pause": 201,
+        "rms_minimum": 181,
+        "silence": 157
+      },
+      "count_before_merge": 574,
+      "count_after_merge": 371,
+      "count_after_density_cap": 214,
+      "dropped_edge_guard": 5,
+      "dropped_density_cap": 157,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9583,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 214 of 371 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-rubenerd-show-rubenerdshow070-wed-15-mar-200_6a6aafed5cd8",
+      "duration_ms": 1276316,
+      "count_by_source_before_merge": {
+        "fixed_interval": 42,
+        "pause": 166,
+        "rms_minimum": 233,
+        "silence": 22
+      },
+      "count_before_merge": 463,
+      "count_after_merge": 317,
+      "count_after_density_cap": 255,
+      "dropped_edge_guard": 5,
+      "dropped_density_cap": 62,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9876,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 255 of 317 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-rubenerd-show-rubenerdshow072-sun-19-mar-200_145d4833e6b7",
+      "duration_ms": 1277178,
+      "count_by_source_before_merge": {
+        "fixed_interval": 42,
+        "pause": 205,
+        "rms_minimum": 234,
+        "silence": 40
+      },
+      "count_before_merge": 521,
+      "count_after_merge": 338,
+      "count_after_density_cap": 255,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 83,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9795,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 255 of 338 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
       ]
     },
     {
@@ -236,6 +1346,50 @@
       ]
     },
     {
+      "episode_id": "notes-on-pianos-short-nonfiction-vol-064_fb408106996d",
+      "duration_ms": 296306,
+      "count_by_source_before_merge": {
+        "fixed_interval": 9,
+        "pause": 68,
+        "rms_minimum": 52,
+        "silence": 66
+      },
+      "count_before_merge": 195,
+      "count_after_merge": 129,
+      "count_after_density_cap": 59,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 70,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9471,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 59 of 129 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "irish-marriage-rites-short-nonfiction-vol-067_6a9681f1d8b1",
+      "duration_ms": 338326,
+      "count_by_source_before_merge": {
+        "fixed_interval": 11,
+        "pause": 66,
+        "rms_minimum": 70,
+        "silence": 59
+      },
+      "count_before_merge": 206,
+      "count_after_merge": 123,
+      "count_after_density_cap": 67,
+      "dropped_edge_guard": 9,
+      "dropped_density_cap": 56,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.882,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 67 of 123 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
       "episode_id": "obituary-of-srinivasa-ramanujan-short-nonfiction_b5d6de9335ba",
       "duration_ms": 337261,
       "count_by_source_before_merge": {
@@ -280,6 +1434,181 @@
       ]
     },
     {
+      "episode_id": "luminous-plants-short-nonfiction-vol-072_2b0424da1bf6",
+      "duration_ms": 406752,
+      "count_by_source_before_merge": {
+        "fixed_interval": 13,
+        "pause": 106,
+        "rms_minimum": 80,
+        "silence": 43
+      },
+      "count_before_merge": 242,
+      "count_after_merge": 153,
+      "count_after_density_cap": 81,
+      "dropped_edge_guard": 8,
+      "dropped_density_cap": 72,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9483,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 81 of 153 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "robert-fulton-short-nonfiction-vol-072_b638f32267ae",
+      "duration_ms": 340900,
+      "count_by_source_before_merge": {
+        "fixed_interval": 11,
+        "pause": 74,
+        "rms_minimum": 67,
+        "silence": 40
+      },
+      "count_before_merge": 192,
+      "count_after_merge": 122,
+      "count_after_density_cap": 68,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 54,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9683,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 68 of 122 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-cinematic-tangent-a-cintan-message-star-wars_e6cce2ef359e",
+      "duration_ms": 438099,
+      "count_by_source_before_merge": {
+        "fixed_interval": 14,
+        "pause": 111,
+        "rms_minimum": 82,
+        "silence": 38
+      },
+      "count_before_merge": 245,
+      "count_after_merge": 149,
+      "count_after_density_cap": 87,
+      "dropped_edge_guard": 6,
+      "dropped_density_cap": 62,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9151,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 87 of 149 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-cinematic-tangent-episode-11-the-lego-movie_3a1888019a4e",
+      "duration_ms": 1477407,
+      "count_by_source_before_merge": {
+        "fixed_interval": 49,
+        "pause": 318,
+        "rms_minimum": 288,
+        "silence": 111
+      },
+      "count_before_merge": 766,
+      "count_after_merge": 481,
+      "count_after_density_cap": 295,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 186,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9804,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 295 of 481 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-command-line-podcast-audio-diary-of-a-peculi_616f8c24e21b",
+      "duration_ms": 419939,
+      "count_by_source_before_merge": {
+        "fixed_interval": 13,
+        "pause": 129,
+        "rms_minimum": 82,
+        "silence": 22
+      },
+      "count_before_merge": 246,
+      "count_after_merge": 154,
+      "count_after_density_cap": 83,
+      "dropped_edge_guard": 12,
+      "dropped_density_cap": 71,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.8589,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 83 of 154 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-command-line-podcast-the-command-line-2015-1_a24d4cbff78c",
+      "duration_ms": 1179207,
+      "count_by_source_before_merge": {
+        "fixed_interval": 39,
+        "pause": 346,
+        "rms_minimum": 241,
+        "silence": 34
+      },
+      "count_before_merge": 660,
+      "count_after_merge": 430,
+      "count_after_density_cap": 235,
+      "dropped_edge_guard": 5,
+      "dropped_density_cap": 195,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9572,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 235 of 430 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-final-straw-radio-afm-final-straw-06122016ex_91301089fb14",
+      "duration_ms": 3576353,
+      "count_by_source_before_merge": {
+        "fixed_interval": 119,
+        "pause": 921,
+        "rms_minimum": 692,
+        "silence": 274
+      },
+      "count_before_merge": 2006,
+      "count_after_merge": 1196,
+      "count_after_density_cap": 715,
+      "dropped_edge_guard": 7,
+      "dropped_density_cap": 481,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9955,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 715 of 1196 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "the-final-straw-radio-the-final-straw-w-bursts-o_5d2020bd4919",
+      "duration_ms": 3718948,
+      "count_by_source_before_merge": {
+        "fixed_interval": 123,
+        "pause": 316,
+        "rms_minimum": 247,
+        "silence": 213
+      },
+      "count_before_merge": 899,
+      "count_after_merge": 585,
+      "count_after_density_cap": 585,
+      "dropped_edge_guard": 5,
+      "dropped_density_cap": 0,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 9.4382,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)"
+      ]
+    },
+    {
       "episode_id": "2-b-r-0-2-b-dramatic-reading-vonnegut_208b3c991ee6",
       "duration_ms": 1340786,
       "count_by_source_before_merge": {
@@ -299,6 +1628,94 @@
       "notes": [
         "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
         "density cap of 12.0/min kept 268 of 701 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "voa-our-world-our-world-pgm-219-2004-04-17_298e91161330",
+      "duration_ms": 1455751,
+      "count_by_source_before_merge": {
+        "fixed_interval": 48,
+        "pause": 506,
+        "rms_minimum": 268,
+        "silence": 89
+      },
+      "count_before_merge": 911,
+      "count_after_merge": 589,
+      "count_after_density_cap": 291,
+      "dropped_edge_guard": 3,
+      "dropped_density_cap": 298,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9938,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 291 of 589 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "voa-our-world-our-world-pgm-220-2004-04-24_ad08fcb17c33",
+      "duration_ms": 1391072,
+      "count_by_source_before_merge": {
+        "fixed_interval": 46,
+        "pause": 425,
+        "rms_minimum": 263,
+        "silence": 60
+      },
+      "count_before_merge": 794,
+      "count_after_merge": 528,
+      "count_after_density_cap": 278,
+      "dropped_edge_guard": 2,
+      "dropped_density_cap": 250,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9908,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 278 of 528 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "what-is-it-about-the-weather-whisper-weather_5ea1da1da36c",
+      "duration_ms": 1224594,
+      "count_by_source_before_merge": {
+        "fixed_interval": 40,
+        "pause": 304,
+        "rms_minimum": 180,
+        "silence": 198
+      },
+      "count_before_merge": 722,
+      "count_after_merge": 533,
+      "count_after_density_cap": 244,
+      "dropped_edge_guard": 2,
+      "dropped_density_cap": 289,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.955,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 244 of 533 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
+      ]
+    },
+    {
+      "episode_id": "what-is-it-about-the-weather-wiiatw-ep1_c40d93bd40ed",
+      "duration_ms": 1256333,
+      "count_by_source_before_merge": {
+        "fixed_interval": 41,
+        "pause": 384,
+        "rms_minimum": 218,
+        "silence": 286
+      },
+      "count_before_merge": 929,
+      "count_after_merge": 675,
+      "count_after_density_cap": 251,
+      "dropped_edge_guard": 2,
+      "dropped_density_cap": 424,
+      "synthetic_recorded": 0,
+      "transcript_available": false,
+      "candidates_per_minute": 11.9873,
+      "notes": [
+        "no transcript supplied; transcript_segment_end contributed 0 candidates (Phase 2 does not generate transcripts)",
+        "density cap of 12.0/min kept 251 of 675 merged candidates; raise candidate_generation.max_candidates_per_minute to keep more"
       ]
     }
   ]

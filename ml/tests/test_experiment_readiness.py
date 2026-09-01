@@ -174,7 +174,7 @@ def test_snapshot_read_rejects_wrong_schema(tmp_path):
 
 
 def test_the_gate_can_be_raised_by_a_named_experiment(tmp_path):
-    """The generic gate is a floor, not the resume experiment's bar.
+    """The generic gate is a floor, not the benchmark experiment's bar.
 
     Passing at 200 labels and only revealing the real requirement two commands
     later would send someone away thinking they were done.
@@ -186,7 +186,7 @@ def test_the_gate_can_be_raised_by_a_named_experiment(tmp_path):
     from slotify_rank.experiment.readiness import ReadinessGate
 
     config = load_experiment_config(
-        Path(__file__).resolve().parents[1] / "configs" / "experiment_resume_v1.yaml"
+        Path(__file__).resolve().parents[1] / "configs" / "experiment_v1.yaml"
     )
     raised = dataclasses.replace(
         ReadinessGate(), min_unique_candidates=config.minimum_human_labels

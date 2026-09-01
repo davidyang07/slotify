@@ -188,7 +188,7 @@ def prerender_clips(
 ) -> dict[str, int]:
     """Cut every candidate's clip ahead of the session.
 
-    Called by ``label resume-experiment`` so the annotator never waits on FFmpeg.
+    Called by ``label run-experiment`` so the annotator never waits on FFmpeg.
     Already-cut clips are left alone, so this is cheap to re-run and safe to
     interrupt.
     """

@@ -1,10 +1,10 @@
 """The whole post-labelling path, driven through the real CLI.
 
-Train → compare → resume evidence, on a synthetic corpus, with nothing mocked
+Train → compare → training matrix, on a synthetic corpus, with nothing mocked
 and no network. The point is that the sequence a person runs *after* the labels
 exist is proven to work before they spend ten hours producing them: an argument
-that does not exist, a manifest that does not join, or a report that cannot read
-a comparison would otherwise surface at the worst possible moment.
+that does not exist or a manifest that does not join would otherwise surface at
+the worst possible moment.
 
 The corpus is synthetic, and the last test is the one that matters most: it
 asserts the pipeline **refuses to publish** a headline measured on it. The
@@ -165,7 +165,7 @@ def test_the_experiment_manifest_resolves_against_a_real_run(trained):
             "--data-root",
             str(directory / "data"),
             "--config",
-            str(REPO_ROOT / "ml" / "configs" / "experiment_resume_v1.yaml"),
+            str(REPO_ROOT / "ml" / "configs" / "experiment_v1.yaml"),
             "--output",
             str(output),
         ]
@@ -175,47 +175,8 @@ def test_the_experiment_manifest_resolves_against_a_real_run(trained):
     # No split manifest and no labels in this scratch corpus, so it is blocked --
     # and it names both reasons rather than resolving optimistically.
     assert payload["ready"] is False
-    assert payload["experiment_version"] == "experiment-resume-v1"
+    assert payload["experiment_version"] == "experiment-v1"
     assert payload["config_digest"]
-
-
-def test_the_resume_report_reads_a_comparison_it_is_pointed_at(trained):
-    """The report joins to real artifacts, not just to fixtures."""
-    directory, _, run_dir = trained
-    _, out = _compare(trained, "eval-for-report")
-
-    artifacts = directory / "artifacts"
-    (artifacts / "evaluation").mkdir(parents=True, exist_ok=True)
-    shutil.copytree(out, artifacts / "evaluation" / "eval-1", dirs_exist_ok=True)
-    (artifacts / "training" / "run-1").mkdir(parents=True, exist_ok=True)
-    shutil.copy(
-        run_dir / "training_summary.json",
-        artifacts / "training" / "run-1" / "training_summary.json",
-    )
-
-    reports = directory / "reports"
-    code = main(
-        [
-            "report",
-            "resume-evidence",
-            "--data-root",
-            str(directory / "data"),
-            "--artifacts-root",
-            str(artifacts),
-            "--output-dir",
-            str(reports),
-        ]
-    )
-    assert code == 0
-    payload = json.loads((reports / "resume_evidence.json").read_text(encoding="utf-8"))
-    statuses = {check["key"]: check["status"] for check in payload["checks"]}
-
-    # The comparison was blocked as synthetic, so the headline stays unmeasured.
-    assert statuses["measured_relative_improvement"] == "NOT MEASURED"
-    assert statuses["improvement_meets_claim"] == "NOT MEASURED"
-    # ...but the report still read the run and reported what it found there.
-    assert statuses["multimodal_ranker_exists"] == "PASS"
-    assert (reports / "resume_evidence.md").is_file()
 
 
 def test_the_training_matrix_command_runs_a_cell_and_summarises_it(trained):
@@ -233,7 +194,7 @@ def test_the_training_matrix_command_runs_a_cell_and_summarises_it(trained):
             "--data-root",
             str(directory / "data"),
             "--config",
-            str(REPO_ROOT / "ml" / "configs" / "experiment_resume_v1.yaml"),
+            str(REPO_ROOT / "ml" / "configs" / "experiment_v1.yaml"),
             "--labels",
             str(labels),
             "--output-root",

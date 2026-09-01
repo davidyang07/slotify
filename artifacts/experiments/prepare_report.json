@@ -1,0 +1,162 @@
+{
+  "package_version": "0.2.0",
+  "corpus_version": "corpus-v2",
+  "started_at": "2026-08-29T20:10:09+00:00",
+  "seconds": 21326.7,
+  "all_steps_ok": true,
+  "steps": [
+    {
+      "name": "fetch:sources_real_v1",
+      "description": "Download the audio declared in ml/configs/sources_real_v1.yaml",
+      "exit_code": 0,
+      "seconds": 0.68,
+      "skipped": false,
+      "error": null
+    },
+    {
+      "name": "fetch:sources_v2",
+      "description": "Download the audio declared in ml/configs/sources_v2.yaml",
+      "exit_code": 0,
+      "seconds": 6.06,
+      "skipped": false,
+      "error": null
+    },
+    {
+      "name": "reconcile",
+      "description": "Drop episodes no committed registry declares (including stray local imports)",
+      "exit_code": 0,
+      "seconds": 1.09,
+      "skipped": false,
+      "error": null
+    },
+    {
+      "name": "probe",
+      "description": "Measure duration, sample rate, channels and format",
+      "exit_code": 0,
+      "seconds": 0.51,
+      "skipped": false,
+      "error": null
+    },
+    {
+      "name": "normalize",
+      "description": "Render every episode to 16 kHz mono PCM WAV",
+      "exit_code": 0,
+      "seconds": 14.76,
+      "skipped": false,
+      "error": null
+    },
+    {
+      "name": "candidates",
+      "description": "Generate the deterministic candidate pool",
+      "exit_code": 0,
+      "seconds": 99.3,
+      "skipped": false,
+      "error": null
+    },
+    {
+      "name": "split",
+      "description": "Assign grouped train/validation/test splits (v4)",
+      "exit_code": 0,
+      "seconds": 7.67,
+      "skipped": false,
+      "error": null
+    },
+    {
+      "name": "features",
+      "description": "Transcribe, extract acoustic features, embed audio and text, assemble and validate",
+      "exit_code": 0,
+      "seconds": 21186.23,
+      "skipped": false,
+      "error": null
+    },
+    {
+      "name": "validate",
+      "description": "Check dataset integrity",
+      "exit_code": 0,
+      "seconds": 2.33,
+      "skipped": false,
+      "error": null
+    },
+    {
+      "name": "stats",
+      "description": "Recompute dataset, candidate, label and split statistics",
+      "exit_code": 0,
+      "seconds": 1.81,
+      "skipped": false,
+      "error": null
+    },
+    {
+      "name": "queue",
+      "description": "Build the stratified labelling queue",
+      "exit_code": 0,
+      "seconds": 6.27,
+      "skipped": false,
+      "error": null
+    }
+  ],
+  "readiness": {
+    "ready_to_label": true,
+    "target_labels": 2400,
+    "generated_candidate_count": 13176,
+    "labellable_candidate_count": 13176,
+    "complete_multimodal_count": 12930,
+    "queued_unique_count": 2400,
+    "episode_count": 77,
+    "series_count": 40,
+    "processed_audio_hours": 18.6109,
+    "episodes_by_split": {
+      "test": 7,
+      "train": 57,
+      "validation": 13
+    },
+    "series_by_split": {
+      "test": [
+        "filibuster-podcast",
+        "free-will-science-and-religion",
+        "houston-we-have-a-podcast"
+      ],
+      "train": [
+        "amiga-ireland",
+        "building-bridges-radio",
+        "gruesome-hertzogg",
+        "librivox-dramatic-agnes-grey",
+        "librivox-dramatic-alice-in-wonderland",
+        "librivox-dramatic-anne-of-green-gables",
+        "librivox-dramatic-black-beauty",
+        "librivox-dramatic-christmas-carol",
+        "librivox-dramatic-daisy-miller",
+        "librivox-dramatic-jekyll-and-hyde",
+        "librivox-dramatic-tom-sawyer",
+        "librivox-short-nonfiction-036",
+        "librivox-short-nonfiction-042",
+        "librivox-short-nonfiction-048",
+        "librivox-short-nonfiction-054",
+        "librivox-short-nonfiction-060",
+        "librivox-short-nonfiction-066",
+        "librivox-short-nonfiction-079",
+        "librivox-short-nonfiction-083",
+        "librivox-short-nonfiction-103",
+        "rubenerd-show",
+        "short-nonfiction-013",
+        "short-nonfiction-064",
+        "short-nonfiction-072",
+        "the-cinematic-tangent",
+        "the-command-line",
+        "the-final-straw-radio",
+        "two-br-02-b",
+        "voa-our-world",
+        "what-is-it-about-the-weather"
+      ],
+      "validation": [
+        "art-of-war",
+        "labor-express-radio",
+        "librivox-dramatic-doctor-dolittle",
+        "librivox-dramatic-scene-and-story-002",
+        "librivox-short-nonfiction-030",
+        "open-source-musician",
+        "short-nonfiction-067"
+      ]
+    },
+    "blocking_reasons": []
+  }
+}

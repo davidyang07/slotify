@@ -92,6 +92,18 @@ SOURCE_MANIFEST_VERSION = "source-manifest-v1.0.0"
 PREPROCESSING_VERSION = "preprocess-v1.0.0"
 CANDIDATE_GENERATION_VERSION = "candgen-v1.0.0"
 SPLIT_ALGORITHM_VERSION = "split-grouped-greedy-v1.0.0"
+#: The stratified variant. It groups on series exactly as the greedy algorithm
+#: does -- the leakage guarantee is identical -- and differs only in *ordering*:
+#: it balances each content type across the partitions separately, so a corpus
+#: whose podcasts are a minority of its hours cannot end up with all of them in
+#: one partition. Recorded per manifest rather than replacing the constant
+#: above, so manifests produced by either algorithm stay readable.
+STRATIFIED_SPLIT_ALGORITHM_VERSION = "split-stratified-greedy-v1.0.0"
+#: Every algorithm version this build can read a manifest from.
+SUPPORTED_SPLIT_ALGORITHM_VERSIONS = (
+    SPLIT_ALGORITHM_VERSION,
+    STRATIFIED_SPLIT_ALGORITHM_VERSION,
+)
 LABEL_RUBRIC_VERSION = "rubric-v1.0.0"
 #: Shape of one stored judgement (:mod:`slotify_rank.labelling.database`) and
 #: of one exported label row. v1.1.0 keys a judgement on the *presentation*
@@ -171,6 +183,8 @@ __all__ = [
     "PREPROCESSING_VERSION",
     "CANDIDATE_GENERATION_VERSION",
     "SPLIT_ALGORITHM_VERSION",
+    "STRATIFIED_SPLIT_ALGORITHM_VERSION",
+    "SUPPORTED_SPLIT_ALGORITHM_VERSIONS",
     "LABEL_RUBRIC_VERSION",
     "LABEL_SCHEMA_VERSION",
     "TRANSCRIPTION_VERSION",

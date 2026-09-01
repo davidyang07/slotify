@@ -1,7 +1,7 @@
 # GENERATED FILE -- do not edit by hand.
 #
-# Produced by `slotify-rank dataset discover --plan ml/configs/corpus_resume_v1.yaml` from corpus
-# plan corpus-resume-v1 (plan digest 14dd9fcccb0ea3fd). Regenerate it with
+# Produced by `slotify-rank dataset discover --plan ml/configs/corpus_v1.yaml` from corpus
+# plan corpus-v1 (plan digest 14dd9fcccb0ea3fd). Regenerate it with
 # that command; every URL, duration and licence field below was read from the
 # Internet Archive's public metadata API, not typed.
 #

@@ -63,17 +63,16 @@ gate is waiting for:
 
 ```bash
 cd ml
-python -m slotify_rank.cli experiment train   --labels ../data/labels/labels_resume-v1.jsonl --split-version v3
+python -m slotify_rank.cli experiment train   --labels ../data/labels/labels_full-v1.jsonl --split-version v3
 ```
 
 That writes one directory per (variant, seed) cell and a matrix summary next to
 them, and it refuses to nominate a run whose label source is anything but
 `human`.
 
-Two things then change automatically. `scripts/lib/select-checkpoint.mjs` starts
+One thing then changes automatically. `scripts/lib/select-checkpoint.mjs` starts
 serving the human-trained checkpoint instead of the bootstrap -- `npm run
 demo` and `npm run preflight` both print which one they picked and its label
-source -- and `artifacts/reports/resume_evidence.md` moves the
-`human_trained_checkpoint` row from FAIL to PASS.
+source.
 
-Until then, both reports say so, which is accurate.
+Until then, the report says so, which is accurate.

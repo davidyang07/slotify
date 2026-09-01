@@ -93,14 +93,12 @@ jobs:
 
       - name: Assert the published evidence agrees with its raw artifacts
         # The one failure mode a generated report cannot catch by itself: a
-        # report that was true when it was written and is not any more. Both
-        # summaries are regenerated from the committed artifacts and compared.
+        # report that was true when it was written and is not any more. The
+        # summary is regenerated from the committed artifacts and compared.
         # Nothing is recomputed first -- recomputing the artifacts would quietly
         # repair the very disagreement this step exists to find.
         working-directory: ml
-        run: |
-          python -m slotify_rank.cli report model-evidence --check
-          python -m slotify_rank.cli report resume-evidence --check
+        run: python -m slotify_rank.cli report model-evidence --check
 
   corpus-registry:
     # The committed source registry is generated from the committed corpus plan.

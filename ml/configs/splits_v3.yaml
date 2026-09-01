@@ -1,10 +1,10 @@
-# Split configuration v3 -- the resume-experiment corpus.
+# Split configuration v3 -- the benchmark corpus.
 #
 # WHY A NEW VERSION. A split manifest is IMMUTABLE for a given version: models
 # are trained against it and results are reported against it, so changing one in
 # place would invalidate every number already produced. v2 was frozen over the
-# six-series Phase 5A corpus. The resume experiment adds the government podcast
-# shows and ten more LibriVox volumes (ml/configs/corpus_resume_v1.yaml), which
+# six-series Phase 5A corpus. the benchmark experiment adds the government podcast
+# shows and ten more LibriVox volumes (ml/configs/corpus_v1.yaml), which
 # changes corpus composition materially, so it gets its own version rather than
 # overwriting v2.
 #

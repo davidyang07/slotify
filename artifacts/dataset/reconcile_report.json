@@ -1,0 +1,84 @@
+{
+  "registries": [
+    "configs/sources_real_v1.yaml",
+    "configs/sources_v2.yaml"
+  ],
+  "episodes_before": 87,
+  "episodes_after": 77,
+  "episodes_removed": 10,
+  "candidates_removed": 933,
+  "features_removed": 20,
+  "kept_local": 0,
+  "removed": [
+    {
+      "episode_id": "fixture-cats-versus-dogs-debate_52a83dd90eca",
+      "series_id": "fixture-conversations",
+      "source_uri": "backend/audio_tests/catsvdogs.mp3",
+      "source_type": "existing_repository_fixture",
+      "reason": "no committed source registry declares this URL; it is left over from an earlier corpus version"
+    },
+    {
+      "episode_id": "fixture-two-speaker-conversation_c2c631e09775",
+      "series_id": "fixture-conversations",
+      "source_uri": "backend/audio_tests/convo.mp3",
+      "source_type": "existing_repository_fixture",
+      "reason": "no committed source registry declares this URL; it is left over from an earlier corpus version"
+    },
+    {
+      "episode_id": "fixture-music-clip-drake_985dc58a5ee3",
+      "series_id": "fixture-music",
+      "source_uri": "backend/audio_tests/drake.mp3",
+      "source_type": "existing_repository_fixture",
+      "reason": "no committed source registry declares this URL; it is left over from an earlier corpus version"
+    },
+    {
+      "episode_id": "fixture-music-clip-ryan-rap_2dd097f42519",
+      "series_id": "fixture-music",
+      "source_uri": "backend/audio_tests/ryan-rap.mp3",
+      "source_type": "existing_repository_fixture",
+      "reason": "no committed source registry declares this URL; it is left over from an earlier corpus version"
+    },
+    {
+      "episode_id": "fixture-narrated-speech-david_4ae18ba65aeb",
+      "series_id": "fixture-narrated",
+      "source_uri": "backend/audio_tests/final/david-test1.mp3",
+      "source_type": "existing_repository_fixture",
+      "reason": "no committed source registry declares this URL; it is left over from an earlier corpus version"
+    },
+    {
+      "episode_id": "fixture-narrated-speech-ryan_af62f43d417f",
+      "series_id": "fixture-narrated",
+      "source_uri": "backend/audio_tests/ryan-test1.mp3",
+      "source_type": "existing_repository_fixture",
+      "reason": "no committed source registry declares this URL; it is left over from an earlier corpus version"
+    },
+    {
+      "episode_id": "fixture-podcast-style-monologue_eefa0528f230",
+      "series_id": "fixture-podcastlike",
+      "source_uri": "backend/audio_tests/rogan-test1.mp3",
+      "source_type": "existing_repository_fixture",
+      "reason": "no committed source registry declares this URL; it is left over from an earlier corpus version"
+    },
+    {
+      "episode_id": "houston-we-have-a-podcast-ep190-before-his-secon_840f6abe10d5",
+      "series_id": "houston-we-have-a-podcast",
+      "source_uri": "https://archive.org/download/Houston-We-Have-a-Podcast/Ep190_BeforeHisSecondFlight.mp3",
+      "source_type": "direct_download",
+      "reason": "no committed source registry declares this URL; it is left over from an earlier corpus version"
+    },
+    {
+      "episode_id": "houston-we-have-a-podcast-ep199-better-together_7b51bfab1891",
+      "series_id": "houston-we-have-a-podcast",
+      "source_uri": "https://archive.org/download/Houston-We-Have-a-Podcast/Ep199_BetterTogether.mp3",
+      "source_type": "direct_download",
+      "reason": "no committed source registry declares this URL; it is left over from an earlier corpus version"
+    },
+    {
+      "episode_id": "houston-we-have-a-podcast-shreya-garg-clip_fc724f215dcb",
+      "series_id": "houston-we-have-a-podcast",
+      "source_uri": "https://archive.org/download/Houston-We-Have-a-Podcast/Ep201_CitizenScienceonStation.mp3",
+      "source_type": "direct_download",
+      "reason": "no committed source registry declares this URL; it is left over from an earlier corpus version"
+    }
+  ]
+}

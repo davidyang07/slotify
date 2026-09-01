@@ -2,18 +2,18 @@
 
 **Every quantity in this document comes from a generated artifact.** Nothing here is typed by hand;
 the current values live in `artifacts/dataset/dataset_statistics.json` and
-`artifacts/dataset/candidate_statistics.json`, and the counts printed in the README and in
-`artifacts/reports/resume_evidence.md` are read from the same files.
+`artifacts/dataset/candidate_statistics.json`, and the counts printed in the README are read
+from the same files.
 
 ```powershell
 cd ml
-.\.venv\Scripts\python.exe -m slotify_rank.cli dataset stats --split-version v3
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset stats --split-version v4
 ```
 
 The corpus is built by one command from a committed plan:
 
 ```powershell
-.\.venv\Scripts\python.exe -m slotify_rank.cli dataset prepare-resume-experiment
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset prepare-experiment
 ```
 
 ---
@@ -32,7 +32,7 @@ deterministic `heuristic_offline_v1` baseline that ships in the product today.
 | Layer | What it is | Target | Fully labelled? |
 |---|---|---|---|
 | **Processed corpus** | Audio decoded, normalized, and turned into a candidate pool | enough for the queue below | No |
-| **Human-reviewed subset** | Candidates a person rated against the rubric | 2 400 candidates (the resume experiment's gate) | Yes, by definition |
+| **Human-reviewed subset** | Candidates a person rated against the rubric | 2 400 candidates (the benchmark experiment's gate) | Yes, by definition |
 
 Collapsing these into one "labelled dataset" figure would overstate the human effort by roughly an
 order of magnitude, so the statistics artifacts never do. The eight tracked quantities are:
@@ -52,14 +52,26 @@ held_out_evaluation_candidate_count   human-labelled AND in the test split
 
 Podcasts, interviews, conversational recordings and narrated spoken word.
 
-**What this corpus actually is, stated plainly.** It is one genuine interview podcast, ten
-multi-voice dramatic readings and a set of narrated prose volumes. It is *not* a corpus of
-commercial podcasts, because there is no supply of them that is both openly licensed and legally
-redistributable — see "What was surveyed and rejected" below. The dramatic readings are performed
-dialogue, which gives the turn-taking and interruption structure a single narrator never produces,
-but they are still read from a script. Any result measured here should be read as evidence about
-*spoken-word ad-break placement*, and its transfer to a commercial podcast is an open question this
-corpus cannot settle.
+**What this corpus actually is, stated plainly.** Fourteen genuine podcast and talk-radio
+series, ten multi-voice dramatic readings and a set of narrated prose volumes. The podcast series
+are the majority of the audio and are the only thing in the test partition.
+
+It is still *not* a corpus of **commercial** podcasts. Every show in it is either a U.S. government
+programme or an independent show its own creator released under an open Creative Commons licence,
+which is a real but particular slice of the medium: no advertising-funded network shows, no studio
+production budgets, and a skew toward technology, politics and community broadcasting. Ad-break
+placement in these is the same *task* — find where a conversation can be interrupted without
+stepping on a thought — but the production style is not the same. Transfer to a commercial
+advertising-funded podcast remains an open question this corpus cannot settle, and no number
+measured here should be read as settling it.
+
+What changed from the v1 corpus is worth being precise about, because it is the difference between
+a narrow evaluation and an invalid one. v1 held **one** podcast series, so the grouped split put it
+in the test partition alone and left training with no podcast audio at all — the headline would
+have measured cross-domain transfer onto a single show. v2 holds fourteen, spread across all three
+partitions. The dramatic readings and narrated prose stay: performed dialogue supplies turn-taking a
+single narrator never produces, and both give the split enough independent groups to be meaningful.
+They are no longer standing in for the target format.
 
 - **Music is out of domain** and is excluded from headline hours and from the test partition, even
   though the product supports a song mode.
@@ -76,8 +88,8 @@ definition: `podcast`, `interview`, `conversational`, `narrated`.
 
 ### How the registry is built
 
-`ml/configs/sources_resume_v1.yaml` is **generated, not written**. `dataset discover` resolves the
-committed corpus plan (`ml/configs/corpus_resume_v1.yaml`) against the Internet Archive's public
+`ml/configs/sources_v2.yaml` is **generated, not written**. `dataset discover` resolves the
+committed corpus plan (`ml/configs/corpus_v2.yaml`) against the Internet Archive's public
 metadata API and emits every direct URL, duration, checksum and licence field it found. The plan
 names *shows* with per-show episode caps and duration windows; the registry names files. Both are
 committed, so a clone reproduces the corpus without re-running discovery, and `dataset discover
@@ -94,7 +106,21 @@ Every generated entry records `provenance.licence_verified_by`, which is one of:
 |---|---|---|
 | `item_license_url` | The Archive item itself declares a public-domain dedication or the Public Domain Mark. Anything else is dropped. | Machine-checked |
 | `agency_collection` | The item belongs to a named federal agency's own Archive collection, which the item metadata proves. Used for NASA's own uploads. | Machine-checked |
+| `open_licence_in_home_collection` | The item declares an **open** Creative Commons licence (CC0, Public Domain Mark, CC BY or CC BY-SA) **and** sits in the show's own home collection on the Archive, which the plan names. Both halves are required; either alone drops the item. | Machine-checked |
 | `manual_attestation` | The plan asserts the recording is a U.S. Government work (17 U.S.C. §105), naming the agency, the programme and its official URL so the claim can be checked. | An assertion, recorded as one |
+
+**Why the home-collection half matters.** There are roughly 35 000 items on the Archive where
+somebody uploaded somebody else's podcast and ticked "public domain". A licence applied by a
+stranger is worth nothing, and the corpus plan has always refused them. A show's *own* collection is
+where the show publishes itself, so a licence declared there is the publisher's own declaration.
+That is not a proof — a fan can be granted a collection too — so every show additionally records its
+`homepage` in the plan. No code reads it. It is there so a reader can check the claim by hand, and
+it is how the third-party archives listed below were caught and excluded.
+
+**NonCommercial and NoDerivatives do not qualify.** They are Creative Commons but they are not open,
+and admitting them would make "openly licensed" mean two different things inside one corpus. Shows
+whose catalogue is mixed (Labor Express Radio, The Cinematic Tangent, Building Bridges) contribute
+only their openly licensed episodes; the rest are dropped and counted.
 
 An episode whose basis cannot be established at all is **dropped and counted** — "we could not
 license it" never silently becomes "it is fine".
@@ -109,9 +135,34 @@ Recorded here so the next person does not repeat the work:
   `access-restricted-item`. Discovery now rejects them at plan time.
 - **NASACast Audio.** Its feed mixes ~100 s bulletins with 60–90 minute specials; nothing sits in a
   usable episode-length window.
+- **The whole `podcasts_mirror` tree** (~7 500 items scanned), including the Voice of America
+  newscast mirrors and `podcasts_mirror_gnuarchives`, which carries genuinely CC BY-SA shows such as
+  *Free as in Freedom* and *Skeptics with a K*. Every item sampled is `access-restricted-item` with
+  `private: true` on its files. The licences are real; the audio cannot be obtained.
+- **Daily Tech News Show.** A real, well-known CC-licensed podcast — and CC BY-**ND**, which is not
+  open, with seven of eight sampled items access-restricted anyway.
+- **The Unofficial Mark and Brian Archive** (2 532 items, uniformly Public Domain Mark) and
+  **No Quarter** (whose collection description says outright that it was archived from iTunes).
+  Third-party archives of other people's shows. The uploader is not the rights holder.
+- **Hacker Public Radio** (4 440 items). Genuinely community-published, but the dominant declared
+  licence is CC BY-NC-SA, which fails the open bar — and one feed carrying hundreds of unrelated
+  contributors is the wrong *shape* for a series-grouped split regardless: treating it as one group
+  asserts a shared recording chain that does not exist.
+- **Cybersauce World News.** CC BY 4.0 and downloadable, but generated by a Markov bot. Not human
+  conversation.
+- **Exploring the Illusion of Free Will.** Passes every mechanical check, and excluded anyway: it
+  shares hosts, format and microphones with *Free Will, Science, and Religion*, which is already in
+  the corpus. Two series ids over one recording setup is leakage in disguise, so only one is used.
+- **Occupy Radio.** CC BY 3.0 and downloadable, but its items carry no duration metadata, so episode
+  length cannot be bounded before fetching.
+- **The Sound Projector, Music Manumit, Midnight Metal Monastery** — open licences, predominantly
+  music. **Amicus Lectio, Middlebury lectures** — open licences, single-voice readings the corpus
+  already has enough of. **Radio Continental Drift, the Goa,1556 collection** — open licences, but
+  multilingual assemblages of many contributors, not one show.
 - **Third-party podcast uploads carrying uploader-applied public-domain marks.** There are tens of
   thousands. An uploader marking someone else's podcast as public domain does not make it so, and
-  this corpus does not rest on that.
+  this corpus does not rest on that. `declared_open_licence` does not open this door: it requires
+  the show's own collection, which these items are not in.
 
 ### Source types
 
@@ -205,14 +256,29 @@ training set, or a metric.
 Grouped by `series_id`, never by episode or candidate. Two episodes of one show share hosts, room,
 mic chain and vocabulary; training on one and testing on the other measures memorisation.
 
-- Algorithm `split-grouped-greedy-v1.0.0`, deterministic under a configurable seed.
-- Balanced on **duration**, not episode count.
-- Target 70 / 15 / 15.
+- Algorithm `split-stratified-greedy-v1.0.0` (v4). Deterministic under a configurable seed. The
+  older `split-grouped-greedy-v1.0.0` is unchanged and still reads its own manifests; v4 selects the
+  stratified variant, it does not replace the other.
+- Target 70 / 15 / 15, balanced on **duration**, not episode count.
+- **Stratified by content type.** Each content type is balanced across the partitions separately, so
+  a corpus whose podcasts are a minority of its hours cannot put all of them in one partition and
+  still report a balanced split. Grouping is untouched — the unit of assignment is still the series.
+- **The test partition holds podcast-format series only** (`test_content_types`). The product ranks
+  ad breaks in podcasts; a test set padded with audiobook chapters measures something adjacent and
+  reports it as the thing itself. This makes the test set smaller and the claim harder to support,
+  which is the correct direction for a rule of this kind.
+- **No series may occupy more than half a partition's hours** (`max_group_share_of_partition`). A
+  show that is a modest share of the whole corpus can still be most of a small partition: the
+  longest podcast here would otherwise have taken roughly three-quarters of the test
+  budget by itself.
+- **A partition of fewer than 3 independent series fails the split** (`min_series_per_partition`).
+  Not a warning. A metric macro-averaged over one show's episodes measures that show.
 - Out-of-domain material is kept out of the test partition.
 - **Below 6 independent groups the splitter refuses to pretend.** It emits a single `development`
   partition and marks the result degraded, so no one reports a "held-out" metric from a smoke
   dataset.
 - A split manifest is immutable for its version. Changing it requires a version bump or `--force`.
+  `splits_v3.json` is left as it was; v4 is a new version over a new corpus, not an edit of it.
 
 ---
 
@@ -229,25 +295,23 @@ window and shows the transcript context either side of the break when one exists
 
 ## Known limitations
 
-- **It is not a commercial-podcast corpus.** One real interview podcast, multi-voice dramatic
-  readings and narrated prose. See "Target domain" above; transfer to commercial podcasts is an open
-  question this corpus cannot settle.
-- **One show carries the podcast weight, and it lands wholly in `test`.** Houston We Have a Podcast
-  is a single series, so grouping on the series necessarily puts all of it in one partition — and
-  under `splits_v3` that partition is the held-out one. Two consequences, both worth stating before
-  any number is read:
-
-  1. **The headline measures cross-domain transfer.** The model trains on multi-voice dramatic
-     readings and narrated prose and is tested on a real interview podcast. That is a harder and
-     more informative question than in-domain ranking, and it is not the same question.
-  2. **The test partition is one series.** Six episodes of one show are not six independent
-     observations; they share hosts, room, mic chain and editing rhythm, so the macro-average over
-     them reflects that show as much as the model. `evaluation compare` emits a caveat saying so,
-     and the bootstrap interval — not the point estimate — is the thing to read.
-
-  The alternative would be splitting one show's episodes across partitions, which is exactly the
-  leakage the series grouping exists to prevent. The honest fix is more openly licensed podcast
-  series; the survey above records why there are not any.
+- **It is not a commercial-podcast corpus.** Fourteen podcast and talk-radio series, all either
+  U.S. government programmes or independent shows self-released under open Creative Commons
+  licences, plus multi-voice dramatic readings and narrated prose. No advertising-funded network
+  shows. See "Target domain" above; transfer to commercial podcasts is an open question this corpus
+  cannot settle.
+- **The test partition is small in absolute terms.** Three independent podcast series and seven
+  episodes. That is a real held-out set — three different producers, hosts, formats and recording
+  chains — and it is still few enough that the bootstrap interval, not the point estimate, is the
+  thing to read. `evaluation compare` bootstraps over episodes and reports the interval on the
+  *improvement*; an interval spanning zero is not a result and the comparison says so.
+- **The corpus is skewed by subject.** Technology, politics, community broadcasting and science
+  dominate; there is no true-crime, no comedy panel show, no narrative fiction podcast. Openly
+  licensed audio is not a random sample of podcasting and this corpus does not pretend otherwise.
+- **A handful of synthetic smoke fixtures remain in the episode manifest** from earlier runs
+  (`fixture-*`, ~2 minutes total). They are excluded from the labelling queue by
+  `include_fixtures: false`, and the test partition's content-type restriction keeps them out of the
+  held-out set. They do contribute a negligible amount to training.
 - **`transcript_segment_end` contributes nothing at generation time.** Candidates are generated
   before transcription runs, so that generator only fires when a timestamped transcript is supplied
   up front. Every generation report states this explicitly. Transcripts *are* produced by the
