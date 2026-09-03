@@ -697,3 +697,79 @@ def test_a_manifest_without_a_digest_does_not_establish_reproducibility(
         experiment_config_path=EXPERIMENT_CONFIG,
     )
     assert evidence.check("reproducibility_manifest").status == FAIL
+
+
+# --------------------------------------------------------------------------
+# The command line
+# --------------------------------------------------------------------------
+
+
+def test_check_mode_never_writes_the_report_it_is_checking(tmp_path: Path):
+    """A verification that edits its own evidence is not a verification.
+
+    `npm run verify:ml` runs this command, so if --check wrote the report it
+    would silently repair any drift it was there to find, and would leave a
+    dirty working tree on every run.
+    """
+    from slotify_rank.cli import main
+
+    _readme(tmp_path, AWARD_WORDING)
+    artifacts = _artifacts(tmp_path)
+    _queue_summary(artifacts, unique=2400, target=2400)
+    reports = artifacts / "reports"
+
+    argv = [
+        "report",
+        "claim-evidence",
+        "--data-root",
+        str(tmp_path / "data"),
+        "--artifacts-root",
+        str(artifacts),
+        "--output-dir",
+        str(reports),
+        "--experiment-config",
+        str(EXPERIMENT_CONFIG),
+    ]
+
+    assert main(argv) == 0
+    markdown_before = (reports / "claim_evidence.md").read_bytes()
+    json_before = (reports / "claim_evidence.json").read_bytes()
+
+    assert main([*argv, "--check"]) == 0
+    assert (reports / "claim_evidence.md").read_bytes() == markdown_before
+    assert (reports / "claim_evidence.json").read_bytes() == json_before
+
+
+def test_the_implementation_gate_is_enforced_in_check_mode(tmp_path: Path):
+    """--require-implemented has to work alongside --check, not only on write.
+
+    The gate lives on the read-only path because that is the path CI takes. A
+    tree with no labelling queue leaves one implementation capability
+    unestablished, and the command must exit non-zero for it.
+    """
+    from slotify_rank.cli import main
+
+    _readme(tmp_path, AWARD_WORDING)
+    artifacts = _artifacts(tmp_path)
+    reports = artifacts / "reports"
+    argv = [
+        "report",
+        "claim-evidence",
+        "--data-root",
+        str(tmp_path / "data"),
+        "--artifacts-root",
+        str(artifacts),
+        "--output-dir",
+        str(reports),
+        "--experiment-config",
+        str(EXPERIMENT_CONFIG),
+    ]
+
+    assert main(argv) == 0  # writes, and no gate is set
+    assert main([*argv, "--check"]) == 0  # the report agrees with its artifacts
+    # ...but a capability is missing, and the gate says so on the same path.
+    assert main([*argv, "--check", "--require-implemented"]) == 1
+
+    _queue_summary(artifacts, unique=2400, target=2400)
+    assert main(argv) == 0  # regenerate: the queue summary now exists
+    assert main([*argv, "--check", "--require-implemented"]) == 0

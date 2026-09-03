@@ -513,16 +513,21 @@ def _cmd_claim_evidence(args: argparse.Namespace) -> int:
         print(f"  {key}: {evidence.measurements.get(key)}")
     print()
 
+    # The gates below apply in both modes. A verification run passes --check so
+    # it does not rewrite the artifact it is checking -- a check that edits its
+    # own evidence is not one -- and it still needs the gates to be enforced, so
+    # they cannot live only on the write path.
     if args.check:
-        return _report_is_current(
+        status = _report_is_current(
             directory / "claim_evidence.md",
             render_markdown(evidence.to_dict()),
             "npm run claim-evidence",
         )
-
-    written = write_claim_evidence(directory, evidence)
-    for path in written.values():
-        print(f"  wrote {path}")
+    else:
+        status = 0
+        written = write_claim_evidence(directory, evidence)
+        for path in written.values():
+            print(f"  wrote {path}")
 
     failures = [c.key for c in evidence.checks if c.status == FAIL]
     unmeasured = [c.key for c in evidence.checks if c.status == NOT_MEASURED]
@@ -558,7 +563,7 @@ def _cmd_claim_evidence(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-    return 0
+    return status
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

@@ -87,16 +87,13 @@ steps.push(
     args: ["report", "model-evidence", "--check"],
   },
   {
-    name: "committed claim evidence agrees with its artifacts",
-    args: ["report", "claim-evidence", "--check"],
-  },
-  {
-    // The gate that matters on a clone: every capability this repository claims
-    // to implement is established by committed code, a test and an artifact.
-    // It deliberately says nothing about the empirical claims, which no amount
-    // of software can settle.
-    name: "every implemented capability is established",
-    args: ["report", "claim-evidence", "--require-implemented"],
+    // Two assertions in one pass, and --check is what keeps it read-only: the
+    // committed report still agrees with its artifacts, AND every capability
+    // this repository claims to implement is established by committed code, a
+    // test and an artifact. It deliberately says nothing about the empirical
+    // claims, which no amount of software can settle.
+    name: "claim evidence agrees, and every implemented capability is established",
+    args: ["report", "claim-evidence", "--check", "--require-implemented"],
   },
   {
     // 25 checks, including split_leakage_by_episode and split_leakage_by_series.

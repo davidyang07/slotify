@@ -51,9 +51,9 @@ jobs:
       - run: npm run test:scripts
 
       - name: Repository hygiene
-        # Judges what is COMMITTED, not what is in a working tree: a cache, a
+        # Judges what is COMMITTED, not what is in a working tree. A cache, a
         # credential or a corpus file is permanent once it is in the history.
-        run: node -e "import('./scripts/lib/hygiene.mjs').then(async (m) => { const { execFileSync } = await import('node:child_process'); const tracked = execFileSync('git', ['ls-files'], { encoding: 'utf8', maxBuffer: 33554432 }).split(/\r?\n/); const findings = m.hygieneFindings(tracked); for (const f of findings) console.error(`${f.path} - ${f.rule}: ${f.reason}`); if (findings.length) process.exit(1); console.log(`${tracked.filter(Boolean).length} tracked file(s), no findings.`); });"
+        run: node scripts/check-hygiene.mjs
 
   backend:
     runs-on: ubuntu-latest
