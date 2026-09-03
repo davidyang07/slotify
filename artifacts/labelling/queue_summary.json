@@ -1,0 +1,86 @@
+{
+  "schema_version": "labelling-queue-summary-v1.0.0",
+  "package_version": "0.2.0",
+  "queue_version": "full-v2",
+  "queue_schema_version": "labelling-queue-v1.0.0",
+  "queue_content_hash": "a15ddd486db07f823ba4467ec906c05441a9f97d1a1836d3a973176a7851ea50",
+  "seed": 20260829,
+  "config_hash": "8ec9c70612074b77",
+  "candidate_manifest_hash": "bcb63eac450b7b635812cbcbbc9397c3eb6e2afd4092d7b2dc530987f88a14f5",
+  "split_manifest_hash": "8db84a85e80f94f60dea25ad7180088cd3b54e9d9eab58478610180fc116b8e7",
+  "target_unique": 2400,
+  "unique_candidate_count": 2400,
+  "presentation_count": 2460,
+  "blind_repeat_presentations": 60,
+  "pilot_count": 30,
+  "primary_count": 2370,
+  "overlap_count": 60,
+  "consistency_count": 60,
+  "allocation": {
+    "train": 0.7,
+    "validation": 0.15,
+    "test": 0.15
+  },
+  "score_strata": {
+    "low_max": 0.5,
+    "medium_max": 0.6506,
+    "minimum": 0.4,
+    "maximum": 0.9,
+    "labels": [
+      "low",
+      "medium",
+      "high"
+    ]
+  },
+  "coverage": {
+    "selected_count": 2400,
+    "by_split": {
+      "test": 360,
+      "train": 1680,
+      "validation": 360
+    },
+    "by_split_target": {
+      "test": 360,
+      "train": 1680,
+      "validation": 360
+    },
+    "by_score_stratum": {
+      "high": 800,
+      "low": 800,
+      "medium": 800
+    },
+    "by_content_type": {
+      "conversational": 615,
+      "narrated": 777,
+      "podcast": 1008
+    },
+    "by_primary_source": {
+      "fixed_interval": 96,
+      "pause": 658,
+      "rms_minimum": 469,
+      "silence": 1177
+    },
+    "by_position_bucket": {
+      "p0": 441,
+      "p1": 837,
+      "p2": 426,
+      "p3": 345,
+      "p4": 351
+    },
+    "by_silence_bucket": {
+      "s0": 800,
+      "s1": 964,
+      "s2": 597,
+      "s3": 39
+    },
+    "by_feature_status": {
+      "complete": 2400
+    },
+    "transcript_available": 2400,
+    "audio_available": 2400,
+    "text_available": 2400,
+    "max_per_episode_selected": 53
+  },
+  "series_count": 40,
+  "episode_count": 77
+}

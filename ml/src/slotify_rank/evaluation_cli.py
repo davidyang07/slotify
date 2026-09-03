@@ -460,6 +460,107 @@ def _cmd_model_evidence(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_claim_evidence(args: argparse.Namespace) -> int:
+    """Regenerate artifacts/reports/claim_evidence.{md,json} from the artifacts.
+
+    ``--check`` regenerates into memory and compares against what is committed,
+    so CI can prove the published summary still agrees with its raw inputs. That
+    is the guard against the one failure mode a generated report cannot fix by
+    itself: a report that was true when it was written and is not any more.
+    """
+    from slotify_rank.evaluation.claim_evidence import (
+        EMPIRICAL,
+        FAIL,
+        IMPLEMENTATION,
+        NOT_MEASURED,
+        PASS,
+        collect_claim_evidence,
+        render_markdown,
+        write_claim_evidence,
+    )
+
+    paths = _paths(args)
+    repo_root = paths.repo_root
+    artifacts_root = (
+        Path(args.artifacts_root)
+        if args.artifacts_root
+        else paths.data_root.parent / "artifacts"
+    )
+    evidence = collect_claim_evidence(
+        repo_root=repo_root,
+        artifacts_root=artifacts_root,
+        experiment_config_path=(
+            Path(args.experiment_config) if args.experiment_config else None
+        ),
+    )
+    directory = Path(args.output_dir) if args.output_dir else artifacts_root / "reports"
+
+    width = max(len(check.claim) for check in evidence.checks)
+    for label, wanted in (("Implemented", IMPLEMENTATION), ("Empirical", EMPIRICAL)):
+        print(f"{label}:")
+        for check in evidence.checks:
+            if check.evidence_class == wanted:
+                print(f"  {check.status:<13} {check.claim:<{width}}")
+        print()
+    for key in (
+        "human_labelled_candidate_count",
+        "generated_candidate_count",
+        "baseline_ndcg_at_3",
+        "model_ndcg_at_3",
+        "relative_improvement_percent",
+        "required_minimum_relative_improvement_percent",
+    ):
+        print(f"  {key}: {evidence.measurements.get(key)}")
+    print()
+
+    if args.check:
+        return _report_is_current(
+            directory / "claim_evidence.md",
+            render_markdown(evidence.to_dict()),
+            "npm run claim-evidence",
+        )
+
+    written = write_claim_evidence(directory, evidence)
+    for path in written.values():
+        print(f"  wrote {path}")
+
+    failures = [c.key for c in evidence.checks if c.status == FAIL]
+    unmeasured = [c.key for c in evidence.checks if c.status == NOT_MEASURED]
+    supported = sum(1 for c in evidence.checks if c.status == PASS)
+    print()
+    print(
+        f"{supported}/{len(evidence.checks)} claim(s) supported; "
+        f"{len(failures)} failing, {len(unmeasured)} not yet measured."
+    )
+    if args.require_all and (failures or unmeasured):
+        print(
+            "error: --require-all set and not every claim is supported "
+            f"(failing: {failures}; unmeasured: {unmeasured}).",
+            file=sys.stderr,
+        )
+        return 1
+    if args.require_no_failures and failures:
+        print(
+            f"error: --require-no-failures set and {failures} failed.",
+            file=sys.stderr,
+        )
+        return 1
+    if args.require_implemented:
+        unsupported = [
+            c.key
+            for c in evidence.checks
+            if c.evidence_class == IMPLEMENTATION and c.status != PASS
+        ]
+        if unsupported:
+            print(
+                "error: --require-implemented set and these capabilities are not "
+                f"established by code, tests and artifacts: {unsupported}.",
+                file=sys.stderr,
+            )
+            return 1
+    return 0
+
+
 def register(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "evaluation", help="Held-out comparison against the canonical baseline."
@@ -567,3 +668,52 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     evidence_parser.set_defaults(func=_cmd_model_evidence)
+
+    claim_parser = report_sub.add_parser(
+        "claim-evidence",
+        help=(
+            "PASS/FAIL every capability and claim against the artifacts, with the "
+            "thresholds read from the committed experiment definition."
+        ),
+    )
+    claim_parser.add_argument("--data-root", default=None)
+    claim_parser.add_argument("--artifacts-root", default=None, dest="artifacts_root")
+    claim_parser.add_argument("--output-dir", default=None, dest="output_dir")
+    claim_parser.add_argument(
+        "--experiment-config", default=None, dest="experiment_config"
+    )
+    claim_parser.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "Regenerate and compare against the committed report instead of "
+            "writing; non-zero exit when they disagree."
+        ),
+    )
+    claim_parser.add_argument(
+        "--require-all",
+        action="store_true",
+        dest="require_all",
+        help="Exit non-zero unless every claim is PASS.",
+    )
+    claim_parser.add_argument(
+        "--require-no-failures",
+        action="store_true",
+        dest="require_no_failures",
+        help=(
+            "Exit non-zero on any FAIL, but tolerate claims that are simply not "
+            "measured yet."
+        ),
+    )
+    claim_parser.add_argument(
+        "--require-implemented",
+        action="store_true",
+        dest="require_implemented",
+        help=(
+            "Exit non-zero unless every implementation claim is PASS. This is the "
+            "gate CI runs: it asserts the software is complete without asserting "
+            "anything about a measurement nobody has taken."
+        ),
+    )
+    claim_parser.set_defaults(func=_cmd_claim_evidence)
+

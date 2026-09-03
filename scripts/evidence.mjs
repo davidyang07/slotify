@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Regenerate every statistical artifact, in dependency order, then print the
- * model-evidence status for every capability.
+ * model-evidence status for every capability, and finally the capability and
+ * claim evidence.
  *
  * One command so the numbers in the repository can be re-derived rather than
  * trusted. It runs only the cheap, offline reporting steps -- it does not
@@ -9,7 +10,7 @@
  * tens of minutes and their outputs are already cached and checksummed.
  *
  *   npm run evidence
- *   npm run evidence -- --split-version v2
+ *   npm run evidence -- --split-version v4
  */
 
 import { spawnSync } from "node:child_process";
@@ -22,7 +23,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const ML_DIR = path.join(REPO_ROOT, "ml");
 
 const argIndex = process.argv.indexOf("--split-version");
-const splitVersion = argIndex === -1 ? "v2" : process.argv[argIndex + 1] ?? "v2";
+const splitVersion = argIndex === -1 ? "v4" : process.argv[argIndex + 1] ?? "v4";
 
 const pythonBin = (() => {
   if (process.env.SLOTIFY_ML_PYTHON) return process.env.SLOTIFY_ML_PYTHON;
@@ -45,6 +46,10 @@ const steps = [
   {
     name: "model evidence",
     args: ["report", "model-evidence"],
+  },
+  {
+    name: "claim evidence",
+    args: ["report", "claim-evidence"],
   },
 ];
 
@@ -70,6 +75,6 @@ for (const step of steps) {
 console.log(
   failed
     ? `\n${failed} step(s) failed. The artifacts may be stale.`
-    : "\nArtifacts regenerated. See artifacts/reports/model_evidence.md.",
+    : "\nArtifacts regenerated. See artifacts/reports/model_evidence.md and artifacts/reports/claim_evidence.md.",
 );
 process.exit(failed ? 1 : 0);

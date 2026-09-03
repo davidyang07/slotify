@@ -150,6 +150,11 @@ PAIR_GENERATION_VERSION = "pairgen-v1.0.0"
 #: so a queue built against a regenerated corpus is detectable rather than
 #: silently mismatched.
 LABELLING_QUEUE_SCHEMA_VERSION = "labelling-queue-v1.0.0"
+#: Shape of the committed reduction of a queue
+#: (:func:`slotify_rank.labelling.queue.queue_summary`). The queue artifact
+#: itself names candidate ids and lives under the uncommitted ``data/`` tree;
+#: this is the counts-and-hashes view that ships as evidence.
+LABELLING_QUEUE_SUMMARY_SCHEMA_VERSION = "labelling-queue-summary-v1.0.0"
 #: Shape of a frozen label snapshot (:mod:`slotify_rank.experiment.freeze`). A
 #: snapshot is immutable once written; a correction is a new version.
 LABEL_SNAPSHOT_SCHEMA_VERSION = "label-snapshot-v1.0.0"
@@ -198,6 +203,7 @@ __all__ = [
     "CHECKPOINT_SCHEMA_VERSION",
     "PAIR_GENERATION_VERSION",
     "LABELLING_QUEUE_SCHEMA_VERSION",
+    "LABELLING_QUEUE_SUMMARY_SCHEMA_VERSION",
     "LABEL_SNAPSHOT_SCHEMA_VERSION",
     "EXPERIMENT_MANIFEST_VERSION",
     "SUPPORTED_CHECKPOINT_SCHEMA_VERSIONS",

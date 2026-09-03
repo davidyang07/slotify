@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from slotify_rank.labelling.queue import (
     QueueConfig,
     QueueError,
     build_queue,
+    queue_summary,
     read_queue,
     write_queue,
+    write_queue_summary,
 )
 from tests.dataset_fixtures import make_candidate, make_episode
 from tests.phase5_fixtures import build_corpus
@@ -272,3 +276,49 @@ def test_the_setting_is_recorded_in_the_queue_config_digest():
     strict = QueueConfig(require_complete_features=True)
     assert permissive.digest() != strict.digest()
     assert strict.to_dict()["require_complete_features"] is True
+
+
+def test_queue_summary_carries_the_shape_without_the_candidate_ids(tmp_path):
+    """The reduction that ships as evidence.
+
+    The queue itself lives under the uncommitted data tree, so this is all a
+    reviewer of a fresh clone ever sees. It has to carry enough to establish
+    that the round was built -- size, target, blind repeats, the hashes it is
+    pinned to -- and none of the candidate ids, which would make it a copy of
+    the queue rather than a summary of it.
+    """
+    episodes, candidates = _corpus()
+    queue = build_queue(candidates, episodes, config=_config())
+    summary = queue_summary(queue)
+
+    assert summary["unique_candidate_count"] == queue.unique_count
+    assert summary["target_unique"] == queue.config["target_unique"]
+    assert summary["presentation_count"] == len(queue.presentations)
+    assert summary["blind_repeat_presentations"] == len(
+        queue.consistency_candidate_ids
+    )
+    assert summary["queue_content_hash"] == queue.content_hash()
+    assert summary["config_hash"] == queue.config_hash
+
+    serialized = json.dumps(summary)
+    for candidate_id in queue.unique_candidate_ids:
+        assert candidate_id not in serialized
+
+
+def test_queue_summary_counts_repeats_as_presentations_not_as_labels(tmp_path):
+    """A blind repeat is a quality control, never an extra unique candidate."""
+    episodes, candidates = _corpus()
+    queue = build_queue(candidates, episodes, config=_config(consistency_size=8))
+    summary = queue_summary(queue)
+    assert summary["blind_repeat_presentations"] == 8
+    assert (
+        summary["presentation_count"]
+        == summary["unique_candidate_count"] + summary["blind_repeat_presentations"]
+    )
+
+
+def test_write_queue_summary_round_trips(tmp_path):
+    episodes, candidates = _corpus()
+    queue = build_queue(candidates, episodes, config=_config())
+    path = write_queue_summary(tmp_path / "queue_summary.json", queue)
+    assert json.loads(path.read_text(encoding="utf-8")) == queue_summary(queue)

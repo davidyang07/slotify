@@ -44,8 +44,10 @@ from slotify_rank.labelling.export import export_labels
 from slotify_rank.labelling.queue import (
     build_queue,
     load_queue_config,
+    queue_summary,
     read_queue,
     write_queue,
+    write_queue_summary,
 )
 
 __all__ = ["register"]
@@ -699,6 +701,59 @@ def _cmd_label_queue(args: argparse.Namespace) -> int:
         f"signal-disagreement {cov['signal_disagreement']}, "
         f"max per episode {cov['max_per_episode_selected']}"
     )
+    print(f"Wrote {destination}")
+    return 0
+
+
+def _cmd_label_queue_summary(args: argparse.Namespace) -> int:
+    """Reduce a queue artifact to the committable counts-and-hashes summary.
+
+    The queue itself lists 2,400 candidate ids and lives under the uncommitted
+    ``data/`` tree, so a fresh clone has no way to see that the labelling round
+    was built at all. This writes the reduction that does ship, under
+    ``artifacts/labelling/``.
+    """
+    paths = _paths(args)
+    queue_path = (
+        Path(args.queue)
+        if args.queue
+        else paths.data_root / "labels" / "queue_full-v2.json"
+    )
+    queue = read_queue(queue_path)
+    destination = (
+        Path(args.output)
+        if args.output
+        else paths.data_root.parent / "artifacts" / "labelling" / "queue_summary.json"
+    )
+    summary = queue_summary(queue)
+
+    if args.check:
+        if not destination.is_file():
+            print(
+                f"error: {destination} does not exist; run without --check first.",
+                file=sys.stderr,
+            )
+            return 1
+        committed = json.loads(destination.read_text(encoding="utf-8"))
+        # generated_at is deliberately absent from the summary, so the two
+        # dictionaries are comparable without excluding anything.
+        if committed != summary:
+            print(
+                f"error: {destination} no longer agrees with {queue_path}.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"{destination} agrees with {queue_path}.")
+        return 0
+
+    write_queue_summary(destination, queue)
+    print(
+        f"Queue {summary['queue_version']}: {summary['unique_candidate_count']} "
+        f"unique candidate(s) of a {summary['target_unique']} target, "
+        f"{summary['presentation_count']} presentation(s) including "
+        f"{summary['blind_repeat_presentations']} blind repeat(s)."
+    )
+    print(f"  by split: {summary['coverage'].get('by_split')}")
     print(f"Wrote {destination}")
     return 0
 
@@ -1413,6 +1468,25 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help="Overwrite an existing queue of the same version (orphans its labels).",
     )
     queue_parser.set_defaults(func=_cmd_label_queue)
+
+    queue_summary_parser = label_sub.add_parser(
+        "queue-summary",
+        help=(
+            "Write the committable counts-and-hashes reduction of a queue to "
+            "artifacts/labelling/queue_summary.json."
+        ),
+    )
+    _add_common(queue_summary_parser)
+    queue_summary_parser.add_argument(
+        "--queue", default=None, help="Queue artifact (default data/labels/queue_full-v2.json)."
+    )
+    queue_summary_parser.add_argument("--output", default=None)
+    queue_summary_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Compare against the committed summary instead of writing it.",
+    )
+    queue_summary_parser.set_defaults(func=_cmd_label_queue_summary)
 
     check_parser = label_sub.add_parser(
         "check", help="Run label-quality controls (warnings only; never mutates)."

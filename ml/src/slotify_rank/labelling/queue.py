@@ -59,6 +59,7 @@ from typing import Any, Mapping, Sequence
 
 from slotify_rank.config.versions import (
     LABELLING_QUEUE_SCHEMA_VERSION,
+    LABELLING_QUEUE_SUMMARY_SCHEMA_VERSION,
     PACKAGE_VERSION,
 )
 from slotify_rank.data.checksum import atomic_write_bytes, sha256_text
@@ -78,6 +79,8 @@ __all__ = [
     "build_queue",
     "read_queue",
     "write_queue",
+    "queue_summary",
+    "write_queue_summary",
     "QueueError",
 ]
 
@@ -893,3 +896,71 @@ def read_queue(path: Path) -> LabellingQueue:
             f"build reads {LABELLING_QUEUE_SCHEMA_VERSION!r}. Regenerate the queue."
         )
     return LabellingQueue.from_mapping(raw)
+
+
+def queue_summary(queue: LabellingQueue) -> dict[str, Any]:
+    """A committable description of a queue: shape and coverage, no candidate ids.
+
+    The queue artifact itself lives under ``data/``, which is never committed:
+    it names every queued candidate in a corpus that is reconstructed rather than
+    stored. That leaves a reviewer with no way to see that the labelling round
+    was actually built, so this reduction is written to ``artifacts/`` instead.
+
+    It carries the counts, the stratification and the hashes that pin the queue
+    to a specific candidate manifest and split, and nothing that would let the
+    queue be rebuilt from it. ``blind_repeat_presentations`` is the number of
+    consistency re-checks: presentations that point at a candidate already shown
+    earlier under a different presentation id, which the annotator cannot see.
+    """
+    repeats = [p for p in queue.presentations if p.is_repeat]
+    coverage = dict(queue.coverage)
+    config = dict(queue.config)
+    return {
+        "schema_version": LABELLING_QUEUE_SUMMARY_SCHEMA_VERSION,
+        "package_version": PACKAGE_VERSION,
+        "queue_version": queue.queue_version,
+        "queue_schema_version": queue.schema_version,
+        "queue_content_hash": queue.content_hash(),
+        "seed": queue.seed,
+        "config_hash": queue.config_hash,
+        "candidate_manifest_hash": queue.candidate_manifest_hash,
+        "split_manifest_hash": queue.split_manifest_hash,
+        "target_unique": config.get("target_unique"),
+        "unique_candidate_count": queue.unique_count,
+        "presentation_count": len(queue.presentations),
+        "blind_repeat_presentations": len(repeats),
+        "pilot_count": len(queue.pilot_candidate_ids),
+        "primary_count": len(queue.primary_candidate_ids),
+        "overlap_count": len(queue.overlap_candidate_ids),
+        "consistency_count": len(queue.consistency_candidate_ids),
+        "allocation": config.get("allocation"),
+        "score_strata": queue.score_strata.to_dict(),
+        "coverage": {
+            key: coverage.get(key)
+            for key in (
+                "selected_count",
+                "by_split",
+                "by_split_target",
+                "by_score_stratum",
+                "by_content_type",
+                "by_primary_source",
+                "by_position_bucket",
+                "by_silence_bucket",
+                "by_feature_status",
+                "transcript_available",
+                "audio_available",
+                "text_available",
+                "max_per_episode_selected",
+            )
+            if key in coverage
+        },
+        "series_count": len(coverage.get("by_series") or {}),
+        "episode_count": len(coverage.get("by_episode") or {}),
+    }
+
+
+def write_queue_summary(path: Path, queue: LabellingQueue) -> Path:
+    destination = Path(path)
+    payload = json.dumps(queue_summary(queue), indent=2, ensure_ascii=False) + "\n"
+    atomic_write_bytes(destination, payload.encode("utf-8"))
+    return destination

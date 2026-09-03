@@ -1,6 +1,6 @@
 """Independent verification of this project's NDCG against scikit-learn's.
 
-The headline resume number is a ratio of two NDCG@3 values. Both come out of
+The headline number is a ratio of two NDCG@3 values. Both come out of
 :mod:`slotify_rank.evaluation.metrics`, so a bug in that one function would move
 the numerator and the denominator together and could easily produce a plausible,
 wrong improvement that every test in the repository agrees with -- because every
