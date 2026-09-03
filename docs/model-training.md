@@ -274,20 +274,20 @@ python -m slotify_rank.cli models list
 python -m slotify_rank.cli models describe --model gated
 
 # Prepare a dataset and see the eligibility accounting (no training).
-python -m slotify_rank.cli training prepare --labels data/labels/labels_v1.jsonl
+python -m slotify_rank.cli training prepare --labels data/labels/labels_full-v2.jsonl
 
 # Generate and inspect the within-episode pairs.
-python -m slotify_rank.cli training pairs --labels data/labels/labels_v1.jsonl --pairs-output pairs.jsonl
+python -m slotify_rank.cli training pairs --labels data/labels/labels_full-v2.jsonl --pairs-output pairs.jsonl
 
 # Train the gated multimodal ranker on CPU.
 python -m slotify_rank.cli training run \
-    --labels data/labels/labels_v1.jsonl \
+    --labels data/labels/labels_full-v2.jsonl \
     --model-config configs/models/gated_v1.yaml
 
 # Validate, inspect and resume.
-python -m slotify_rank.cli training validate --labels data/labels/labels_v1.jsonl --checkpoint artifacts/training/<run_id>/best_checkpoint.pt
+python -m slotify_rank.cli training validate --labels data/labels/labels_full-v2.jsonl --checkpoint artifacts/training/<run_id>/best_checkpoint.pt
 python -m slotify_rank.cli training inspect  --checkpoint artifacts/training/<run_id>/best_checkpoint.pt
-python -m slotify_rank.cli training resume   --labels data/labels/labels_v1.jsonl --model-config configs/models/gated_v1.yaml --run-dir artifacts/training/<run_id> --checkpoint artifacts/training/<run_id>/last_checkpoint.pt --epochs 30
+python -m slotify_rank.cli training resume   --labels data/labels/labels_full-v2.jsonl --model-config configs/models/gated_v1.yaml --run-dir artifacts/training/<run_id> --checkpoint artifacts/training/<run_id>/last_checkpoint.pt --epochs 30
 ```
 
 ---

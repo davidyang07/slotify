@@ -79,6 +79,13 @@ cd ml
 .\.venv\Scripts\python.exe -m pytest --cov=slotify_rank --cov-report=term-missing
 ```
 
+From the repository root, `npm run verify:ml` runs this suite and then everything
+else that can be checked without collecting new human labels: repository
+hygiene, both evidence reports re-derived from the committed artifacts, the
+implemented-capability gate, and -- when a local corpus is present -- dataset
+validation, feature validation, queue integrity and the readiness gate. Steps
+that need the uncommitted corpus report themselves as skipped by name.
+
 No test in the default run reaches the network, calls a paid API, downloads a
 model, requires a GPU, or trains anything. The HTTP layer is stubbed in the fetch
 tests, and the two Phase 3 models are stubbed at the stage boundary so the whole
@@ -305,6 +312,16 @@ recording collapse into one episode.
     --queue ..\data\labels\queue_full-v2.json --stage pilot --port 8000
 
 .\.venv\Scripts\python.exe -m slotify_rank.cli label export
+
+# Read-only quality controls over whatever has been collected so far.
+.\.venv\Scripts\python.exe -m slotify_rank.cli label check `
+    --queue ..\data\labels\queue_full-v2.json --split-version v4
+
+# The committable reduction of the queue: counts, allocation and the hashes it
+# is pinned to, with no candidate ids. This is what a fresh clone can see, since
+# the queue artifact itself lives under the uncommitted data/ tree.
+.\.venv\Scripts\python.exe -m slotify_rank.cli label queue-summary
+.\.venv\Scripts\python.exe -m slotify_rank.cli label queue-summary --check
 ```
 
 Rubric and guidance: `docs/labelling-guide.md`; the step-by-step pilot session is
@@ -466,14 +483,14 @@ $py = ".\.venv\Scripts\python.exe"
 & $py -m slotify_rank.cli models describe --model gated
 
 # Prepare a dataset (eligibility accounting) and generate within-episode pairs.
-& $py -m slotify_rank.cli training prepare --labels data\labels\labels_v1.jsonl
-& $py -m slotify_rank.cli training pairs   --labels data\labels\labels_v1.jsonl
+& $py -m slotify_rank.cli training prepare --labels data\labels\labels_full-v2.jsonl
+& $py -m slotify_rank.cli training pairs   --labels data\labels\labels_full-v2.jsonl
 
 # Train the gated multimodal ranker on CPU, then validate / inspect / resume.
 & $py -m slotify_rank.cli training run `
-    --labels data\labels\labels_v1.jsonl `
+    --labels data\labels\labels_full-v2.jsonl `
     --model-config configs\models\gated_v1.yaml
-& $py -m slotify_rank.cli training validate --labels data\labels\labels_v1.jsonl --checkpoint artifacts\training\<run_id>\best_checkpoint.pt
+& $py -m slotify_rank.cli training validate --labels data\labels\labels_full-v2.jsonl --checkpoint artifacts\training\<run_id>\best_checkpoint.pt
 & $py -m slotify_rank.cli training inspect  --checkpoint artifacts\training\<run_id>\best_checkpoint.pt
 ```
 
@@ -541,7 +558,7 @@ python -m slotify_rank.cli training run \
   --model-config configs/models/gated_v1.yaml \
   --labels ../data/labels/weak_labels_v1.jsonl \
   --allow-label-source weak_heuristic \
-  --split-version v2
+  --split-version v4
 ```
 
 A model trained this way is a **distillation of the baseline**. Its validation
@@ -553,10 +570,10 @@ summary classifies it as a bootstrap and carries a warning saying all of this.
 
 ```bash
 python -m slotify_rank.cli evaluation compare \
-  --labels ../data/labels/labels_v1.jsonl \
+  --labels ../data/labels/labels_full-v2.jsonl \
   --model ../artifacts/training/<run_id>/best_checkpoint.pt \
   --baseline heuristic_offline_v1 \
-  --split test --split-version v2 \
+  --split test --split-version v4 \
   --require-publishable
 ```
 
@@ -585,10 +602,11 @@ publishable** — and `--require-publishable` exits 1 — when any of these hold
 
 A zero baseline returns `None`, never an infinite improvement.
 
-## The evidence report
+## The evidence reports
 
-`model-evidence` says what each capability's artifacts currently establish, with
-every value read from a generated artifact rather than typed.
+Two generated reports, both read out of artifacts rather than typed.
+
+`model-evidence` says what each capability's artifacts currently establish.
 
 ```bash
 python -m slotify_rank.cli report model-evidence
@@ -599,6 +617,28 @@ npm run evidence
 # CI mode: regenerate and fail if the committed report has drifted.
 python -m slotify_rank.cli report model-evidence --check
 ```
+
+`claim-evidence` says PASS or FAIL for every capability and claim, and keeps
+**implementation** claims and **empirical** claims in separate tables. An
+implementation claim is settled by committed code, the test that exercises it
+and the artifact it produces; an empirical claim is settled only by a
+measurement, and a PASS in the first table is never evidence for anything in the
+second.
+
+```bash
+python -m slotify_rank.cli report claim-evidence
+npm run claim-evidence            # same, regenerating the statistics first
+
+python -m slotify_rank.cli report claim-evidence --check
+# The gate CI runs: every implemented capability must be established. It asserts
+# nothing about the empirical claims, which need human labels.
+python -m slotify_rank.cli report claim-evidence --require-implemented
+```
+
+Thresholds come from the committed experiment definition, never from this
+module: `test_the_report_contains_no_hard_coded_thresholds` fails if a number
+like the improvement threshold is ever typed into the checker, so editing
+`experiment_v2.yaml` always changes the verdict.
 
 Reads every generated artifact and writes
 `artifacts/reports/model_evidence.{json,md}` with an evidence status per

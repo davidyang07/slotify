@@ -127,6 +127,23 @@ sentence-boundary status and transcript availability. It carries four stages:
 The queue is immutable once labels are collected against it: to change it, bump
 `version` in the config (a byte-different queue of the same version is refused).
 
+The queue artifact itself lives under `data/`, which is never committed — it
+names every queued candidate in a corpus that is reconstructed rather than
+stored. So a reduction of it *is* committed, and it is what a fresh clone sees:
+
+```powershell
+.\.venv\Scripts\python.exe -m slotify_rank.cli label queue-summary
+# -> artifacts/labelling/queue_summary.json
+.\.venv\Scripts\python.exe -m slotify_rank.cli label queue-summary --check
+```
+
+It carries the counts, the allocation, the stratification and the hashes that
+pin the queue to a specific candidate manifest and split — and no candidate ids,
+which would make it a copy of the queue rather than a summary of it. The
+evidence report reads it to establish that the labelling round was built, and
+reports the queue size and the collected label count as two different numbers
+that are never added.
+
 > **Note.** `signal_disagreement` coverage is 0 in round 1 because candidates
 > were generated before transcripts existed, so their `sentence_end` field is
 > null. Regenerating candidates with transcript-aware sentence boundaries would

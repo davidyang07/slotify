@@ -46,10 +46,12 @@ cd ml
 | Stop the service | `Ctrl+C` in the terminal |
 
 `--stage pilot` restricts the session to the queue's pilot stage. The service
-serves exactly those 24 candidates, `Progress` counts against 24, and a label
+serves exactly those 30 candidates, `Progress` counts against 30, and a label
 for any candidate **outside** the pilot is rejected with `404`. Drop `--stage`
-(or pass `--stage all`) later to continue into the full 280-candidate queue;
-`--stage primary` serves the 256 non-pilot candidates.
+(or pass `--stage all`) later to continue into the full 2,400-candidate queue;
+`--stage primary` serves the 2,370 non-pilot candidates. The counts come from
+the queue itself — `artifacts/labelling/queue_summary.json` records them — so a
+requeue changes them here too.
 
 Open the URL, type the annotator id `david-pilot-v1`, and press **Start /
 resume**. No name or personal information is stored — the id is the only
@@ -103,9 +105,9 @@ The rubric and edge cases are always reachable from the UI via the
 
 Each clip is ~10 s before and ~10 s after the proposed break, played as one
 continuous window; the UI labels where in the clip the break falls. Transcript
-text either side of the break is shown when a transcript exists (all 24 pilot
-candidates have one), and a clean "rate from the audio alone" message when it
-does not.
+text either side of the break is shown when a transcript exists — every queued
+candidate has one, because the queue requires a complete feature record — and a
+clean "rate from the audio alone" message when it does not.
 
 ---
 
@@ -188,7 +190,7 @@ Its four stages, with the sizes the committed config declares:
 | Stage | Size | What it is for |
 |---|---|---|
 | `pilot` | 30 | the controlled first pass above |
-| `primary` | the remainder | the bulk round |
+| `primary` | the remainder (2,370 under `full-v2`) | the bulk round |
 | `overlap` | 60 | reserved for a *second* annotator, for inter-annotator agreement |
 | `consistency` | 60 | blind repeats of candidates already in the set, interleaved far from their first showing, for intra-annotator agreement |
 

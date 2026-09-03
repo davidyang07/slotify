@@ -1,12 +1,37 @@
 # Multimodal Audio–Text Ranking Engine — MVP Plan
 
-Status: **Phases 0–4 implemented and verified.** Phase 1 (reproducible heuristic
-baseline), Phase 2 (dataset foundation), Phase 3 (multimodal feature pipeline)
-and Phase 4 (PyTorch ranking training system) exist and are tested. Phases 2–4
-have been exercised on smoke/synthetic data only — no real corpus is acquired
-and no model-quality claim is made. Phase 5 (baseline-vs-model comparison,
-ablations, human evaluation) is not started. See §19–24 for the training design
-and [`docs/model-training.md`](model-training.md) for the built system.
+> ## HISTORICAL DESIGN RECORD — SUPERSEDED
+>
+> **This is the plan as written on 2026-07-21, kept unedited as the record of
+> what was designed. It is not a status report, and several of its numbers were
+> superseded by the work it planned.** Do not quote it for current state.
+>
+> Where to read current state instead:
+>
+> | For | Read |
+> |---|---|
+> | What is implemented, what is measured, and the difference | `artifacts/reports/claim_evidence.md` (generated) |
+> | The experiment actually being run | [`experiment-protocol.md`](experiment-protocol.md), `ml/configs/experiment_v2.yaml` |
+> | The corpus as it stands | [`dataset-card.md`](dataset-card.md), `artifacts/dataset/` |
+> | Capability-to-artifact mapping | [`evaluation-evidence.md`](evaluation-evidence.md) |
+>
+> What has changed since this was written: the real corpus was acquired and is
+> no longer smoke data (77 episodes, 40 series, 18.61 h, 13,176 candidates);
+> the label gate moved from the ≈1,500 below to **2,400**, fixed in
+> `experiment_v2.yaml`; the split is **v4**, grouped by series; and the
+> comparison, ablation matrix, classical baseline and evidence reporting this
+> document calls "Phase 5, not started" are implemented and tested. What has
+> **not** changed is that no human labels have been collected and no held-out
+> result has been measured.
+
+Original status line, as written: *Phases 0–4 implemented and verified. Phase 1
+(reproducible heuristic baseline), Phase 2 (dataset foundation), Phase 3
+(multimodal feature pipeline) and Phase 4 (PyTorch ranking training system)
+exist and are tested. Phases 2–4 have been exercised on smoke/synthetic data
+only — no real corpus is acquired and no model-quality claim is made. Phase 5
+(baseline-vs-model comparison, ablations, human evaluation) is not started.*
+See §19–24 for the training design and
+[`docs/model-training.md`](model-training.md) for the built system.
 Author: repository audit performed against commit `ef614ba` on branch `main`.
 Date: 2026-07-21 (Phase 0), updated 2026-07-22 (locked decisions + Phase 1).
 

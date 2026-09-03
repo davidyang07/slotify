@@ -47,14 +47,22 @@ python -m slotify_rank.cli training run \
   --model-config configs/models/gated_v1.yaml \
   --labels ../data/labels/weak_labels_v1.jsonl \
   --allow-label-source weak_heuristic \
-  --split-version v2
+  --split-version v4
 ```
 
-## `concat-*`, `handcrafted-*` — synthetic smoke runs
+The committed checkpoint itself was produced against split v2, over the corpus
+as it stood in August; v4 is the current split and is what a rerun would use.
+Either way the result is a distillation of the baseline, which is why the
+checkpoint was not regenerated when the split moved.
+
+## `concat-*`, `handcrafted-*`, `gated-58e27d4507da3401` — synthetic smoke runs
 
 Trained on `training synthesize` fixtures. `data_provenance` is
-`synthetic_fixture`. They demonstrate that the training system runs end to end
-and are not measurements of anything.
+`synthetic_fixture` and `label_source` is `synthetic`. They demonstrate that the
+training system runs end to end on every variant; their validation NDCG of ~1.0
+is a property of the fixture, not a result. **Superseded** as anything but a
+smoke record: they predate corpus v2 and split v4, and no current claim reads
+them.
 
 ## What replaces all of this
 
@@ -63,7 +71,9 @@ gate is waiting for:
 
 ```bash
 cd ml
-python -m slotify_rank.cli experiment train   --labels ../data/labels/labels_full-v1.jsonl --split-version v3
+python -m slotify_rank.cli experiment train \
+  --labels ../data/labels/labels_full-v2.jsonl \
+  --split-version v4
 ```
 
 That writes one directory per (variant, seed) cell and a matrix summary next to

@@ -13,84 +13,104 @@ hackathon award.)
 
 ---
 
-## What is actually interesting here
+## 1. What Slotify does
 
-Finding an ad break is not a classification problem, it is a **ranking** problem
-inside one episode, and the signal is genuinely multimodal: a two-second pause
-is a good break if the topic also changed, and a bad one if the host is mid-
-sentence and drew breath. So the system:
+An ad break in the wrong place is the difference between a listener tolerating a
+sponsor read and skipping it. Slotify takes an audio file and answers one
+question — *where should the ad go?* — then, optionally, writes the ad, voices
+it, and performs the insertion.
 
-1. generates candidate breakpoints from the audio with deterministic signal
-   rules (silence runs, pause detection, RMS valleys, transcript sentence ends);
-2. builds a **multimodal feature vector** per candidate — 110 handcrafted
+The product half is complete and runs today, credential-free for the part that
+matters:
+
+| Stage | What happens | Needs a key? |
+| --- | --- | --- |
+| Analyze | Candidate breakpoints generated, then **ranked** by the learned model or the frozen baseline | No |
+| Preview | Listen to the audio either side of a proposed cut | No |
+| Generate | Sponsor copy written, then voiced (optionally in a cloned voice) | Yes |
+| Merge / export | Loudness-matched insertion with crossfades and ducking, via `ffmpeg` | No |
+
+## 2. The ranking problem
+
+Finding an ad break is not a classification problem. It is a **ranking** problem
+inside one episode: the question is never "is this second an ad break", it is
+"of the two hundred plausible cuts in this episode, which three are best". And
+the signal is genuinely multimodal — a two-second pause is a good break if the
+topic also changed, and a bad one if the host is mid-sentence and drew breath.
+
+So the system separates two things that are often conflated, and the separation
+is the architectural rule everything else follows:
+
+> **Candidate generation is not ranking.** Generation is deterministic,
+> signal-based, and always runs. Ranking is done either by the learned model or
+> by the frozen heuristic, and every response says which.
+
+1. **Generate** candidate breakpoints from the audio with deterministic rules —
+   silence runs, pause detection, RMS valleys, fixed intervals — then merge and
+   density-cap them.
+2. **Featurise** each candidate into one multimodal record: 110 handcrafted
    acoustic and structural scalars, a frozen Whisper speech representation, and
-   a frozen MiniLM embedding of the transcript either side of the cut;
-3. **ranks** those candidates with a small PyTorch model trained on
-   within-episode preference pairs;
-4. measures itself against a frozen, credential-free heuristic baseline.
+   a frozen MiniLM embedding of the transcript either side of the cut.
+3. **Rank** with a small PyTorch model trained on within-episode preference
+   pairs.
+4. **Measure** against a frozen, credential-free heuristic baseline, on a
+   held-out split no development decision has touched.
 
-The second thing that makes this repository unusual is that it is built to make
-a false quantitative claim hard to state. See
-[Evaluation status](#evaluation-status).
-
----
-
-## Architecture
+## 3. System architecture
 
 ```mermaid
 flowchart LR
   subgraph Client
-    A[React + Vite UI]
+    A[React 19 + Vite<br/>TypeScript UI]
   end
 
-  subgraph Product API [Node + Express + TypeScript]
-    B[/api/insert-sections/]
+  subgraph API [Node + Express + TypeScript]
     CAP[/api/capabilities/]
+    B[/api/insert-sections/]
+    T[/api/tts, /api/clone/]
     M[/api/merge - ffmpeg/]
-    T[/api/tts - /api/clone/]
   end
 
-  subgraph Analysis [Python: ad_inserter]
-    C[Candidate generation<br/>silence, pauses, RMS valleys]
+  subgraph Gen [Python: candidate generation]
+    C[silence, pauses,<br/>RMS valleys, intervals]
   end
 
-  subgraph Ranker [Python: slotify_rank]
-    D[Feature pipeline<br/>acoustic + structural scalars]
-    W[Whisper tiny.en<br/>transcript + speech representation]
-    X[MiniLM L6 v2<br/>transcript embeddings]
+  subgraph Rank [Python: slotify_rank]
+    D[Handcrafted features<br/>110 acoustic + structural]
+    W[Whisper tiny.en<br/>speech representation]
+    X[MiniLM-L6-v2<br/>transcript embeddings]
     E[PyTorch ranker<br/>gated multimodal fusion]
     H[heuristic_offline_v1<br/>frozen baseline]
   end
 
-  subgraph External [Optional, paid]
-    G[ElevenLabs<br/>voice clone + TTS]
-    O[OpenAI<br/>sponsor copy]
+  subgraph Offline [Offline: dataset to result]
+    L[FastAPI labelling UI<br/>+ SQLite]
+    F[Frozen label snapshot]
+    S[Series-grouped split v4]
+    TR[5 variants x 3 seeds<br/>validation-only selection]
+    EV[Frozen held-out eval<br/>NDCG@3 + bootstrap]
+    SK[sklearn baseline<br/>+ NDCG cross-check]
+  end
+
+  subgraph Ext [Optional, paid]
+    G[ElevenLabs]
+    O[OpenAI]
   end
 
   A --> CAP
-  A --> B
-  B --> C
-  C --> D
-  D --> W
-  D --> X
-  W --> E
-  X --> E
-  D --> E
+  A --> B --> C --> D
+  D --> W & X
+  W & X & D --> E
   C -.RANKER_MODE=heuristic.-> H
-  E --> F[Ranked ad breaks]
-  H --> F
-  F --> A
-  A --> T
-  T --> G
+  E & H --> R[Ranked ad breaks] --> A
+  A --> T --> G
   B -.optional.-> O
-  T --> M
-  M --> A
-```
+  T --> M --> A
 
-Three languages, three responsibilities, and one rule between them: **candidate
-generation is not ranking.** Generation is deterministic and signal-based and
-always runs. Ranking is done either by the learned model or by the frozen
-heuristic, and every response says which.
+  C --> L --> F --> S --> TR --> EV
+  SK --> EV
+  E -.checkpoint.-> TR
+```
 
 | Component | Stack | Role |
 | --- | --- | --- |
@@ -105,9 +125,208 @@ heuristic, and every response says which.
 product API is Express. Both are real; conflating them would misdescribe the
 system.
 
----
+## 4. Dataset and feature pipeline
 
-## Quickstart
+The corpus is **reconstructed, never stored**: `ml/configs/sources_v2.yaml` is a
+committed registry of openly licensed episodes, and the pipeline re-acquires
+them. No audio is committed beyond a handful of sample clips.
+
+Measured state of the canonical corpus — every figure below is read from
+`artifacts/dataset/` and `artifacts/features/`, not typed here:
+
+| Quantity | Value |
+| --- | --- |
+| Processed episodes | 77 |
+| Series (distinct shows) | 40 — of which **14 podcast**, 15 narrated, 11 conversational |
+| Processed audio | 18.61 h, all target-domain |
+| Generated candidates | 13,176 |
+| Candidates with a complete multimodal record | 12,930 |
+| Split | **v4**, grouped by **series**, seed 42, 70/15/15 |
+| Series per partition | 30 train / 7 validation / 3 test, disjoint |
+| Candidates per partition | 8,892 / 2,009 / 2,275 |
+
+Every episode carries a declared open licence (Creative Commons, Public Domain
+Mark, LibriVox dedication, or U.S. Government work), verified against the source
+collection's own metadata rather than asserted.
+
+The pipeline, all resumable and content-addressed so an interrupted stage picks
+up where it stopped:
+
+```
+discover → import/fetch → probe → normalize → transcribe → candidates generate
+        → acoustic features → audio embeddings → text embeddings → assemble
+        → validate → split → statistics
+```
+
+| Feature block | Width | Source |
+| --- | --- | --- |
+| Handcrafted | 110 (+110 missing mask) | Multi-scale acoustic descriptors (librosa spectral and onset), structural position, generator provenance, `heuristic_offline_v1`'s own component scores |
+| Audio | 1536 | `openai/whisper-tiny.en` encoder states, mean-pooled over 4 windows (before, after, context, difference) |
+| Text | 1536 | `sentence-transformers/all-MiniLM-L6-v2` on the transcript either side, plus their difference and elementwise product |
+
+See [`docs/feature-pipeline.md`](docs/feature-pipeline.md) and
+[`docs/dataset-card.md`](docs/dataset-card.md).
+
+## 5. Human labelling
+
+Supervision comes from a person listening to a clip and rating the cut 1–5.
+Everything around that is built, tested and running; the listening itself is a
+**manual data-collection dependency**, not a missing piece of software.
+
+What exists:
+
+- a local **FastAPI + SQLite labelling UI** (`slotify-rank label serve`) built
+  for speed: keyboard-driven, pre-cut clips, resumable across restarts;
+- a deterministic **stratified queue** — `artifacts/labelling/queue_summary.json`
+  records the built round: **2,400 unique candidates**, allocated 1,680 / 360 /
+  360 across train / validation / test, balanced across score tertiles, position
+  and silence buckets, capped per episode, and pinned by hash to a specific
+  candidate manifest and split;
+- **2,460 presentations**, because 60 candidates are shown a second time later
+  in the session under a different, opaque presentation id with nothing in the
+  payload marking them as a repeat — that is the intra-annotator agreement
+  measurement, and those repeats are excluded from the export so a quality
+  control can never become supervision;
+- **no leakage into the annotator's judgement**: the served payload carries no
+  heuristic score, no generator provenance, no split membership;
+- **integrity checks** (`label check`) and an **immutable frozen snapshot**
+  (`experiment freeze`) that hashes the labels, the candidates, the features and
+  the split, and refuses to overwrite a version that already exists.
+
+**Measured today: 0 human labels collected.** The queue is built; the round has
+not been run. `artifacts/reports/claim_evidence.md` reports the queue size and
+the label count as two different numbers and never adds them.
+
+See [`docs/human-labelling-workflow.md`](docs/human-labelling-workflow.md),
+[`docs/labelling-guide.md`](docs/labelling-guide.md) and
+[`docs/pilot-labelling.md`](docs/pilot-labelling.md).
+
+## 6. Training and evaluation protocol
+
+The protocol is fixed in advance in
+[`ml/configs/experiment_v2.yaml`](ml/configs/experiment_v2.yaml), committed
+before the test split is read, and hashed into a manifest.
+
+**Leakage safety.** The split groups on **series**, never on episode and never on
+candidate: two episodes of one show share hosts, room, mic chain and vocabulary,
+so an episode-level split would grade the model partly on memorisation. A
+partition holding fewer than three independent series fails outright; no single
+series may occupy more than half a partition's hours; and the test partition
+holds the podcast format only, so the headline measures the product's actual
+task. Normalisation statistics are fitted on train and refuse any other split.
+
+**The ablation matrix.** Five variants behind one interface, three seeds each —
+15 cells:
+
+| Variant | Inputs |
+| --- | --- |
+| `handcrafted` | 110 scalars only |
+| `text_only` | MiniLM transcript embeddings only |
+| `audio_only` | Whisper speech representations only |
+| `concat` | All three, concatenated |
+| `gated` | All three, projected to a common width and combined with learned gates — an unavailable modality gets exactly zero weight rather than a zero vector the model could learn to read as a value. **This is the headline variant**, 489,477 parameters, CPU-first. |
+
+**Selection.** Checkpoints are selected on **validation NDCG@3**. The reported
+seed is the **median** of the three by validation NDCG@3, not the best —
+reporting the best of several seeds is seed cherry-picking with extra steps.
+Both rules are frozen in the experiment definition.
+
+**Baselines.** Two, and only one is the denominator:
+
+- `heuristic_offline_v1` — the **canonical baseline**, the deterministic scorer
+  that shipped in the hackathon build, frozen. Its constants live in one
+  language-neutral file (`config/heuristic_offline_v1.json`) loaded by the
+  TypeScript product, the Python pipeline and the ML package, and CI regenerates
+  a golden fixture from the TypeScript and fails if it moved.
+- `classical_handcrafted_v1` — a scikit-learn `HistGradientBoostingRegressor` on
+  the handcrafted scalars alone, tuned by `GroupKFold` **inside** the training
+  split. Reported alongside, never as the denominator; it answers "would a good
+  tabular model have done just as well?"
+
+**The measurement.** NDCG@3, macro-averaged over test episodes, at cutoffs 1/3/5,
+relevance threshold 4.0. Uncertainty is a percentile bootstrap over **episodes**
+(2,000 resamples, 95%, seeded), because the episode is the unit of resampling.
+Before any number is published it must agree with an independent implementation,
+`sklearn.metrics.ndcg_score`, or publication is blocked.
+
+See [`docs/experiment-protocol.md`](docs/experiment-protocol.md) and
+[`docs/model-training.md`](docs/model-training.md).
+
+## 7. Evidence architecture
+
+This repository is built so that an unsupported number is hard to state. Two
+generated reports are the authority; neither is written by hand, and CI
+re-derives both from the committed artifacts and fails if either has drifted.
+
+```bash
+npm run evidence          # regenerate every statistic, then both reports
+cat artifacts/reports/claim_evidence.md
+cat artifacts/reports/model_evidence.md
+```
+
+`claim_evidence.md` separates two kinds of claim and never mixes them:
+
+- **Implemented capability** — settled by committed code, the test that
+  exercises it, and the artifact it produces. Currently **19 of 19 PASS**,
+  covering the PyTorch ranker, Whisper, MiniLM, librosa, Transformers, the
+  scikit-learn baseline and NDCG cross-check, candidate generation, multimodal
+  preprocessing, the labelling round, label freezing, the grouped split, the
+  ablation matrix, validation-only selection, bootstrap uncertainty, the
+  reproducibility manifest, and the TypeScript product surface.
+- **Empirical result** — settled only by a measurement. Currently **0 PASS**:
+  no human labels exist, so no held-out NDCG@3 and no improvement has been
+  measured. A PASS in the first table is never evidence for anything in the
+  second.
+
+Five quantities are tracked separately because collapsing them would overstate
+the work by an order of magnitude:
+
+| Quantity | What it is |
+| --- | --- |
+| **Generated candidates** | Timestamps the deterministic rules proposed. Not labels. |
+| **Weak labels** | Targets derived from the baseline's own score. Circular as evidence. |
+| **Human labels** | Someone listened and rated 1–5. The only supervised source the experiment accepts. |
+| **Validation metrics** | Measured during development. Model selection may use them. Not the result. |
+| **Held-out test metrics** | Measured once, at the end. This is the result. |
+
+The checkpoint that ships is a **weakly supervised bootstrap**: its targets come
+from `heuristic_offline_v1`'s own score, so it is a distillation of the baseline.
+It proves the architecture and the serving path work end to end. It proves
+nothing about ranking quality, and:
+
+- every `/api/insert-sections` response it produces carries a warning saying so;
+- `slotify-rank evaluation compare` **refuses to publish** an improvement
+  computed from it, because comparing a distillation against its own teacher is
+  circular;
+- [`artifacts/training/README.md`](artifacts/training/README.md) explains it in
+  full.
+
+The guard rails, all tested:
+
+| Guard | Where |
+| --- | --- |
+| Weak labels are refused unless named on the command line | `datasets/labels.py` |
+| The canonical experiment may declare `human` and nothing else as a label source | `experiment/canonical.py` |
+| A headline improvement requires human ground truth, a human-trained model, the test split, the canonical baseline, and no episode overlap | `evaluation/compare.py` |
+| The headline metric must agree with `sklearn.metrics.ndcg_score` or publication is blocked | `evaluation/crosscheck.py` |
+| A zero baseline yields `None`, never an infinite improvement | `evaluation/compare.py` |
+| An unmeasured metric renders `NOT MEASURED`; a measured zero renders `0` | `evaluation/claim_evidence.py` |
+| An implementation claim can never satisfy an empirical one | `evaluation/claim_evidence.py` |
+| Blind consistency repeats are excluded from the label export | `labelling/export.py` |
+| Synthetic candidates can never be labelled, featurised or evaluated | `data/schema.py`, `pipeline/stages.py` |
+| Normalization statistics are fitted on the train split only, and refuse others | `datasets/normalizer.py` |
+| A partition holding fewer than three independent series fails the split outright | `data/splits.py` |
+| The held-out partition holds the target format only | `data/splits.py` |
+| No single series may occupy more than half a partition's hours | `data/splits.py` |
+| An episode no committed source registry declares is removed before it can be split, counted or labelled | `data/reconcile.py` |
+| An open licence counts only when the show declared it in the show's own collection | `data/discover.py` |
+| A committed cache, credential or corpus file fails the build | `scripts/lib/hygiene.mjs` |
+| The product never invents a recommendation, a score or a reason | `backend/src/lib/`, `frontend/src/lib/` |
+
+See [`docs/evaluation-evidence.md`](docs/evaluation-evidence.md) for the full
+capability-to-artifact mapping.
+
+## 8. Quick start
 
 ```bash
 git clone https://github.com/davidyang07/slotify
@@ -158,32 +377,9 @@ SLOTIFY_RANKER_CHECKPOINT=artifacts/training/gated-d8ed976101aa4c3b/best_checkpo
 demo -- --heuristic` forces the baseline, which is ~7 s per episode instead of
 ~45 s because it skips transcription.
 
----
-
-## The learned ranker
-
-`gated_v1`, 489,477 parameters, CPU-first. Three modality blocks are projected
-to a common width and combined with learned gates; an unavailable modality gets
-exactly zero weight rather than a zero vector the model could learn to read as a
-value.
-
-| Input block | Width | Source |
-| --- | --- | --- |
-| Handcrafted | 110 (+110 missing mask) | Multi-scale acoustic descriptors, structural position, generator provenance, `heuristic_offline_v1`'s component scores |
-| Audio | 1536 | `openai/whisper-tiny.en` encoder states, mean-pooled over 4 windows (before, after, context, difference) |
-| Text | 1536 | `sentence-transformers/all-MiniLM-L6-v2` on the transcript either side, plus their difference and elementwise product |
-
-Trained on within-episode preference pairs with a ranking loss and an auxiliary
-acceptability head, checkpoint-selected on validation NDCG@3, with train-only
-feature normalization. Five variants (`handcrafted`, `text_only`, `audio_only`,
-`concat`, `gated`) sit behind one interface so ablations are a config change.
-
-Product inference reuses the *same* code the corpus pipeline uses — the upload
-becomes a throwaway single-episode corpus and runs through the real Phase 3
-stages — so a training/serving feature skew is not expressible.
+### Scoring a file directly
 
 ```bash
-# Score any audio file directly
 cd ml
 python -m slotify_rank.cli infer rank \
   --audio ../backend/audio_tests/rogan-test1.mp3 \
@@ -191,108 +387,74 @@ python -m slotify_rank.cli infer rank \
   --top 3
 ```
 
-### The baseline
-
-`heuristic_offline_v1` is the deterministic signal scorer that shipped in the
-hackathon build, frozen. Its constants live in one language-neutral file
-(`config/heuristic_offline_v1.json`) loaded by the TypeScript product, the Python
-pipeline and the ML package, and CI regenerates a golden fixture from the
-TypeScript and fails if it moved. It needs no key, no network and no GPU, so the
-comparison denominator is reproducible by anyone.
-
----
-
-## Evaluation status
-
-This repository is deliberately built so that an unsupported number is hard to
-state. Two generated reports are the authority; neither is written by hand.
-
-```bash
-npm run evidence          # what each capability's artifacts currently establish
-
-cat artifacts/reports/model_evidence.md
-```
-
-Re-run those for current values. **Every number in this section is read from
-those files, not typed here**, and the five quantities below are tracked
-separately because collapsing them would overstate the work by an order of
-magnitude:
-
-| Quantity | What it is |
-| --- | --- |
-| **Generated candidates** | Timestamps the deterministic rules proposed. Not labels. |
-| **Weak labels** | Targets derived from the baseline's own score. Circular as evidence. |
-| **Human labels** | Someone listened and rated 1–5. The only supervised source the experiment accepts. |
-| **Validation metrics** | Measured during development. Model selection may use them. Not the result. |
-| **Held-out test metrics** | Measured once, at the end. This is the result. |
-
-The checkpoint that ships is a **weakly supervised bootstrap**: its targets come
-from `heuristic_offline_v1`'s own score, so it is a distillation of the baseline.
-It proves the architecture and the serving path work end to end. It proves
-nothing about ranking quality, and:
-
-- every `/api/insert-sections` response it produces carries a warning saying so;
-- `slotify-rank evaluation compare` **refuses to publish** an improvement
-  computed from it, because comparing a distillation against its own teacher is
-  circular;
-- `artifacts/training/README.md` explains it in full.
-
-The guard rails, all tested:
-
-| Guard | Where |
-| --- | --- |
-| Weak labels are refused unless named on the command line | `datasets/labels.py` |
-| The canonical experiment may declare `human` and nothing else as a label source | `experiment/canonical.py` |
-| A headline improvement requires human ground truth, a human-trained model, the test split, the canonical baseline, and no episode overlap | `evaluation/compare.py` |
-| The headline metric must agree with an independent implementation (`sklearn.metrics.ndcg_score`) or publication is blocked | `evaluation/crosscheck.py` |
-| A zero baseline yields `None`, never an infinite improvement | `evaluation/compare.py` |
-| An unmeasured metric renders `NOT YET AVAILABLE`; a measured zero renders `0` | `evaluation/evidence.py` |
-| Blind consistency repeats are excluded from the label export, so a quality control cannot become supervision | `labelling/export.py` |
-| Synthetic candidates can never be labelled, featurised or evaluated | `data/schema.py`, `pipeline/stages.py` |
-| Normalization statistics are fitted on the train split only, and refuse others | `datasets/normalizer.py` |
-| A partition holding fewer than three independent series fails the split outright, rather than warning | `data/splits.py` |
-| The held-out partition holds the target format only, so the headline measures the product's task | `data/splits.py` |
-| No single series may occupy more than half a partition's hours | `data/splits.py` |
-| An episode no committed source registry declares is removed before it can be split, counted or labelled | `data/reconcile.py` |
-| An open licence counts only when the show declared it in the show's own collection | `data/discover.py` |
-| The product never invents a recommendation, a score or a reason | `backend/src/lib/`, `frontend/src/lib/` |
-
-CI regenerates both reports from the committed artifacts and fails if either has
-drifted — the one failure a generated report cannot catch by itself is being
-true when written and not any more.
-
-See [`docs/evaluation-evidence.md`](docs/evaluation-evidence.md) for the full
-capability-to-artifact mapping and the experiment those claims are measured by.
+Product inference reuses the *same* code the corpus pipeline uses — the upload
+becomes a throwaway single-episode corpus and runs through the real feature
+stages — so a training/serving feature skew is not expressible.
 
 ### Running the experiment
 
 ```bash
 cd ml
 python -m slotify_rank.cli dataset prepare-experiment   # acquire → featurise → queue
-python -m slotify_rank.cli label run-experiment             # the only manual step
+python -m slotify_rank.cli label run-experiment         # the only manual step
 ```
 
 The first command does everything mechanical and ends with a *measured*
 readiness summary. The second pre-cuts every clip, says how many labels remain,
-and opens the labelling UI; after it prints its banner the only remaining work is
-human judgement. The protocol — split, seeds, baseline, metric, thresholds — is
-fixed in advance in
-[`ml/configs/experiment_v2.yaml`](ml/configs/experiment_v2.yaml)
-and hashed into a manifest before the test split is read.
+and opens the labelling UI; after it prints its banner the only remaining work
+is human judgement.
 
----
+## 9. Testing and CI
 
-## Reproducing the tests
+One command verifies everything that can be verified without collecting new
+human labels:
 
 ```bash
-npm run verify                    # frontend lint + tests + build, backend typecheck + tests,
-                                  # and the checkpoint-selection tests in scripts/
-
-cd ml && python -m pytest         # the ML suite, network-free, no model downloads
-cd ml && python -m pytest -m model_smoke -o addopts=""   # opt-in: downloads real weights
+npm run verify:all        # or: make verify
 ```
 
-CI runs all of the above except model-smoke on every push, with no credentials.
+| Layer | What runs |
+| --- | --- |
+| `npm run verify` | frontend lint + tests + build; backend typecheck + tests; checkpoint-selection and hygiene tests in `scripts/` |
+| `npm run verify:ml` | repository hygiene over the tracked tree; the ML suite; both evidence reports re-derived from the committed artifacts and compared; every implemented capability asserted; and — when a local corpus is present — dataset validation (25 checks, including split leakage by episode and by series), multimodal feature validation, labelling-queue integrity, label quality controls, and the experiment readiness gate |
+
+Steps that need the uncommitted corpus report themselves as **skipped by name**
+rather than passing silently.
+
+```bash
+cd ml && python -m pytest                                 # the ML suite alone
+cd ml && python -m pytest -m model_smoke -o addopts=""    # opt-in: downloads real weights
+```
+
+CI runs all of the above except model-smoke on every push, with **no
+credentials**: the baseline, the metrics, the dataset pipeline and the inference
+contract are meant to be reproducible by anyone who clones the repository.
+Anything needing Hugging Face weights lives in `model-smoke.yml` and is triggered
+manually, so an upstream outage cannot turn an unrelated pull request red. A
+separate job regenerates the baseline's golden fixture from the TypeScript
+scorer and fails if the Python port has drifted from it.
+
+## 10. Tech stack
+
+| Area | Used for |
+| --- | --- |
+| **PyTorch** | The ranking model, its five variants, the trainer, checkpointing |
+| **Hugging Face `transformers`** | `openai/whisper-tiny.en` encoder for speech representations |
+| **`sentence-transformers`** | `all-MiniLM-L6-v2` transcript embeddings |
+| **`openai-whisper`** *(optional)* | Local transcription for the semantic path |
+| **librosa** | Spectral and onset descriptors in the handcrafted block |
+| **scikit-learn** | The classical gradient-boosted baseline, `GroupKFold`, and the independent `ndcg_score` cross-check |
+| **NumPy / SciPy** | Feature assembly, bootstrap resampling |
+| **FastAPI + SQLite** | The local labelling UI and its resumable store |
+| **TypeScript, React 19, Vite** | The product frontend |
+| **Node, Express** | The product API |
+| **ffmpeg / ffprobe** | Decoding, loudness matching, crossfades, muxing |
+| **GitHub Actions** | Six jobs: frontend, backend, scripts, ml, corpus-registry, parity |
+
+Each of these is verified in `artifacts/reports/claim_evidence.md` by three
+independent facts — the dependency is declared, a committed module imports it,
+and a generated artifact records it actually running. A dependency added to a
+manifest and never used fails that check.
 
 ---
 
@@ -300,14 +462,14 @@ CI runs all of the above except model-smoke on every push, with no credentials.
 
 ```text
 .
-├── artifacts/           # GENERATED evidence: dataset, features, training, evaluation, reports
+├── artifacts/           # GENERATED evidence: dataset, features, labelling, training, evaluation, reports
 ├── backend/
 │   ├── src/             # Express API: routes/, services/, lib/, middleware/
 │   ├── ad_inserter/     # Python audio analysis + insertion pipeline
 │   └── audio_tests/     # Sample audio for manual and CLI testing
 ├── config/
 │   └── heuristic_offline_v1.json   # The frozen baseline, in one place
-├── docs/                # Runbook, evidence matrix, pipeline and labelling docs
+├── docs/                # Protocol, evidence matrix, pipeline, dataset and labelling docs
 ├── frontend/src/        # React UI; lib/ holds the pure, tested logic
 ├── ml/
 │   ├── configs/         # Versioned YAML for every stage
@@ -325,25 +487,25 @@ CI runs all of the above except model-smoke on every push, with no credentials.
 │   │   ├── labelling/   # FastAPI labelling UI + weak-label bootstrap
 │   │   └── experiment/  # Canonical experiment, readiness gate, label freeze
 │   └── tests/
-└── scripts/             # preflight, demo, evidence
+└── scripts/             # preflight, demo, evidence, claim-evidence, verify-ml, hygiene
 ```
-
----
 
 ## Documentation
 
 | Document | What it covers |
 | --- | --- |
-| [`docs/demo-runbook.md`](docs/demo-runbook.md) | The 2–3 minute demo walkthrough, with recovery paths |
+| [`docs/experiment-protocol.md`](docs/experiment-protocol.md) | The benchmark experiment, end to end, for the operator running it |
 | [`docs/evaluation-evidence.md`](docs/evaluation-evidence.md) | Every capability mapped to the artifact that supports or refutes it |
-| [`docs/model-inference.md`](docs/model-inference.md) | How a request becomes a learned ranking |
-| [`docs/model-training.md`](docs/model-training.md) | The training system |
-| [`docs/feature-pipeline.md`](docs/feature-pipeline.md) | The multimodal feature pipeline |
 | [`docs/dataset-card.md`](docs/dataset-card.md) | Corpus, licences, splits |
+| [`docs/feature-pipeline.md`](docs/feature-pipeline.md) | The multimodal feature pipeline |
 | [`docs/human-labelling-workflow.md`](docs/human-labelling-workflow.md) | The FastAPI labelling loop |
+| [`docs/labelling-guide.md`](docs/labelling-guide.md) | The 1–5 rubric an annotator applies |
+| [`docs/pilot-labelling.md`](docs/pilot-labelling.md) | The controlled pilot round before the full queue |
+| [`docs/model-training.md`](docs/model-training.md) | The training system |
+| [`docs/model-inference.md`](docs/model-inference.md) | How a request becomes a learned ranking |
+| [`docs/demo-runbook.md`](docs/demo-runbook.md) | The 2–3 minute demo walkthrough, with recovery paths |
+| [`docs/ad-inserter.md`](docs/ad-inserter.md) | The original insertion pipeline and its two-speaker modes |
 | [`ml/README.md`](ml/README.md) | Every ML command |
-
----
 
 ## The original insertion pipeline
 

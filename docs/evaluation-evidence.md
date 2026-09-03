@@ -23,10 +23,10 @@ Phase references point at `docs/multimodal-ranking-mvp-plan.md` §36–37.
 
 | Capability | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
-| A deterministic, reproducible signal-based baseline exists and is the comparison denominator | TypeScript↔Python parity on golden fixtures covering 11 scenarios; every score component serialized; config version stamped into every record | `cd backend; npx tsx scripts/dump-heuristic-golden.ts --out ..\ml\tests\fixtures\heuristic_golden.json` then `cd ml; .\.venv\Scripts\python.exe -m pytest` | `ml/tests/fixtures/heuristic_golden.json`, `config/heuristic_offline_v1.json`, 169 passing tests | **verified** (2026-07-22) |
+| A deterministic, reproducible signal-based baseline exists and is the comparison denominator | TypeScript↔Python parity on golden fixtures covering 11 scenarios; every score component serialized; config version stamped into every record | `cd backend; npx tsx scripts/dump-heuristic-golden.ts --out ..\ml\tests\fixtures\heuristic_golden.json` then `cd ml; .\.venv\Scripts\python.exe -m pytest` | `ml/tests/fixtures/heuristic_golden.json`, `config/heuristic_offline_v1.json`, the ML suite | **verified**, re-verified on every push by the `parity` CI job |
 | The refactor did not change product behaviour | SHA-256 of the golden output identical before and after hoisting constants; `analyze_cli` output identical on real audio; `npm run typecheck` clean | see above | verification log in this session | **verified** (2026-07-22) |
 
-## Phase 2 — dataset foundation (workflow complete, corpus not acquired)
+## Phase 2 — dataset foundation (workflow complete, canonical corpus acquired)
 
 The commands, schemas, splits, labelling loop, validation and statistics all exist and are tested.
 **No dataset target has been reached.** The pipeline has been exercised only on the repository's
@@ -34,9 +34,9 @@ The commands, schemas, splits, labelling loop, validation and statistics all exi
 
 | Capability | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
-| A reproducible dataset pipeline exists | Import → probe → normalize → generate → split → validate → stats runs end to end with non-zero exit codes on failure; 379 passing tests | see `ml/README.md` § Dataset workflow | `artifacts/dataset/*.json`, `artifacts/dataset/dataset_summary.md` | **verified** (2026-07-22) |
-| Dataset integrity is checked, not assumed | 26 named checks including duplicate IDs, checksum mismatch, out-of-bounds candidates, split leakage by episode **and** by series, synthetic-eligibility violations, and a test partition with no target-domain audio — each with a test that makes it fail | `dataset validate --deep` | `artifacts/dataset/validation_report.json` | **verified** (2026-07-22) |
-| Human labels are collected and exportable | Local FastAPI UI, SQLite persistence, resumable per-annotator sessions, update-in-place, versioned JSONL export with rubric and threshold metadata | `label serve` then `label export` | `data/labels/labels_v1.jsonl` (+ `.meta.json`) | **implemented, not yet populated** |
+| A reproducible dataset pipeline exists | Import → probe → normalize → generate → split → validate → stats runs end to end with non-zero exit codes on failure, under the ML suite CI runs on every push | see `ml/README.md` § Dataset workflow | `artifacts/dataset/*.json`, `artifacts/dataset/dataset_summary.md` | **verified on the canonical corpus** |
+| Dataset integrity is checked, not assumed | 25 named checks including duplicate IDs, checksum mismatch, out-of-bounds candidates, split leakage by episode **and** by series, synthetic-eligibility violations, and a test partition with no target-domain audio — each with a test that makes it fail. The list is in `checks_run`, so it cannot drift from this row unnoticed | `dataset validate --deep` | `artifacts/dataset/validation_report.json` | **verified on the canonical corpus** (0 errors) |
+| Human labels are collected and exportable | Local FastAPI UI, SQLite persistence, resumable per-annotator sessions, update-in-place, versioned JSONL export with rubric and threshold metadata | `label serve` then `label export` | `data/labels/labels_full-v2.jsonl` (+ `.meta.json`) | **implemented, not yet populated** — collecting the labels is manual work, not missing software |
 
 Status vocabulary for the dataset rows below:
 `implemented but not yet populated` → `partially populated using smoke data` → `fully supported by
@@ -52,7 +52,7 @@ model quality, and Phase 3 trains nothing.
 
 | Capability | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
-| A reproducible, resumable, CPU-first feature pipeline exists | Transcribe → acoustic → audio embed → text embed → assemble → validate → stats, non-zero exit on integrity failure; 607 passing tests, 89% coverage | `pipeline features --deep` | `artifacts/features/*.json`, `feature_summary.md` | **verified** (2026-07-22) |
+| A reproducible, resumable, CPU-first feature pipeline exists | Transcribe → acoustic → audio embed → text embed → assemble → validate → stats, non-zero exit on integrity failure, under the ML suite CI runs on every push | `pipeline features --deep` | `artifacts/features/*.json`, `feature_summary.md` | **verified** (2026-07-22) |
 | Expensive outputs are cached and interrupted work resumes | Second identical run: 0 recomputed, 4/4 model stages cache-hit, 102 s → 1.2 s; `partial` ledger entries force reprocessing | `pipeline features` twice | `data/features/state/*.json` | **verified** (2026-07-22) |
 | Stale artifacts are detected, not silently reused | Bumping `FEATURE_SPEC_VERSION` recomputed the acoustic and text stages and correctly left transcription and audio embeddings cached | see `docs/feature-pipeline.md` §7 | ledger digests | **verified** (2026-07-22) |
 | Dimensions are what the models actually produce | Opt-in `model_smoke` tests assert 384 (not 768) tiny.en, 20 ms/frame derived and cross-checked, 384 native MiniLM, 1536 constructed | `pytest -m model_smoke` | 8 passing model-smoke tests | **verified** (2026-07-22) |
@@ -126,8 +126,8 @@ Read from `artifacts/training/gated-58e27d4507da3401/training_summary.json`.
 
 **Evidence classification: `partially populated using smoke data` (synthetic).**
 The system is proven to train, checkpoint, evaluate and resume. It is **not**
-proven to rank real ad breaks well — that requires the 200–300+ human labels
-Phase 5 depends on. No comparison against `heuristic_offline_v1` is made or
+proven to rank real ad breaks well — that requires the human labels the
+benchmark experiment's gate of 2,400 depends on. No comparison against `heuristic_offline_v1` is made or
 implied in Phase 4.
 
 ---
@@ -146,19 +146,21 @@ preliminary real data` → `supported by held-out real evaluation`.
 
 | Capability | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
-| A real target-domain corpus is registered under clear licences | ≥ 6 public-domain series, all `direct_download` with `license_name`+`license_url`, all target-domain, verified against the IA metadata API | `dataset fetch --sources ml/configs/sources_real_v1.yaml` | `ml/configs/sources_real_v1.yaml`, `data/manifests/episodes.jsonl` | **supported by preliminary real data** |
-| Enough real audio is processed to yield ≥ 300 eligible candidates with complete features | probe → normalize → generate → `pipeline features`; complete multimodal records reported | `dataset stats --split-version v2` | `artifacts/dataset/*.json`, `data/manifests/features.jsonl` | **supported by preliminary real data** (~0.8 h, ~575 real candidates, majority `complete`) |
+| A real target-domain corpus is registered under clear licences | ≥ 6 public-domain series, all `direct_download` with `license_name`+`license_url`, all target-domain, verified against the IA metadata API | `dataset fetch --sources ml/configs/sources_v2.yaml` | `ml/configs/sources_real_v1.yaml` + `ml/configs/sources_v2.yaml`, `data/manifests/episodes.jsonl` | **supported by real data** (77 episodes, 40 series, 18.61 h) |
+| Enough real audio is processed to yield ≥ 300 eligible candidates with complete features | probe → normalize → generate → `pipeline features`; complete multimodal records reported | `dataset stats --split-version v4` | `artifacts/dataset/*.json`, `data/manifests/features.jsonl` | **supported by real data** (18.61 h, 13,176 generated candidates, 12,930 with a complete multimodal record) |
 | A deterministic, stratified labelling queue exists | balanced (split × score-tertile) strata, round-robin episode/series spread, per-episode cap, pilot/primary/overlap/consistency stages, byte-identical on re-run | `label queue --config ml/configs/labelling_queue_full_v2.yaml --split-version v4` | `data/labels/queue_full-v2.json` (git-ignored) | **implemented, verified on real candidates** |
 | Synthetic product fallbacks never enter the queue | `is_synthetic` / non-eligible excluded from the pool by construction; tested | `label queue …` | queue coverage + `test_labelling_queue.py` | **verified** |
 | The labelling UI hides bias signals and sessions save/resume | reveal-hints off by default; served candidate carries no heuristic score; save → resume preserves labels; export is clean; transcript context resolved from the cache; `--stage pilot` runs a controlled 24-candidate session and rejects out-of-stage labels | `label serve --queue … --stage pilot` → `label export` | pilot service smoke, `test_labelling.py`, `test_labelling_queue.py` | **verified** (round-trip on the real queue) |
 | The readiness gate blocks when labels are insufficient | every gate condition checked; blocking reasons listed; `--require-ready` exits non-zero | `experiment readiness --queue … --split-version v4` | `artifacts/experiments/readiness_report.json` | **implemented**; whether it passes depends on the label count, which the report reads |
 | An immutable frozen label snapshot can be produced before training | hashes of label/candidate/feature/split manifests, distribution, exclusions, version-immutability | `experiment freeze --snapshot-version v1` | `data/labels/label_snapshot_v1.json` (git-ignored) | **implemented but not populated** |
-| `human_labelled_candidate_count` (round 1: 250–300) | resumable per-annotator SQLite store; versioned export; quality controls | `label serve` → `label export` → `label check` | `data/labels/labels_v1.jsonl`, `label_statistics.json` | **not yet supported** (0 human labels; the terminal Phase 5A action is human work) |
+| `human_labelled_candidate_count` (the experiment's gate: 2,400) | resumable per-annotator SQLite store; versioned export; quality controls | `label run-experiment` → `label export` → `label check` | `data/labels/labels_full-v2.jsonl`, `label_statistics.json` | **not yet supported** (0 human labels; this is a manual data-collection dependency, not missing software — the queue, the UI, the export and the quality controls are all built and tested) |
 
 **The four quantities stay separate and are never conflated:** processed audio
-hours (~0.8 h, real), generated candidates (~575, real, **unlabelled**),
+hours (18.61 h, real), generated candidates (13,176, real, **unlabelled**),
 human-labelled candidates (0), held-out evaluation candidates (0). No statement
-implies that processed candidates were manually labelled.
+implies that processed candidates were manually labelled. Re-read them from
+`artifacts/reports/claim_evidence.md`, which is generated; the values above are
+a snapshot of it.
 
 ---
 
@@ -181,11 +183,11 @@ The result this project is built to produce, and the evidence each part of it re
 
 | Capability | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
-| Multimodal PyTorch ranker exists and is trained | Architecture definition, trained checkpoint, parameter count, per-modality gate values | `slotify-rank training run --model-config ml/configs/models/gated_v1.yaml` | `artifacts/training/{run_id}/best_checkpoint.pt`, `training_summary.md` | **machinery verified on synthetic smoke data (2026-07-22); awaiting real labels** |
-| Three modalities genuinely contribute | 6-model comparison + 6 required ablations × 3 seeds, mean ± std | `slotify-rank ablate --config configs/ablations.yaml --seeds 3` | `artifacts/evaluation/ablation_results.csv` | not started |
-| Signal-based baseline is the real production heuristic | Byte-exact parity between the Python port and `backend/src/lib/candidates.ts` | `pytest ml/tests/unit/test_heuristic_parity.py` | `ml/tests/fixtures/heuristic_golden.json` | not started |
-| **X % NDCG@3 improvement** | Baseline + model NDCG@3 on held-out **human-labelled** test episodes, with bootstrap 95 % CI over episodes | `slotify-rank evaluate --config configs/eval_v1.yaml` then `slotify-rank report` | `artifacts/evaluation/baseline_results.json`, `artifacts/evaluation/model_results.json`, `artifacts/reports/final_results.md` | not started |
-| Supporting metrics | P@3, R@3, binary F1, MRR, pairwise accuracy, per-episode table, mean + p95 latency | same as above | `artifacts/evaluation/per_episode_results.csv` | not started |
+| Multimodal PyTorch ranker exists and is trained | Architecture definition, trained checkpoint, parameter count, per-modality gate values | `slotify-rank training run --model-config configs/models/gated_v1.yaml` | `artifacts/training/{run_id}/best_checkpoint.pt`, `training_summary.md` | **implemented and served** (`gated`, 489,477 parameters, on the product's inference path); the shipped checkpoint is a weak-label bootstrap, so it evidences the architecture, not ranking quality |
+| Three modalities genuinely contribute | 5 variants (`handcrafted`, `text_only`, `audio_only`, `concat`, `gated`) × 3 seeds = 15 cells, checkpoint-selected on validation NDCG@3, reported at the median seed | `slotify-rank experiment train --labels ../data/labels/labels_full-v2.jsonl --split-version v4` | `artifacts/training/<variant>-<hash>/`, matrix summary | **implemented and tested; not run** — the matrix needs human labels, and `experiment train` refuses a non-human label source |
+| Signal-based baseline is the real production heuristic | Byte-exact parity between the Python port and the TypeScript scorer; the fixture is regenerated from the TypeScript in CI and any drift fails the build | `cd backend && npx tsx scripts/dump-heuristic-golden.ts --out ../ml/tests/fixtures/heuristic_golden.json` then `cd ml && python -m pytest tests/test_heuristic.py` | `ml/tests/fixtures/heuristic_golden.json`, `config/heuristic_offline_v1.json` | **verified**, and re-verified on every push by the `parity` CI job |
+| **X % NDCG@3 improvement** | Baseline + model NDCG@3 on held-out **human-labelled** test episodes, with a percentile bootstrap 95 % CI over episodes, and agreement with `sklearn.metrics.ndcg_score` before anything is published | `slotify-rank evaluation compare --labels ../data/labels/labels_full-v2.jsonl --model <checkpoint> --split test --split-version v4 --require-publishable` | `artifacts/evaluation/<id>/comparison.json`, `metrics.json`, `per_episode_metrics.json`, `summary.md` | **evaluator implemented and tested; not measured** — every publication precondition is enforced, and none is met without human labels |
+| Supporting metrics | P@k, R@k, F1@k, MRR and pairwise accuracy at k = 1, 3, 5, plus the per-episode table behind every average | same as above | `artifacts/evaluation/<id>/metrics.json`, `per_episode_metrics.json` | **implemented and tested; not measured** |
 
 `X` is computed only by:
 
@@ -193,8 +195,10 @@ The result this project is built to produce, and the evidence each part of it re
 ndcg_improvement_pct = 100 * (model_ndcg_at_3 - baseline_ndcg_at_3) / baseline_ndcg_at_3
 ```
 
-in `ml/src/slotify_rank/eval/report.py`. **If the CI on `X` includes zero, the report must say so
-and no improvement may be reported as a result.**
+written once, in
+`ml/src/slotify_rank/evaluation/compare.py::relative_improvement_percent`. A zero
+baseline yields `None`, never an infinite improvement. **If the bootstrap interval on `X` includes
+zero, the report says so and no improvement may be reported as a result.**
 
 ---
 
@@ -206,8 +210,11 @@ and no improvement may be reported as a result.**
 > manual editing time by **Z %**.
 
 Any description of the corpus must make clear that it is *processed*, not *hand-labelled*. Phrasings
-such as "10,000+ hand-labelled breakpoints" are prohibited: the human-labelled subset is ≈1 500
-candidates over ≈8–12 hours, and that is the number tied to any labelling statement.
+such as "10,000+ hand-labelled breakpoints" are prohibited. The human-labelled subset is whatever
+`artifacts/dataset/label_statistics.json` measures — currently **0** — against the experiment's gate
+of **2,400**, and that measured number is the one tied to any labelling statement. The 2,400-item
+*queue* is built and is a separate quantity: `artifacts/labelling/queue_summary.json` records it, and
+it is never added to the label count.
 
 ### The five dataset quantities, tracked and reported separately
 
@@ -218,8 +225,8 @@ artifacts and its own row below.
 |---|---|---|
 | `processed_audio_hours` | audio decoded, transcribed and featurised | ≥ 50 |
 | `generated_candidate_count` | candidates produced by the generators | ≥ 10 000 |
-| `human_labelled_candidate_count` | reviewed by a person against the 1–5 rubric | ≈ 1 500 |
-| `human_labelled_audio_hours` | audio duration of the episodes containing those labels | ≈ 8–12 |
+| `human_labelled_candidate_count` | reviewed by a person against the 1–5 rubric | 2 400 (the experiment's gate, read from `experiment_v2.yaml`) |
+| `human_labelled_audio_hours` | audio duration of the episodes containing those labels | reported as measured |
 | `held_out_evaluation_candidate_count` | human-labelled **and** in the test split — the only source of final test metrics | reported as measured |
 | `weakly_labelled_candidate_count` | derived labels; never counted as human | reported as measured |
 | `unlabelled_candidate_count` | generated but never rated | reported as measured |
@@ -227,16 +234,16 @@ artifacts and its own row below.
 
 | Capability | Required evidence | Generating command | Artifact | Status |
 |---|---|---|---|---|
-| **`processed_audio_hours`** (target 50+) | Measured total duration; episode count; breakdown by source, licence and content type; per-split duration | `dataset import-local` / `fetch` → `dataset probe` → `dataset normalize` → `dataset stats` | `artifacts/dataset/dataset_statistics.json` → `processed_audio_hours` | **implemented, smoke-populated** (0.0365 h / 7 episodes) |
-| **`generated_candidate_count`** (target 10 000+) | Measured candidate count; counts by generator source; before/after merge; % from fixed intervals; **separate** totals for human / weak / unlabelled | `candidates generate --config ml/configs/dataset_v1.yaml` then `dataset stats` | `artifacts/dataset/candidate_statistics.json` → `generated_candidate_count` | **implemented, smoke-populated** (20) |
-| **`human_labelled_candidate_count`** (target ≈1 500) and **`human_labelled_audio_hours`** (≈8–12) | Label ledger by annotator pseudonym and rubric version; staged at 200–300 → 750 → 1 500 | `label serve` → `label export` → `dataset stats` | `artifacts/dataset/label_statistics.json`, `data/labels/labels_v1.jsonl.meta.json` | **implemented, not yet populated** (0; round-trip verified on smoke data) |
-| **`weakly_labelled_candidate_count`** / **`unlabelled_candidate_count`** | Tracked as their own fields; never summed into the human count | `dataset stats` | `artifacts/dataset/label_statistics.json` | **implemented, smoke-populated** (0 weak / 20 unlabelled) |
-| **`held_out_evaluation_candidate_count`** | Human-labelled candidates in the test split; test split restricted to podcast-like content (no AMI, no music) | `dataset split` + `dataset validate` + `dataset stats` | `artifacts/dataset/label_statistics.json`, `artifacts/dataset/split_statistics.json` | **implemented, not yet populated** (0 — the smoke corpus has too few series to split) |
-| Splits are leak-free | Series-aware grouped splits; validation fails on episode-level or series-level leakage; out-of-domain audio excluded from test | `dataset split --config ml/configs/splits_v1.yaml` then `dataset validate` | `data/manifests/splits_v1.json`, `artifacts/dataset/split_statistics.json`, `artifacts/dataset/validation_report.json` | **implemented, leakage checks verified by failing tests** |
+| **`processed_audio_hours`** (target 50+) | Measured total duration; episode count; breakdown by source, licence and content type; per-split duration | `dataset import-local` / `fetch` → `dataset probe` → `dataset normalize` → `dataset stats` | `artifacts/dataset/dataset_statistics.json` → `processed_audio_hours` | **populated from the canonical corpus** (18.61 h / 77 episodes / 40 series) |
+| **`generated_candidate_count`** (target 10 000+) | Measured candidate count; counts by generator source; before/after merge; % from fixed intervals; **separate** totals for human / weak / unlabelled | `candidates generate --config ml/configs/dataset_v1.yaml` then `dataset stats` | `artifacts/dataset/candidate_statistics.json` → `generated_candidate_count` | **populated from the canonical corpus** (13,176, target met) |
+| **`human_labelled_candidate_count`** (the experiment's gate: 2,400) and **`human_labelled_audio_hours`** | Label ledger by annotator pseudonym and rubric version; the queue is built and allocated 1,680 / 360 / 360 across the splits | `label run-experiment` → `label export` → `dataset stats` | `artifacts/dataset/label_statistics.json`, `artifacts/labelling/queue_summary.json` | **queue built, 0 labels collected** — the queue size and the label count are two different numbers and are never added |
+| **`weakly_labelled_candidate_count`** / **`unlabelled_candidate_count`** | Tracked as their own fields; never summed into the human count | `dataset stats` | `artifacts/dataset/label_statistics.json` | **populated from the canonical corpus** (0 weak / 13,176 unlabelled) |
+| **`held_out_evaluation_candidate_count`** | Human-labelled candidates in the test split; test split restricted to podcast-format series | `dataset split` + `dataset validate` + `dataset stats` | `artifacts/dataset/label_statistics.json`, `artifacts/dataset/split_statistics.json` | **implemented, not yet populated** (0 — the split holds 3 test series and 2,275 candidates, none labelled) |
+| Splits are leak-free | Series-aware grouped splits; validation fails on episode-level or series-level leakage; out-of-domain audio excluded from test; a partition holding fewer than three independent series fails outright | `dataset split --config ml/configs/splits_v4.yaml` then `dataset validate` | `data/manifests/splits_v4.json`, `artifacts/dataset/split_statistics.json`, `artifacts/dataset/validation_report.json` | **verified on the canonical split** (v4: 30 / 7 / 3 series, disjoint, not degraded) |
 | Synthetic product fallbacks never enter the data | `is_synthetic` candidates pinned to both eligibility flags false by the schema constructor; validation fails otherwise; excluded from every statistic | `candidates generate --include-product-padding` then `dataset validate` + `dataset stats` | `artifacts/dataset/candidate_statistics.json` → `synthetic_product_padding_count` | **verified** (2026-07-22) |
-| **Y % human agreement** | Blind, randomized-order evaluation on held-out test episodes; **≥1 non-author evaluator required, 2 preferred**; A1 (primary), A2, A3 with `n`, tie rate, `n_evaluators` and inter-rater κ | `slotify-rank human-eval --split test --mode blind-pairwise` then `slotify-rank human-eval-report` | `artifacts/evaluation/human_preference_results.json` | not started |
-| **Z % editing-time reduction** | Counterbalanced within-subject timed study, manual vs assisted, **≥3 participants (5 targeted)**, raw per-session rows + median/mean with bootstrap CI. Reported as measured — the ~80 % figure is a prior expectation, not a target to engineer toward. | `slotify-rank benchmark-run` then `slotify-rank benchmark-report` | `artifacts/benchmarks/editing_time_raw.csv`, `artifacts/benchmarks/editing_time_results.csv` | not started |
-| FastAPI integration works end to end | Upload → rank → preview → export in the real product; legacy fallback path still matches the Phase-1 golden | `slotify-rank serve` + `pytest ml/tests/integration -m e2e` | integration test report, `docs/model-inference.md` | not started |
+| **Y % human agreement** — a blind, randomized-order preference study against held-out episodes, needing at least one non-author evaluator | **out of scope for this repository.** No such command exists and none is planned; the design is recorded in the MVP plan so that a claim of human agreement is visibly unbacked here rather than quietly absent. | — | — | **not started, not implemented** |
+| **Z % editing-time reduction** — a counterbalanced within-subject timed study of manual versus assisted editing | **out of scope for this repository.** No such command exists and none is planned. Any figure of this kind would be a prior expectation, never a measurement. | — | — | **not started, not implemented** |
+| Product integration works end to end | Upload → rank → preview → merge → export in the real product; the heuristic fallback path still matches the golden fixture. The product API is **Express**, not FastAPI; FastAPI hosts only the local labelling UI | `npm run demo`, then `npm run verify` | `docs/model-inference.md`, `docs/demo-runbook.md`, backend and frontend test suites | **verified**, and re-verified on every push by the `backend` and `frontend` CI jobs |
 
 ### The definition of `Y` (must be printed next to the number, everywhere)
 
