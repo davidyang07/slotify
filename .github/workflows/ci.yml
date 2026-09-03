@@ -50,6 +50,11 @@ jobs:
           node-version: "22"
       - run: npm run test:scripts
 
+      - name: Repository hygiene
+        # Judges what is COMMITTED, not what is in a working tree: a cache, a
+        # credential or a corpus file is permanent once it is in the history.
+        run: node -e "import('./scripts/lib/hygiene.mjs').then(async (m) => { const { execFileSync } = await import('node:child_process'); const tracked = execFileSync('git', ['ls-files'], { encoding: 'utf8', maxBuffer: 33554432 }).split(/\r?\n/); const findings = m.hygieneFindings(tracked); for (const f of findings) console.error(`${f.path} - ${f.rule}: ${f.reason}`); if (findings.length) process.exit(1); console.log(`${tracked.filter(Boolean).length} tracked file(s), no findings.`); });"
+
   backend:
     runs-on: ubuntu-latest
     steps:
@@ -84,21 +89,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -e ".[dev,label,features,sklearn]"
-      - name: Run the default suite
-        # The default addopts deselect model_smoke, so nothing here downloads a
-        # model. Failing on a warning would make a dependency's deprecation
-        # notice break an unrelated change, so warnings stay warnings.
-        working-directory: ml
-        run: python -m pytest
-
-      - name: Assert the published evidence agrees with its raw artifacts
-        # The one failure mode a generated report cannot catch by itself: a
-        # report that was true when it was written and is not any more. The
-        # summary is regenerated from the committed artifacts and compared.
-        # Nothing is recomputed first -- recomputing the artifacts would quietly
-        # repair the very disagreement this step exists to find.
-        working-directory: ml
-        run: python -m slotify_rank.cli report model-evidence --check
+      - name: Verify the ranking package
+        # The same command a developer runs: `npm run verify:ml`. It runs the
+        # test suite, then re-derives both generated reports from the committed
+        # artifacts and compares -- the one failure mode a generated report
+        # cannot catch by itself is being true when it was written and not any
+        # more. Nothing is recomputed first; recomputing the artifacts would
+        # quietly repair the very disagreement the check exists to find.
+        #
+        # It also asserts every IMPLEMENTATION claim in the evidence report is
+        # established by committed code, a test and an artifact. It asserts
+        # nothing about the empirical claims: those need human labels, which no
+        # amount of CI can supply, and the report reports them as unmeasured.
+        #
+        # The dataset-level steps read data/, which is not committed. They
+        # report themselves as skipped by name rather than passing silently.
+        run: node scripts/verify-ml.mjs
 
   corpus-registry:
     # The committed source registry is generated from the committed corpus plan.
