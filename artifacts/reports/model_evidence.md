@@ -2,8 +2,8 @@
 
 **Generated file - do not edit.** Produced by `slotify-rank report model-evidence`, which reads the artifacts named at the bottom. Every number here comes from one of them.
 
-- Git SHA: `d9d009a720a72570380b298840ca6b12793608de`
-- Generated: 2026-09-01T23:00:29+00:00
+- Git SHA: `5658cda766e73955c20bd033e8e5b576137d185a`
+- Generated: 2026-09-03T10:16:30+00:00
 - Package version: 0.2.0
 
 `NOT YET AVAILABLE` means no artifact produced that value. It is not a zero: a measured zero (for example, zero human labels) is printed as `0`.

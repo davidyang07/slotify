@@ -410,3 +410,34 @@ def test_a_blind_repeat_changes_the_row_count_and_not_the_unique_count():
     assert labels_block["human_labelled_candidate_count"] == 1
     assert labels_block["human_label_row_count"] == 2
     assert labels_block["repeat_judgement_row_count"] == 1
+
+
+def test_series_are_counted_per_content_type_as_shows_not_episodes(paths):
+    """Two episodes of one show are one series, and formats never merge.
+
+    The split groups on series and the held-out partition holds the podcast
+    format only, so "how many podcast SERIES exist" is what decides whether a
+    test partition can hold three independent shows. An episode count cannot
+    answer it, and a corpus with many episodes of one show would look ample
+    while being unsplittable.
+    """
+    episodes = [
+        _episode_with_file(paths, title="Pod A ep1", series_id="pod-a", sha_seed="a"),
+        _episode_with_file(paths, title="Pod A ep2", series_id="pod-a", sha_seed="b"),
+        _episode_with_file(paths, title="Pod B", series_id="pod-b", sha_seed="c"),
+        _episode_with_file(
+            paths,
+            title="Book",
+            series_id="book-a",
+            sha_seed="d",
+            content_type="narrated",
+        ),
+    ]
+    bundle = compute_statistics(episodes, [])
+
+    assert bundle.dataset["series_count_by_content_type"] == {
+        "narrated": 1,
+        "podcast": 2,
+    }
+    assert bundle.dataset["series_count"] == 3
+    assert bundle.dataset["processed_episode_count"] == 4

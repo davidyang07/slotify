@@ -3,7 +3,7 @@
   "package_version": "0.2.0",
   "experiment_version": "experiment-v2",
   "config_digest": "c1e09d5e341083306a3edfdbca5e013f3d447602dc89119c9363373eeb33e99b",
-  "resolved_at": "2026-09-01T22:54:55+00:00",
+  "resolved_at": "2026-09-01T23:11:56+00:00",
   "ready": false,
   "blocking_reasons": [
     "0 human-labelled candidate(s) exist, fewer than the 2400 this experiment requires"

@@ -118,10 +118,12 @@ def _dataset_statistics(
     duration_by_source: dict[str, float] = defaultdict(float)
     duration_by_license: dict[str, float] = defaultdict(float)
     duration_by_split: dict[str, float] = defaultdict(float)
+    series_by_content: dict[str, set[str]] = defaultdict(set)
     episodes_by_split: Counter[str] = Counter()
     for episode in processed:
         milliseconds = episode.duration_ms or 0
         duration_by_content[episode.content_type] += milliseconds
+        series_by_content[episode.content_type].add(episode.series_id)
         duration_by_source[episode.source_name] += milliseconds
         duration_by_license[episode.license_name or "undeclared (private)"] += milliseconds
         split = split_by_episode.get(episode.episode_id, "unassigned")
@@ -143,6 +145,15 @@ def _dataset_statistics(
         "registered_episode_count": len(episodes),
         "unprocessed_episode_count": len(episodes) - len(processed),
         "series_count": len({e.series_id for e in processed}),
+        # Counted as distinct shows, not episodes. The split groups on series and
+        # the test partition holds the podcast format only, so "how many podcast
+        # SERIES are there" is the number that decides whether the held-out
+        # partition can hold three independent shows at all -- a total episode
+        # count cannot answer it.
+        "series_count_by_content_type": {
+            content_type: len(series_ids)
+            for content_type, series_ids in sorted(series_by_content.items())
+        },
         "duration_hours_by_content_type": {
             key: _hours(value) for key, value in sorted(duration_by_content.items())
         },

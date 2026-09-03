@@ -1,8 +1,8 @@
 {
   "schema_version": "model-evidence-v1.0.0",
   "package_version": "0.2.0",
-  "generated_at": "2026-09-01T23:00:29+00:00",
-  "git_sha": "d9d009a720a72570380b298840ca6b12793608de",
+  "generated_at": "2026-09-03T10:16:30+00:00",
+  "git_sha": "5658cda766e73955c20bd033e8e5b576137d185a",
   "unavailable_marker": "NOT YET AVAILABLE",
   "measurements": {
     "human_labelled_candidate_count": 0,

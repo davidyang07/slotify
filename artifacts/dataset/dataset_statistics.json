@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-01T22:54:17+00:00",
+  "generated_at": "2026-09-03T10:15:36+00:00",
   "package_version": "0.2.0",
   "preprocessing_version": "preprocess-v1.0.0",
   "processed_episode_count": 77,
@@ -10,6 +10,11 @@
   "registered_episode_count": 77,
   "unprocessed_episode_count": 0,
   "series_count": 40,
+  "series_count_by_content_type": {
+    "conversational": 11,
+    "narrated": 15,
+    "podcast": 14
+  },
   "duration_hours_by_content_type": {
     "conversational": 4.5135,
     "narrated": 2.6567,
