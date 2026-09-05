@@ -34,9 +34,8 @@ const MEDIA_EXEMPT = /^(backend\/audio_tests|frontend\/src\/assets)\//;
 const HEAVY_BINARY = /\.(pt|onnx|bin|ckpt|safetensors|npy|npz|parquet|zip|tar|gz)$/i;
 
 /**
- * Checkpoints are exempt only where a README explains why they are committed.
- * `artifacts/training/README.md` documents the single bootstrap checkpoint; any
- * other committed weight file is a finding.
+ * The one committed checkpoint the demo serves is exempt; any other committed
+ * weight file is a finding.
  */
 const CHECKPOINT_EXEMPT = /^artifacts\/training\/[^/]+\/best_checkpoint\.pt$/;
 

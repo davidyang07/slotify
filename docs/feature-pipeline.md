@@ -517,19 +517,3 @@ pair generation groups without re-deriving it. Nothing in this path imports
 Whisper or MiniLM — the embeddings are read from the cached arrays this pipeline
 already wrote.
 
----
-
-## 12. Known limitations
-
-* **`sentence_end` from the candidate record is 100% missing.** Phase 2 generated
-  candidates before transcripts existed, so it is `None` everywhere. The
-  transcript-derived `transcript_sentence_end` covers the same signal. Regenerating
-  candidates now that transcripts exist would populate it.
-* **`model_revision: main`** is honest but not reproducible. Pin a commit SHA
-  before generating a corpus whose transcripts must be reproducible months later.
-* **Handcrafted intermediates are JSON.** Fine at the current scale (~220 KB for
-  20 candidates); at 100k candidates this should become a binary matrix.
-* **Word timestamps are off by default.** tiny.en's are not reliable enough to
-  justify roughly doubling transcription time, and nothing in Phase 3 needs them.
-* **`workers` is accepted but the stages are sequential.** The heavy work is
-  already internally parallel through BLAS/torch threading.

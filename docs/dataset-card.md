@@ -288,40 +288,7 @@ SQLite at `data/labels/labels.sqlite3`, exported to versioned JSONL. One active 
 (annotator, candidate), enforced by a unique index; re-rating updates in place. Annotator ids are
 pseudonymous and no personal information is stored. The local UI plays a ~10 s-each-side audio
 window and shows the transcript context either side of the break when one exists. See
-[`labelling-guide.md`](labelling-guide.md) for the rubric and
-[`pilot-labelling.md`](pilot-labelling.md) for the controlled pilot session.
-
----
-
-## Known limitations
-
-- **It is not a commercial-podcast corpus.** Fourteen podcast and talk-radio series, all either
-  U.S. government programmes or independent shows self-released under open Creative Commons
-  licences, plus multi-voice dramatic readings and narrated prose. No advertising-funded network
-  shows. See "Target domain" above; transfer to commercial podcasts is an open question this corpus
-  cannot settle.
-- **The test partition is small in absolute terms.** Three independent podcast series and seven
-  episodes. That is a real held-out set — three different producers, hosts, formats and recording
-  chains — and it is still few enough that the bootstrap interval, not the point estimate, is the
-  thing to read. `evaluation compare` bootstraps over episodes and reports the interval on the
-  *improvement*; an interval spanning zero is not a result and the comparison says so.
-- **The corpus is skewed by subject.** Technology, politics, community broadcasting and science
-  dominate; there is no true-crime, no comedy panel show, no narrative fiction podcast. Openly
-  licensed audio is not a random sample of podcasting and this corpus does not pretend otherwise.
-- **A handful of synthetic smoke fixtures remain in the episode manifest** from earlier runs
-  (`fixture-*`, ~2 minutes total). They are excluded from the labelling queue by
-  `include_fixtures: false`, and the test partition's content-type restriction keeps them out of the
-  held-out set. They do contribute a negligible amount to training.
-- **`transcript_segment_end` contributes nothing at generation time.** Candidates are generated
-  before transcription runs, so that generator only fires when a timestamped transcript is supplied
-  up front. Every generation report states this explicitly. Transcripts *are* produced by the
-  feature pipeline and are used for features and for the labelling UI's context.
-- **Silence detection is an independent reimplementation** of pydub's semantics against the same
-  canonical thresholds — not a bit-exact port. Bit-exact parity is asserted for the *scorer*, which
-  is the part that must match the product.
-- **Single-annotator labels have no inter-rater agreement.** Any agreement figure requires a second
-  annotator.
-- **Content type is operator-declared.** Nothing verifies that a file marked `podcast` is one.
+[`labelling-guide.md`](labelling-guide.md) for the rubric.
 
 ## What is committed
 

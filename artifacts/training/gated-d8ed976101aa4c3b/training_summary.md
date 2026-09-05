@@ -1,6 +1,6 @@
 # Training run `gated-d8ed976101aa4c3b`
 
-> **WEAKLY SUPERVISED BOOTSTRAP RUN. The targets were derived from heuristic_offline_v1's own score, not from human judgement, so this model is a distillation of the baseline. Its validation NDCG measures how well it reproduces its teacher and is NOT a ranking-quality result. It must never be compared against heuristic_offline_v1, because that baseline IS its teacher. Its purpose is to prove the inference path end to end while the human labelling round is outstanding; see docs/evaluation-evidence.md.**
+> **WEAKLY SUPERVISED BOOTSTRAP RUN. The targets were derived from heuristic_offline_v1's own score, not from human judgement, so this model is a distillation of the baseline. Its validation NDCG measures how well it reproduces its teacher and is NOT a ranking-quality result. It must never be compared against heuristic_offline_v1, because that baseline IS its teacher. Its purpose is to prove the inference path end to end.**
 
 - **Evidence class**: weakly supervised bootstrap - distills heuristic_offline_v1; not a model-quality result and never comparable against that baseline
 - **Data provenance**: weak_supervision (label source: weak_heuristic)

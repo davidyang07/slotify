@@ -110,7 +110,7 @@ class ModelIdentity:
     normalizer_version: str
     #: What the weights were fitted on. `synthetic_fixture` and `weak_heuristic`
     #: are NOT evidence of ranking quality and are stated here so no consumer can
-    #: present them as such. See docs/evaluation-evidence.md.
+    #: present them as such.
     training_label_source: str
     training_data_provenance: str
 

@@ -22,9 +22,7 @@ validation NDCG of 1.0 there means the loop learns a signal that was planted to
 be learnable, nothing more.
 
 The ablation matrix *is* built here, by `experiment train` — see
-[Real training](#real-training-once-the-human-labels-exist) — but which of its
-runs may be quoted, and against what, is decided by
-[`evaluation-evidence.md`](evaluation-evidence.md).
+[Real training](#real-training-once-the-human-labels-exist).
 
 ---
 
@@ -317,10 +315,9 @@ python -m slotify_rank.cli training run \
 mode: every value it changes is written to the run's `resolved_config.json` under
 `overrides` and reproduced in the Markdown summary.
 
-The committed synthetic smoke evidence lives at
+The committed smoke reports live at
 `artifacts/training/{handcrafted,concat,gated}-*/` (reports committed;
-checkpoints git-ignored). See also the
-[evidence matrix](evaluation-evidence.md) Phase 4 section.
+checkpoints git-ignored).
 
 ---
 
@@ -362,8 +359,7 @@ The resulting `training_summary.json` files carry `data_provenance: real` and
 `label_source: human`, and their **validation** metrics are the first that may
 be quoted as measurements of this system. The comparison against
 `heuristic_offline_v1` and the headline NDCG improvement belong to
-`evaluation compare`, on the test split, once — see
-[`evaluation-evidence.md`](evaluation-evidence.md).
+`evaluation compare`, on the test split, once.
 
 ## How training differs from evaluation
 

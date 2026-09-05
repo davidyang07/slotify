@@ -23,7 +23,7 @@ Every artifact it touches is stamped ``label_source: weak_heuristic``. The
 loader refuses these rows unless the caller names the source, the training
 summary records it, the checkpoint records it, the inference response reports
 it, and ``evaluation compare`` refuses to publish a headline improvement
-computed from them. See docs/evaluation-evidence.md.
+computed from them.
 
 Within-episode quantile binning, rather than a global threshold on the raw
 score, for one reason: ranking metrics are computed within an episode, so a

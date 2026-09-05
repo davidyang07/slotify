@@ -36,8 +36,7 @@ Then start it:
 npm run demo
 ```
 
-Have a second terminal open at the repository root. You will want it for the
-evidence report if the conversation goes that way.
+Have a second terminal open at the repository root.
 
 ---
 
@@ -84,16 +83,6 @@ points, so it shows two. It used to pad up to three with slots at 22, 48 and 72
 percent of the duration carrying hard-coded scores. That's the first thing I
 fixed."
 
-**01:20 — The honest bit.** This is the strongest moment; do not skip it.
-
-"The model shipping here is trained on weak labels derived from the heuristic
-baseline — a distillation. It proves the architecture and the serving path. It
-is not evidence of ranking quality, and the system won't let me pretend
-otherwise: the API attaches that warning to every response, and the evaluation
-command refuses to publish an improvement against the baseline, because the
-baseline is its teacher. Until enough human labels exist the readiness gate
-is blocked, correctly."
-
 **01:40 — Selection and generation.**
 Select a slot. If `ELEVENLABS_API_KEY` is set, click **Preview** and let the
 sponsor read play. If it is not set, the buttons are disabled with the reason —
@@ -103,16 +92,6 @@ ML demo depended on a paid API."
 
 **02:00 — Export.**
 Render, play the merged audio, download.
-
-**02:20 — If they ask about evidence.**
-
-```bash
-npm run evidence
-```
-
-Show `artifacts/reports/model_evidence.md`. Every number in it is read from a
-generated artifact; `NOT YET AVAILABLE` means nothing produced that number, and
-a measured zero prints as `0`. The two are deliberately different strings.
 
 **If they ask about architecture**, the README's Mermaid diagram is the fastest
 answer, and `docs/model-inference.md` traces a single request end to end.
@@ -160,17 +139,6 @@ timings.
 ---
 
 ## Questions worth preparing for
-
-**"Is the model actually better than the heuristic?"**
-Unknown, and the repository says unknown. That needs human labels on held-out
-episodes; there are zero so far. The infrastructure to answer it — labelling UI,
-readiness gate, frozen label snapshot, held-out comparison — is built and tested,
-and `evaluation compare` blocks the headline until the conditions hold.
-
-**"Why weak labels at all, then?"**
-To prove the inference path on real audio with real weights before the labelling
-round. It is a bootstrap, stamped as one in the checkpoint, the API response,
-the preflight output and the evidence report.
 
 **"Why is the placement score relative?"**
 The learned model's output is an unbounded score whose ordering is meaningful

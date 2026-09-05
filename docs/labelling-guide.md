@@ -45,10 +45,9 @@ cd ml
 ```
 
 That pre-cuts every clip so no rating waits on FFmpeg, prints how many labels
-remain, and serves the UI. Add `--stage pilot` for the controlled first pass;
-the step-by-step pilot session is documented in
-[`pilot-labelling.md`](pilot-labelling.md). `label serve --queue …` is still
-there for a session that should not re-cut clips.
+remain, and serves the UI. Add `--stage pilot` for the controlled first pass.
+`label serve --queue …` is still there for a session that should not re-cut
+clips.
 
 Open <http://127.0.0.1:8000/>, enter an annotator id, and start. Notes:
 

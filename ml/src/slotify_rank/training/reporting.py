@@ -64,8 +64,7 @@ WEAK_SUPERVISION_WARNING = (
     "is a distillation of the baseline. Its validation NDCG measures how well it "
     "reproduces its teacher and is NOT a ranking-quality result. It must never "
     "be compared against heuristic_offline_v1, because that baseline IS its "
-    "teacher. Its purpose is to prove the inference path end to end while the "
-    "human labelling round is outstanding; see docs/evaluation-evidence.md."
+    "teacher. Its purpose is to prove the inference path end to end."
 )
 
 

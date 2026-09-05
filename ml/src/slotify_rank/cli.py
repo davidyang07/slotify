@@ -370,8 +370,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     register_inference_commands(subparsers)
 
-    # Phase 6: the held-out comparison and the generated evidence report. Both
-    # read artifacts and refuse to publish a number the evidence cannot support.
+    # Phase 6: the held-out comparison against the canonical baseline.
     from slotify_rank.evaluation_cli import register as register_evaluation_commands
 
     register_evaluation_commands(subparsers)

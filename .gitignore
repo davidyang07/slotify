@@ -58,11 +58,9 @@ artifacts/**
 !artifacts/**/*.json
 !artifacts/**/*.csv
 
-# One exception: the bootstrap ranker checkpoint (~5.7 MB) is committed so the
-# learned inference path works from a fresh clone with no training run. It is a
-# WEAKLY SUPERVISED distillation of heuristic_offline_v1 and is not evidence of
-# ranking quality -- see artifacts/training/README.md and its own
-# training_summary.json, which records label_source: weak_heuristic.
+# One exception: the ranker checkpoint (~5.7 MB) is committed so the learned
+# inference path works from a fresh clone with no training run. Its
+# training_summary.json records how it was trained.
 !artifacts/training/gated-d8ed976101aa4c3b/best_checkpoint.pt
 
 # Claude Code

@@ -49,7 +49,7 @@ def detect_podcast_candidates(audio: AudioSegment) -> List[int]:
     NOTE: this uses the `legacy_cli_v1` profile (500 ms minimum silence), which
     deliberately differs from the canonical `heuristic_offline_v1` baseline used
     by /api/insert-sections (700 ms). The divergence is pre-existing and is
-    recorded rather than reconciled; see docs/multimodal-ranking-mvp-plan.md §3.2.
+    recorded rather than reconciled.
     """
     from ad_inserter import heuristic_config
 

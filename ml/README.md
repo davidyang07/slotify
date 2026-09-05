@@ -5,12 +5,6 @@ Node/Express backend: `backend/` never imports it, and it never imports
 `ad_inserter`. The only thing they share is the canonical baseline configuration
 at `config/heuristic_offline_v1.json`.
 
-**Status:** Phase 1 (the deterministic `heuristic_offline_v1` baseline and the
-evaluation metrics) and Phase 2 (the dataset foundation: sources, ingestion,
-normalization, candidate generation, splits, labelling, validation, statistics)
-are implemented. No PyTorch, no learned embeddings, no trained model yet — see
-`docs/multimodal-ranking-mvp-plan.md`.
-
 Everything runs **offline on CPU**. The single exception is
 `dataset fetch`, which downloads declared source URLs; no other command touches
 the network, and nothing anywhere downloads a model or calls a paid API.
@@ -164,7 +158,7 @@ audio. Audio-driven candidate generation arrives in Phase 3.
 ```
 
 Labels for `evaluate` use graded relevance (the 1–5 rubric in
-`docs/multimodal-ranking-mvp-plan.md` §12):
+`docs/labelling-guide.md`):
 
 ```json
 { "episodes": [ { "episode_id": "ep-001", "relevance": { "ep-001:000060000": 5.0 } } ] }
@@ -220,9 +214,6 @@ Once the labels exist:
     --split test --split-version v4 `
     --experiment-config configs\experiment_v2.yaml --require-publishable
 ```
-
-See [`../docs/evaluation-evidence.md`](../docs/evaluation-evidence.md) for what
-each of those is for and what is frozen when.
 
 ## Dataset workflow
 
@@ -324,8 +315,8 @@ recording collapse into one episode.
 .\.venv\Scripts\python.exe -m slotify_rank.cli label queue-summary --check
 ```
 
-Rubric and guidance: `docs/labelling-guide.md`; the step-by-step pilot session is
-`docs/pilot-labelling.md`. Ratings save immediately, sessions resume where you
+Rubric and guidance: `docs/labelling-guide.md`. Ratings save immediately,
+sessions resume where you
 stopped, and the heuristic's score is hidden from the annotator by default to
 avoid biasing the labels. Transcript context either side of the break is
 resolved from the cached episode transcript (the same selection the feature
@@ -544,9 +535,9 @@ trained on by construction. See [`../docs/model-inference.md`](../docs/model-inf
 
 ## Weak bootstrap labels
 
-There are no human labels yet, which correctly blocks every quality claim. It
-also blocked something much smaller: proving the inference path works end to end
-on real audio with real weights. `label weak` unblocks only the second thing.
+`label weak` grades candidates from the baseline's own score so the inference
+path can be proven end to end on real audio with real weights, independently of
+the human labelling round.
 
 ```bash
 # Grade every candidate by binning heuristic_offline_v1's own score into the
@@ -602,48 +593,3 @@ publishable** — and `--require-publishable` exits 1 — when any of these hold
 
 A zero baseline returns `None`, never an infinite improvement.
 
-## The evidence reports
-
-Two generated reports, both read out of artifacts rather than typed.
-
-`model-evidence` says what each capability's artifacts currently establish.
-
-```bash
-python -m slotify_rank.cli report model-evidence
-
-# or, from the repository root, regenerating every upstream artifact first:
-npm run evidence
-
-# CI mode: regenerate and fail if the committed report has drifted.
-python -m slotify_rank.cli report model-evidence --check
-```
-
-`claim-evidence` says PASS or FAIL for every capability and claim, and keeps
-**implementation** claims and **empirical** claims in separate tables. An
-implementation claim is settled by committed code, the test that exercises it
-and the artifact it produces; an empirical claim is settled only by a
-measurement, and a PASS in the first table is never evidence for anything in the
-second.
-
-```bash
-python -m slotify_rank.cli report claim-evidence
-npm run claim-evidence            # same, regenerating the statistics first
-
-python -m slotify_rank.cli report claim-evidence --check
-# The gate CI runs: every implemented capability must be established. It asserts
-# nothing about the empirical claims, which need human labels.
-python -m slotify_rank.cli report claim-evidence --require-implemented
-```
-
-Thresholds come from the committed experiment definition, never from this
-module: `test_the_report_contains_no_hard_coded_thresholds` fails if a number
-like the improvement threshold is ever typed into the checker, so editing
-`experiment_v2.yaml` always changes the verdict.
-
-Reads every generated artifact and writes
-`artifacts/reports/model_evidence.{json,md}` with an evidence status per
-capability. Nothing in it is typed. A metric nothing produced renders
-`NOT YET AVAILABLE`; a measured
-zero renders `0`. The two are different strings on purpose — rendering both as
-`0` would let a reader think a metric was measured and came out badly when it was
-never measured at all.

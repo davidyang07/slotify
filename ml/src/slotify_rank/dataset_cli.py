@@ -1514,7 +1514,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     weak_parser = label_sub.add_parser(
         "weak",
         help="Generate WEAK heuristic-derived labels for the bootstrap run "
-        "(not human labels; see docs/evaluation-evidence.md).",
+        "(not human labels).",
     )
     _add_common(weak_parser)
     weak_parser.add_argument("--output", default=None)

@@ -4,8 +4,7 @@ import type { Candidate, InsertionMode, ScoredCandidate } from "../types";
 
 // Baseline constants live in config/heuristic_offline_v1.json and are shared
 // with the Python port in ml/src/slotify_rank/candidates/heuristic.py. Editing
-// them changes the `heuristic_offline_v1` baseline; see
-// docs/multimodal-ranking-mvp-plan.md §5.
+// them changes the `heuristic_offline_v1` baseline.
 const { merge: MERGE, scoring: SCORING } = HEURISTIC_V1;
 
 export const mergeCandidates = (

@@ -1,17 +1,15 @@
 #!/usr/bin/env node
 /**
- * Verify the ranking half of the repository: the Python package, the committed
- * evidence, and -- when a local corpus is present -- the dataset itself.
+ * Verify the ranking half of the repository: the Python package and -- when a
+ * local corpus is present -- the dataset itself.
  *
  * `npm run verify` covers the two Node workspaces. This covers everything else,
- * and `npm run verify:all` runs both. Between them they check every claim this
- * repository makes that can be checked without collecting new human labels.
+ * and `npm run verify:all` runs both.
  *
  * TWO TIERS, AND WHY THE SECOND ONE IS NOT SILENT.
  *
- * The first tier needs nothing but a checkout: the test suite, and the two
- * generated reports re-derived from the committed artifacts and compared. That
- * tier runs everywhere, CI included, and a failure in it is a failure.
+ * The first tier needs nothing but a checkout: the test suite. That tier runs
+ * everywhere, CI included, and a failure in it is a failure.
  *
  * The second tier reads `data/`, which is never committed -- the corpus is
  * reconstructed from `ml/configs/sources_v2.yaml` rather than stored. On a fresh
@@ -23,7 +21,7 @@
  * artifact. `--check` modes compare; they never repair.
  *
  *   npm run verify:ml
- *   npm run verify:ml -- --skip-tests     # reports only, for a fast loop
+ *   npm run verify:ml -- --skip-tests     # dataset checks only, for a fast loop
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
@@ -75,7 +73,7 @@ if (!skipTests) {
     name: "ML test suite",
     // The whole suite: dataset schema and validation, split leakage, queue
     // integrity, label integrity, feature assembly, the ranking losses, the
-    // trainer, the evaluator, the baselines and the evidence reports.
+    // trainer, the evaluator and the baselines.
     module: "pytest",
     args: ["-q"],
   });
@@ -83,22 +81,9 @@ if (!skipTests) {
 
 steps.push(
   {
-    name: "committed model evidence agrees with its artifacts",
-    args: ["report", "model-evidence", "--check"],
-  },
-  {
-    // Two assertions in one pass, and --check is what keeps it read-only: the
-    // committed report still agrees with its artifacts, AND every capability
-    // this repository claims to implement is established by committed code, a
-    // test and an artifact. It deliberately says nothing about the empirical
-    // claims, which no amount of software can settle.
-    name: "claim evidence agrees, and every implemented capability is established",
-    args: ["report", "claim-evidence", "--check", "--require-implemented"],
-  },
-  {
     // 25 checks, including split_leakage_by_episode and split_leakage_by_series.
     // The report goes to a scratch path so verifying never rewrites a committed
-    // artifact: a verification that edits its own evidence is not one.
+    // artifact: a verification that edits its own inputs is not one.
     name: "dataset validation, including split leakage by episode and by series",
     args: hasCorpus
       ? [

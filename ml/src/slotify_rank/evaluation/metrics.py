@@ -14,7 +14,7 @@ Definitions used here
 
 ``relevance``
     A graded human label per candidate. The project's rubric is 1-5
-    (see ``docs/multimodal-ranking-mvp-plan.md`` §12).
+    (see ``docs/labelling-guide.md``).
 
 ``gain``
     ``2 ** max(0, relevance - gain_offset) - 1`` with ``gain_offset = 1.0``, so

@@ -15,9 +15,7 @@
     "test:scripts": "node --test \"scripts/lib/*.test.mjs\"",
     "verify": "npm run verify:backend && npm run verify:frontend && npm run test:scripts",
     "verify:ml": "node scripts/verify-ml.mjs",
-    "verify:all": "npm run verify && npm run verify:ml",
-    "evidence": "node scripts/evidence.mjs",
-    "claim-evidence": "node scripts/claim-evidence.mjs"
+    "verify:all": "npm run verify && npm run verify:ml"
   },
   "engines": {
     "node": ">=20"

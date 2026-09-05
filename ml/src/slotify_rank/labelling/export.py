@@ -122,8 +122,7 @@ def export_labels(
         "note": (
             "Every row here is a human judgement. Weak or heuristic labels are "
             "never written to this file, and blind consistency repeats are "
-            "excluded so a quality control cannot become extra supervision; see "
-            "docs/evaluation-evidence.md."
+            "excluded so a quality control cannot become extra supervision."
         ),
     }
     metadata_path = destination.with_suffix(destination.suffix + ".meta.json")

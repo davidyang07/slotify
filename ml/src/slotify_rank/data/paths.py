@@ -25,7 +25,7 @@ Phase 3 adds the derived feature artifacts, all git-ignored::
     data/manifests/features.jsonl
 
 ``artifacts/dataset/`` holds the generated statistics, which *are* committed --
-they are the evidence trail for ``docs/evaluation-evidence.md``.
+they are the evidence trail behind ``docs/dataset-card.md``.
 """
 
 from __future__ import annotations

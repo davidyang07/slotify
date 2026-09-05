@@ -8,18 +8,7 @@ One experiment, defined in advance, to answer one question:
 
 This document is the operator's guide to running it. The claim it exists to
 support or refute is written into
-[`ml/configs/experiment_v2.yaml`](../ml/configs/experiment_v2.yaml),
-and the verdict is written by
-[`artifacts/reports/claim_evidence.md`](../artifacts/reports/claim_evidence.md),
-which is generated, never edited.
-
-> **v2 supersedes v1.** `experiment_v1.yaml` stays committed and unedited
-> as the record of what was planned. It was superseded not by a result — none was
-> ever produced under it — but by a defect in the corpus it named: that corpus
-> held exactly one podcast series, so split v3 put it in the test partition alone
-> and left training with no podcast audio at all. The claim, the label gate and
-> the baseline are unchanged; the corpus and the split are rebuilt, and the test
-> partition got *stricter*. See that file's header for the full account.
+[`ml/configs/experiment_v2.yaml`](../ml/configs/experiment_v2.yaml).
 
 ---
 
@@ -35,8 +24,7 @@ Most of the honesty machinery in this repository exists to keep these apart.
 | **Validation metrics** | Measured on the validation split during development. Model selection may use them. They are **not** the result. | `artifacts/training/*/training_summary.json` |
 | **Held-out test metrics** | Measured once, at the end, on a split no development decision touched. This is the result. | `evaluation compare` → `artifacts/evaluation/*/comparison.json` |
 
-A number quoted without saying which of these it is means nothing. The evidence
-report labels every one.
+A number quoted without saying which of these it is means nothing.
 
 ---
 
@@ -185,65 +173,6 @@ the split is `test`, no evaluation episode was trained on, and this project's
 NDCG agrees with `sklearn.metrics.ndcg_score`. Each refusal is written into the
 artifact with its reason.
 
-### 4. Publish the evidence
-
-```bash
-npm run claim-evidence            # regenerate
-npm run claim-evidence -- --check # CI: fail if the report has drifted
-```
-
----
-
-## What "supported" means here
-
-### Two kinds of claim, never mixed
-
-The report splits every claim into one of two classes, rendered as two separate
-tables, because a reader who conflates them will read the software's
-completeness as a result:
-
-| Class | Settled by | Example |
-|---|---|---|
-| **implementation** | Committed code, the test that exercises it, and the artifact it produces. Says a capability exists and runs; says nothing about what it measured. | "A scikit-learn classical baseline is implemented over the handcrafted features, tuned by group-aware cross-validation inside the training split." |
-| **empirical** | A measurement, and nothing else. | "The relative NDCG@3 improvement is at least 18 % over the heuristic baseline." |
-
-An implementation PASS is never evidence for an empirical claim. The report can
-be — and currently is — complete on the first table and empty on the second, and
-that is the accurate description of a system that is built but whose labels have
-not been collected. The class of each check comes from one table,
-`IMPLEMENTATION_CHECKS`, and a test asserts every check lands in exactly one
-class, so a new check cannot drift into the empirical table by omission.
-
-### Three states per claim
-
-The difference between the last two is the point:
-
-- **PASS** — an artifact establishes it.
-- **FAIL** — an artifact was read and it does not.
-- **NOT MEASURED** — nothing produced that number. This is *not* a pass.
-
-The improvement threshold is read from the committed experiment definition. If
-the measured improvement is below it, the report says FAIL and prints the
-measured number. There is no code path in this repository that can turn a
-measured 6 % into a claimed 18 %, and
-`tests/test_claim_evidence.py::test_the_report_contains_no_hard_coded_thresholds`
-asserts the threshold does not appear as a literal in the checker.
-
-### The library claims
-
-"The stack includes X" is not satisfied by a line in `pyproject.toml`. Each
-library needs three independent things:
-
-1. declared as a dependency (parsed from `pyproject.toml`, not grepped);
-2. imported by at least one committed module (found by parsing the AST, so a
-   mention in a docstring does not count);
-3. recorded as having actually run, by a named field in a generated artifact.
-
-For scikit-learn that third requirement is deliberately strict: a published
-comparison must record **both** an independent NDCG cross-check that agreed
-*and* a fitted classical baseline. Adding scikit-learn and never using it fails
-this check, which is the entire reason the check is shaped this way.
-
 ---
 
 ## Where scikit-learn earns its place
@@ -288,5 +217,4 @@ interval spans zero is not a result, and the comparison says so in its caveats.
 | [`dataset-card.md`](dataset-card.md) | The corpus, its licences and its limits |
 | [`labelling-guide.md`](labelling-guide.md) | The 1–5 rubric an annotator applies |
 | [`human-labelling-workflow.md`](human-labelling-workflow.md) | The labelling loop end to end |
-| [`evaluation-evidence.md`](evaluation-evidence.md) | Every capability mapped to its artifact |
 | [`model-training.md`](model-training.md) | The training system |

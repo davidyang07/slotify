@@ -181,7 +181,7 @@ feature pipeline uses, so the annotator reads what the model reads.
 Score each candidate 1–5 on the naturalness rubric
 ([`labelling-guide.md`](labelling-guide.md)). Run the pilot stage first with
 `--stage pilot`, confirm the rubric and the context window feel right, then run
-the rest. The full pilot walkthrough is in [`pilot-labelling.md`](pilot-labelling.md).
+the rest.
 
 To run only part of the queue, or to serve without the pre-cutting step,
 `label serve --queue ... --stage ...` is still there and behaves identically.
@@ -227,8 +227,6 @@ When the gate passes, freeze an immutable snapshot before training:
 .\.venv\Scripts\python.exe -m slotify_rank.cli experiment manifest --require-ready
 ```
 
-See [`evaluation-evidence.md`](evaluation-evidence.md) for what happens next.
-
 ## 6. Where things are
 
 | Artifact | Location | Committed? |
@@ -248,15 +246,3 @@ See [`evaluation-evidence.md`](evaluation-evidence.md) for what happens next.
 | Readiness report | `artifacts/experiments/readiness_report.json` | yes (no private data) |
 | Dataset statistics | `artifacts/dataset/*.json` | yes |
 
----
-
-## Current status
-
-The machinery is complete and tested, the corpus is processed and the queue is
-built. The one thing no command can do is form judgements, so the current human
-label count is whatever the label store holds — read it from
-`artifacts/dataset/label_statistics.json` rather than from this sentence.
-
-Until that count clears the gate, the readiness report says so and the held-out
-comparison refuses to publish. The single remaining action is `label
-run-experiment` (§4).

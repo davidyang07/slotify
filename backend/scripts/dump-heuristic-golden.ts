@@ -11,7 +11,8 @@
  * Steps 1-3 are imported from the real module. Step 4 is *mirrored* here
  * because the route interleaves it with an OpenAI enrichment call that cannot
  * run offline; the mirrored block is annotated with the exact route lines it
- * reproduces. See docs/multimodal-ranking-mvp-plan.md §5 (drift risk R17).
+ * reproduces: an edit to the route's finalisation requires regenerating this
+ * fixture.
  *
  * The baseline is FROZEN. The product path has since stopped padding
  * under-filled selections and stopped presenting a 70-95 "confidence"; this
