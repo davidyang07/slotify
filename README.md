@@ -1,6 +1,6 @@
 # Slotify
 
-**Semantic- and signal-aware ad insertion for audio.** Upload a podcast episode
+**Semantic and signal-aware ad insertion for audio.** Upload a podcast episode
 or a song, and Slotify finds the best places for an ad to go, writes and voices
 the sponsor read, and stitches it into the original audio with loudness matching
 and crossfades.
