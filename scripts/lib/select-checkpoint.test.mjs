@@ -106,6 +106,57 @@ describe("selectCheckpoint", () => {
     assert.equal(selectCheckpoint(root).runId, "gated-new");
   });
 
+  it("orders runs by instant, not by the text of the timestamp", () => {
+    const root = makeRepo();
+    // 01:00 at +02:00 is 23:00 UTC the day before: earlier than 23:30Z,
+    // although it sorts later as a string.
+    addRun(root, "gated-offset", {
+      run_id: "gated-offset",
+      label_source: "human",
+      generated_at: "2026-09-02T01:00:00+02:00",
+    });
+    addRun(root, "gated-utc", {
+      run_id: "gated-utc",
+      label_source: "human",
+      generated_at: "2026-09-01T23:30:00Z",
+    });
+    assert.equal(selectCheckpoint(root).runId, "gated-utc");
+  });
+
+  it("never prefers a run with a missing or unparseable timestamp over a dated one", () => {
+    const root = makeRepo();
+    addRun(root, "gated-dated", {
+      run_id: "gated-dated",
+      label_source: "human",
+      generated_at: "2026-01-01T00:00:00+00:00",
+    });
+    addRun(root, "gated-undated", { run_id: "gated-undated", label_source: "human" });
+    addRun(root, "gated-garbled", {
+      run_id: "gated-garbled",
+      label_source: "human",
+      generated_at: "not a date",
+    });
+    // "zzzz" sorts after any ISO date as a string; it must not win.
+    addRun(root, "gated-zzzz", {
+      run_id: "gated-zzzz",
+      label_source: "human",
+      generated_at: "zzzz",
+    });
+    const selected = selectCheckpoint(root);
+    assert.equal(selected.runId, "gated-dated");
+    assert.match(selected.reason, /4 available/);
+  });
+
+  it("still serves a human-trained run when none of them is dated", () => {
+    const root = makeRepo();
+    addRun(root, "gated-b", { run_id: "gated-b", label_source: "human" });
+    addRun(root, "gated-a", { run_id: "gated-a", label_source: "human", generated_at: "" });
+    const selected = selectCheckpoint(root);
+    assert.equal(selected.isHumanTrained, true);
+    // Deterministic regardless of directory order.
+    assert.equal(selected.runId, "gated-a");
+  });
+
   it("ignores a run whose weights or normalizer are missing", () => {
     const root = makeRepo();
     addRun(

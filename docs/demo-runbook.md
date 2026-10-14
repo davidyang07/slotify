@@ -11,8 +11,25 @@ something breaks. Read the recovery section before you need it.
 npm run preflight
 ```
 
-Every REQUIRED line must read `[OK]`. `[WARN]` lines are fine — they are the
-optional paid APIs, and the demo is designed to work without them.
+Every REQUIRED line must read `[OK]`; any REQUIRED failure exits non-zero and
+`npm run demo` will refuse to start. `[WARN]` lines are fine — they are the
+optional paid APIs and the learned-ranker extras, and the demo is designed to
+work without them. The ones that catch people:
+
+- **Python (ad_inserter)** imports pydub, numpy, pyloudnorm, librosa and
+  soundfile with the interpreter the API will use (`PYTHON_BIN`, default
+  `python`). If it fails, every analysis would fail too:
+  `<that python> -m pip install -r backend/requirements.txt`, or point
+  `PYTHON_BIN` at an interpreter that has them.
+- **port 3001 (backend)** and **port 5173 (frontend)** must be free. A busy port
+  is a failure that names the process holding it — usually a previous
+  `npm run demo` or `npm run dev`. Stop it with the command shown. The API port
+  can move instead (`PORT=3002 npm run demo`); the UI port cannot, because Vite
+  runs with `--strictPort`.
+- **Node.js** must be 22 or newer.
+
+Preflight reads `backend/.env` the way the API does, so `PYTHON_BIN`, `PORT` and
+the API keys set there count.
 
 Pick your clip. **60–120 seconds of speech.** Longer is worse: Whisper
 transcription is the dominant cost and runs at roughly real time on CPU, so a
@@ -36,7 +53,30 @@ Then start it:
 npm run demo
 ```
 
+This starts the API on `PORT` (3001) and Vite on 5173 with `--strictPort`, and
+prints `Open http://localhost:5173/` once Vite reports it is serving — open that
+URL, not one from memory. The browser talks only to Vite, which proxies `/api`
+to the API (`VITE_PROXY_TARGET`, which the demo points at `PORT`), so there is no
+CORS setup to get wrong. Ctrl-C stops both; if either one dies, the demo stops
+the other and exits non-zero.
+
 Have a second terminal open at the repository root.
+
+### Optional: tokens and rate limits
+
+The token matters only if the API will be reachable from other machines (a
+tunnel, a shared network); on localhost, leave it unset. The rate limits are on
+whether or not you set them, at the defaults below — generous for one presenter.
+
+| Variable | Where | Effect |
+| --- | --- | --- |
+| `SLOTIFY_API_TOKEN` | `backend/.env` | Every route except health and capabilities requires `Authorization: Bearer <token>` |
+| `VITE_API_TOKEN` | `frontend/.env.local` | The token the UI sends. Must match `SLOTIFY_API_TOKEN`, or every call is refused. It is compiled into the page, so it keeps out passers-by, not anyone who can load the UI |
+| `SLOTIFY_RATE_LIMIT_COMPUTE_PER_MIN` | `backend/.env` | Requests per client IP per minute to the compute-heavy routes, analysis included (default 30; `0` disables) |
+| `SLOTIFY_RATE_LIMIT_PAID_PER_MIN` | `backend/.env` | Requests per client IP per minute to the routes that spend OpenAI or ElevenLabs credit (default 10; `0` disables) |
+
+Restart `npm run demo` after changing any of them; Vite reads `VITE_*` only at
+startup.
 
 ---
 
@@ -107,7 +147,12 @@ answer, and `docs/model-inference.md` traces a single request end to end.
 | "No insertion points to show" | Analysis ran and found nothing eligible | This is the honest empty state. Show it — it is a feature. Use a longer clip |
 | Learned ranker times out | Long audio | `SLOTIFY_RANKER_SKIP_TRANSCRIPTION=1` (text modality masked, and the response says so), or restart with `--heuristic` |
 | ElevenLabs error | Key missing, out of quota, or the service is down | Skip generation. Placement is the demo; ad rendering is the encore |
-| Server will not start | Port in use | `npm run preflight` names the port; change `PORT` |
+| Server will not start | Port in use | `npm run preflight` names the port and the process holding it; stop that process, or change `PORT` (API only) |
+| `[ui] Error: Port 5173 is already in use` | Another Vite (often an earlier demo) holds 5173 | Stop it; Vite will not move to 5174 on its own, by design |
+| Every analysis fails with `ModuleNotFoundError` | `PYTHON_BIN` lacks backend/requirements.txt | `npm run preflight` says which module; install the requirements into that interpreter |
+| UI says the API is not reachable | The API is down or on another port | Check the `[api]` lines; if you changed `PORT` outside the demo, set `VITE_PROXY_TARGET` to match |
+| 401 on every request | `SLOTIFY_API_TOKEN` is set but `VITE_API_TOKEN` is missing or different | Make them match, or unset both, and restart |
+| 429 Too Many Requests | A per-minute rate limit, usually from rapid repeat clicks | Wait a minute, or raise `SLOTIFY_RATE_LIMIT_COMPUTE_PER_MIN` (analysis) or `SLOTIFY_RATE_LIMIT_PAID_PER_MIN` (generation) and restart |
 | Everything is on fire | — | See the offline path below |
 
 ### The offline path

@@ -42,6 +42,32 @@ const readJson = (file) => {
 };
 
 /**
+ * `generated_at` as epoch milliseconds, or null when it is missing or does not
+ * parse. Compared as instants, not strings: "2026-09-02T01:00:00+02:00" is
+ * EARLIER than "2026-09-01T23:30:00Z", and a string comparison says otherwise.
+ */
+const generatedAtMs = (value) => {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? null : ms;
+};
+
+/**
+ * Newest first. A run with no usable timestamp sorts after every dated one: it
+ * is served only when no human-trained run says when it was made, rather than
+ * winning by accident. Ties break on the run id, because `readdirSync` order is
+ * not promised.
+ */
+const newestFirst = (a, b) => {
+  if (a.generatedAt !== b.generatedAt) {
+    if (a.generatedAt === null) return 1;
+    if (b.generatedAt === null) return -1;
+    return b.generatedAt - a.generatedAt;
+  }
+  return String(a.runId).localeCompare(String(b.runId));
+};
+
+/**
  * @param {string} repoRoot
  * @returns {{
  *   checkpoint: string | null,   // repo-relative, or null when nothing is usable
@@ -71,17 +97,17 @@ export const selectCheckpoint = (repoRoot) => {
         labelSource: String(summary.label_source ?? ""),
         runId: summary.run_id ?? entry.name,
         variant: summary.model_variant ?? null,
-        generatedAt: String(summary.generated_at ?? ""),
+        generatedAt: generatedAtMs(summary.generated_at),
       });
     }
   }
 
   const human = runs
     .filter((run) => run.labelSource === "human")
-    .sort((a, b) => a.generatedAt.localeCompare(b.generatedAt));
+    .sort(newestFirst);
 
   if (human.length > 0) {
-    const chosen = human[human.length - 1];
+    const chosen = human[0];
     return {
       checkpoint: path.relative(repoRoot, chosen.checkpoint),
       labelSource: chosen.labelSource,

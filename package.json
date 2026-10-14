@@ -18,7 +18,7 @@
     "verify:all": "npm run verify && npm run verify:ml"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "license": "MIT"
 }

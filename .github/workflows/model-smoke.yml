@@ -1,20 +1,36 @@
 name: Model smoke
 
-# The opt-in half of the test suite: the tests that download real Whisper and
-# MiniLM weights and assert the dimensions the feature pipeline is built around
-# are what the models actually produce.
+# The networked half of the test suite, kept off the pull-request path. Two
+# independent jobs:
 #
-# Deliberately manual. These tests depend on Hugging Face being reachable, and a
-# Hugging Face outage must not turn an unrelated pull request red -- a CI signal
-# people learn to ignore is worse than no signal. Run it after changing an
-# encoder, a pooling rule or a dimension constant.
+# - model-smoke downloads real Whisper and MiniLM weights and asserts the
+#   dimensions the feature pipeline is built around are what the models
+#   actually produce. Run it by hand after changing an encoder, a pooling rule
+#   or a dimension constant.
+# - corpus-registry-live re-resolves the committed corpus registry against the
+#   Internet Archive.
+#
+# Neither runs per pull request. They depend on Hugging Face and the Archive
+# being reachable, and an outage of either must not turn an unrelated pull
+# request red -- a CI signal people learn to ignore is worse than no signal.
+# They are separate jobs so that one service being down does not skip the
+# other's check.
+#
+# Actions are referenced by major tag rather than commit SHA; see ci.yml.
 
 on:
   workflow_dispatch:
   schedule:
-    # Weekly, so drift in an upstream model is noticed within a week rather than
-    # at the moment someone needs the pipeline to work.
+    # Weekly, so drift in an upstream model or an Archive item is noticed within
+    # a week rather than at the moment someone needs the pipeline to work.
+    #
+    # In a public repository GitHub disables scheduled workflows after 60 days
+    # without repository activity, and says so only in the Actions tab. If the
+    # weekly runs stop appearing, re-enable the workflow there.
     - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
 
 jobs:
   model-smoke:
@@ -26,6 +42,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: ml/pyproject.toml
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Cache Hugging Face weights
         uses: actions/cache@v4
@@ -42,13 +59,28 @@ jobs:
         working-directory: ml
         run: python -m pytest -m model_smoke -o addopts=""
 
+  corpus-registry-live:
+    # The committed registry was generated from the committed plan by reading
+    # the Archive's metadata API. If an item is withdrawn, made
+    # access-restricted or re-encoded, the registry stops describing what is
+    # actually fetchable -- and the corpus stops being reproducible from a clean
+    # clone. Discovery needs only the base package: no torch, no model weights,
+    # no Hugging Face.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ml/pyproject.toml
+      - name: Install the package
+        working-directory: ml
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
       - name: Re-resolve the corpus registry against the Internet Archive
-        # The committed registry was generated from the committed plan by
-        # reading the Archive's metadata API. If an item is withdrawn, made
-        # access-restricted or re-encoded, the registry stops describing what is
-        # actually fetchable -- and the corpus stops being reproducible from a
-        # clean clone. Weekly, not per-pull-request: an Archive outage must not
-        # turn an unrelated change red.
         working-directory: ml
         run: |
           python -m slotify_rank.cli dataset discover \

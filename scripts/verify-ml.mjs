@@ -24,7 +24,7 @@
  *   npm run verify:ml -- --skip-tests     # dataset checks only, for a fast loop
  */
 
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -32,6 +32,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { hygieneFindings } from "./lib/hygiene.mjs";
+import { trackedFiles } from "./lib/tracked-files.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ML_DIR = path.join(REPO_ROOT, "ml");
@@ -161,15 +162,11 @@ let skipped = 0;
 const ran = [];
 
 // Repository hygiene, over what git actually tracks rather than what is lying
-// around: a committed cache or credential is permanent, an uncommitted one is
-// not a repository problem.
+// around: a committed cache, credential or oversized blob is permanent, an
+// uncommitted one is not a repository problem.
 console.log("\n=== repository hygiene ===");
 try {
-  const tracked = execFileSync("git", ["ls-files"], {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-    maxBuffer: 32 * 1024 * 1024,
-  }).split(/\r?\n/);
+  const tracked = trackedFiles(REPO_ROOT);
   const findings = hygieneFindings(tracked);
   if (findings.length) {
     failed += 1;
@@ -182,7 +179,7 @@ try {
     }
   } else {
     ran.push("repository hygiene");
-    console.log(`  ${tracked.filter(Boolean).length} tracked file(s), no findings.`);
+    console.log(`  ${tracked.length} tracked file(s), no findings.`);
   }
 } catch (error) {
   skipped += 1;

@@ -11,14 +11,22 @@
  *   npm run demo -- --heuristic   force the offline baseline
  *   npm run demo -- --no-open     do not print the browser hint
  *
- * Ctrl-C stops both children.
+ * The UI is Vite on port 5173 with --strictPort: if the port is taken it fails
+ * instead of quietly moving to 5174, and the URL printed is the one Vite reports
+ * serving. The browser talks only to Vite, which proxies /api to the API on PORT
+ * (VITE_PROXY_TARGET, set here from PORT unless already set), so every request
+ * the browser makes is same-origin and none depends on the API's CORS settings.
+ *
+ * Ctrl-C stops both children. If either child stops on its own the other is
+ * stopped too, and the demo exits non-zero unless that child exited cleanly.
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { apiPort, backendEnv, UI_PORT } from "./lib/demo-env.mjs";
 import { selectCheckpoint } from "./lib/select-checkpoint.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -34,12 +42,15 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
  *
  * Running the packages' own bin files under this Node would avoid the shell
  * entirely, but tsx re-execs itself and does not survive being invoked that way,
- * so npm stays the entry point.
+ * so npm stays the entry point. `extra` is forwarded to the script after `--`;
+ * it is literals and integers only, never user input.
  */
-const npmRun = (script) =>
-  process.platform === "win32"
-    ? { command: `npm run ${script}`, options: { shell: true } }
-    : { command: "npm", args: ["run", script], options: {} };
+const npmRun = (script, extra = []) => {
+  const args = ["run", script, ...(extra.length ? ["--", ...extra] : [])];
+  return process.platform === "win32"
+    ? { command: `npm ${args.join(" ")}`, options: { shell: true } }
+    : { command: "npm", args, options: {} };
+};
 
 const heuristicOnly = process.argv.includes("--heuristic");
 const skipPreflight = process.argv.includes("--skip-preflight");
@@ -56,6 +67,13 @@ if (!skipPreflight) {
 }
 
 const env = { ...process.env };
+
+// Point the UI's /api proxy at the port the API will really listen on --
+// PORT may come from backend/.env, which only the API reads -- unless the
+// operator has aimed it somewhere on purpose.
+const API_PORT = apiPort(backendEnv(REPO_ROOT));
+env.VITE_PROXY_TARGET = env.VITE_PROXY_TARGET ?? `http://localhost:${API_PORT}`;
+
 if (heuristicOnly) {
   env.RANKER_MODE = "heuristic";
 } else {
@@ -82,8 +100,19 @@ if (heuristicOnly) {
 
 const children = [];
 
-const start = (name, script, cwd) => {
-  const { command, args, options } = npmRun(script);
+/**
+ * The exit status to report for a child. A child killed by a signal has a null
+ * code; reporting that as 0 would make an OOM kill (SIGKILL) look like a clean
+ * stop, so it is 128 + the signal number, as a shell reports it.
+ */
+const exitStatus = (code, signal) => {
+  if (code !== null) return code;
+  const number = signal ? os.constants.signals[signal] : undefined;
+  return number ? 128 + number : 1;
+};
+
+const start = (name, script, cwd, { extra = [], onLine } = {}) => {
+  const { command, args, options } = npmRun(script, extra);
   const child = spawn(command, args ?? [], {
     cwd,
     env,
@@ -98,28 +127,78 @@ const start = (name, script, cwd) => {
       buffer += chunk;
       const lines = buffer.split(/\r?\n/);
       buffer = lines.pop() ?? "";
-      for (const line of lines) target.write(prefix + line + "\n");
+      for (const line of lines) {
+        target.write(prefix + line + "\n");
+        onLine?.(line);
+      }
     });
   };
   forward(child.stdout, process.stdout);
   forward(child.stderr, process.stderr);
-  child.on("exit", (code) => {
-    if (code !== 0 && code !== null) {
+  child.on("exit", (code, signal) => {
+    if (shuttingDown) return;
+    if (signal) {
+      console.error(`${prefix}killed by ${signal}`);
+    } else if (code !== 0) {
       console.error(`${prefix}exited with code ${code}`);
     }
-    shutdown(code ?? 0);
+    shutdown(exitStatus(code, signal));
   });
   children.push(child);
   return child;
+};
+
+/**
+ * A process's descendants, found before any of them is signalled: once a parent
+ * dies its children are re-parented to init and can no longer be traced.
+ * Empty when pgrep is unavailable.
+ */
+const descendants = (pid) => {
+  const found = spawnSync("pgrep", ["-P", String(pid)], { encoding: "utf8" });
+  if (found.error || typeof found.stdout !== "string") return [];
+  return found.stdout
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(Number)
+    .flatMap((child) => [child, ...descendants(child)]);
+};
+
+/**
+ * Stop a child and everything it started.
+ *
+ * Signalling only the direct child is not enough on either platform. On Windows
+ * the child is cmd.exe (`shell: true`), and `child.kill()` ends only that: npm,
+ * node and Vite carry on holding ports 3001 and 5173, and the next `npm run demo`
+ * fails preflight. `taskkill /T` ends the whole tree. On POSIX the child is npm,
+ * which runs the script under `sh -c`: SIGTERM to npm ends npm and the shell but
+ * not the Vite or tsx process beneath them, so Vite outlived the demo whenever
+ * the API exited first. Every process in the tree is signalled instead. (Ctrl-C
+ * was never affected: the terminal delivers SIGINT to the whole foreground
+ * process group, children included.)
+ */
+const stop = (child) => {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    return;
+  }
+  for (const pid of [child.pid, ...descendants(child.pid)]) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // Already gone.
+    }
+  }
 };
 
 let shuttingDown = false;
 const shutdown = (code) => {
   if (shuttingDown) return;
   shuttingDown = true;
-  for (const child of children) {
-    if (!child.killed) child.kill();
-  }
+  for (const child of children) stop(child);
   process.exit(code);
 };
 
@@ -132,13 +211,23 @@ console.log(
   })\n`,
 );
 
-start("api", "dev", path.join(REPO_ROOT, "backend"));
-start("ui", "dev", path.join(REPO_ROOT, "frontend"));
+// Vite prints "Local:   http://localhost:5173/" once it is serving. That line,
+// not a guess at the port, is what the hint repeats.
+const ansi = /\u001b\[[0-9;]*m/g;
+let announced = process.argv.includes("--no-open");
+const announceUrl = (line) => {
+  if (announced) return;
+  const served = /Local:\s+(https?:\/\/\S+)/.exec(line.replace(ansi, ""))?.[1];
+  if (!served) return;
+  announced = true;
+  console.log("");
+  console.log(`  Open ${served} -- upload audio and click Analyze.`);
+  console.log(`  (/api is proxied to ${env.VITE_PROXY_TARGET})`);
+  console.log("");
+};
 
-if (!process.argv.includes("--no-open")) {
-  setTimeout(() => {
-    console.log("");
-    console.log("  Open http://localhost:5173 -- upload audio and click Analyze.");
-    console.log("");
-  }, 4000);
-}
+start("api", "dev", path.join(REPO_ROOT, "backend"));
+start("ui", "dev", path.join(REPO_ROOT, "frontend"), {
+  extra: ["--port", String(UI_PORT), "--strictPort"],
+  onLine: announceUrl,
+});

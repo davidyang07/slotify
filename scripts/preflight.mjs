@@ -8,7 +8,12 @@
  * Every check reports REQUIRED or OPTIONAL. A missing OPTIONAL is a WARN and
  * exits 0 -- the placement demo needs no API keys, and treating an absent
  * ElevenLabs key as a failure would teach the reader to ignore failures. A
- * missing REQUIRED is a FAIL and exits 1.
+ * missing REQUIRED is a FAIL and exits 1. The level alone decides which, so a
+ * REQUIRED check cannot be recorded as a warning.
+ *
+ * Settings the API reads (PYTHON_BIN, PORT, the API keys) are resolved the way
+ * the API resolves them, backend/.env included, so preflight checks the Python
+ * and the port the API will actually use.
  *
  * Node rather than a shell script so one file works on PowerShell, bash and
  * zsh; the repository already requires Node for both workspaces.
@@ -22,6 +27,7 @@ import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { apiPort, backendEnv, UI_PORT } from "./lib/demo-env.mjs";
 import {
   BOOTSTRAP_CHECKPOINT,
   selectCheckpoint,
@@ -29,11 +35,14 @@ import {
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const asJson = process.argv.includes("--json");
+const apiEnv = backendEnv(REPO_ROOT);
 
 /** @type {{name: string, level: "REQUIRED"|"OPTIONAL", status: "OK"|"WARN"|"FAIL", detail: string}[]} */
 const results = [];
 
-const record = (name, level, status, detail) => {
+/** @param {"REQUIRED"|"OPTIONAL"} level @param {boolean} ok */
+const record = (name, level, ok, detail) => {
+  const status = ok ? "OK" : level === "REQUIRED" ? "FAIL" : "WARN";
   results.push({ name, level, status, detail });
 };
 
@@ -52,22 +61,63 @@ const run = (command, args, options = {}) => {
 
 const exists = (relative) => fs.existsSync(path.join(REPO_ROOT, relative));
 
-const portFree = (port) =>
+/** Resolves to null when `host:port` can be bound, else the error code. */
+const bindError = (port, host) =>
   new Promise((resolve) => {
     const server = net.createServer();
-    server.once("error", () => resolve(false));
-    server.once("listening", () => server.close(() => resolve(true)));
-    server.listen(port, "127.0.0.1");
+    server.once("error", (error) => resolve(error.code ?? "error"));
+    server.once("listening", () => server.close(() => resolve(null)));
+    server.listen(port, host);
   });
+
+/**
+ * Null when the port is free on both loopbacks, else why not. Both, because
+ * Vite binds `localhost`, which Node may resolve to ::1, and a server on ::1
+ * alone leaves 127.0.0.1 bindable. A machine without IPv6 loopback cannot bind
+ * ::1 at all, which is not a collision.
+ */
+const portBusy = async (port) => {
+  const v4 = await bindError(port, "127.0.0.1");
+  if (v4) return v4;
+  const v6 = await bindError(port, "::1");
+  return v6 && !["EADDRNOTAVAIL", "EAFNOSUPPORT", "EINVAL"].includes(v6) ? v6 : null;
+};
+
+/**
+ * Best effort: the process listening on `port`, so the failure can say what to
+ * stop. Null when the platform tool is missing or will not say (a process owned
+ * by another user, for one) -- the check still fails, it just names only the port.
+ */
+const portHolder = (port) => {
+  if (process.platform === "win32") {
+    const pid = (run("netstat", ["-ano"]) ?? "")
+      .split(/\r?\n/)
+      .map((line) => line.trim().split(/\s+/))
+      .find((cols) => cols[0] === "TCP" && cols[1]?.endsWith(`:${port}`) && cols[3] === "LISTENING")?.[4];
+    if (!pid) return null;
+    const task = run("tasklist", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"]);
+    return { pid, name: task?.match(/^"([^"]+)"/)?.[1] ?? null };
+  }
+  // lsof -F prints one field per line: p<pid>, then c<command>.
+  const lsof = run("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-Fpc"]);
+  const pid = lsof?.match(/^p(\d+)$/m)?.[1];
+  if (pid) return { pid, name: lsof.match(/^c(.+)$/m)?.[1] ?? null };
+  const ss = process.platform === "linux" ? run("ss", ["-ltnpH", `sport = :${port}`]) : null;
+  const users = ss?.match(/users:\(\("([^"]+)",pid=(\d+)/);
+  return users ? { pid: users[2], name: users[1] } : null;
+};
 
 // -- runtimes ---------------------------------------------------------------
 
+// The same floor as `engines` in package.json. Every workspace's test script
+// hands `node --test` a quoted glob, which Node expands itself only from 21;
+// 22 is the LTS line CI runs.
 const nodeMajor = Number.parseInt(process.versions.node.split(".")[0], 10);
 record(
   "Node.js",
   "REQUIRED",
-  nodeMajor >= 20 ? "OK" : "FAIL",
-  `v${process.versions.node}${nodeMajor >= 20 ? "" : " (need >= 20 for the built-in test runner)"}`,
+  nodeMajor >= 22,
+  `v${process.versions.node}${nodeMajor >= 22 ? "" : " (need >= 22: `node --test` expands the test globs only from Node 21, and CI runs 22)"}`,
 );
 
 const mlPython = (() => {
@@ -83,17 +133,57 @@ const pythonVersion = run(mlPython, ["--version"]);
 record(
   "Python (ml)",
   "REQUIRED",
-  pythonVersion ? "OK" : "FAIL",
+  Boolean(pythonVersion),
   pythonVersion ? `${pythonVersion} at ${path.relative(REPO_ROOT, mlPython) || mlPython}` : `not runnable: ${mlPython}`,
 );
 
-const adInserterPython = process.env.PYTHON_BIN ?? "python";
-const adInserterVersion = run(adInserterPython, ["--version"]);
+// The API runs every analysis as `PYTHON_BIN -m ad_inserter.analyze_cli`, so an
+// interpreter that starts but lacks backend/requirements.txt passes a version
+// check and then fails every request with ModuleNotFoundError. The modules are
+// imported, not just located: soundfile, for one, is installed but unusable
+// without its native library, and only an import says so. librosa is the slow
+// one, a few seconds cold.
+const AD_INSERTER_MODULES = ["pydub", "numpy", "pyloudnorm", "librosa", "soundfile"];
+const adInserterPython = apiEnv.PYTHON_BIN ?? "python";
+const adInserterProbe = spawnSync(
+  adInserterPython,
+  [
+    "-c",
+    [
+      "import importlib, json, platform, sys",
+      "broken = []",
+      "for name in sys.argv[1:]:",
+      "    try:",
+      "        importlib.import_module(name)",
+      "    except Exception as error:",
+      "        broken.append(f'{name} ({type(error).__name__}: {error})')",
+      "print(json.dumps({'version': platform.python_version(), 'broken': broken}))",
+    ].join("\n"),
+    ...AD_INSERTER_MODULES,
+  ],
+  { cwd: path.join(REPO_ROOT, "backend"), encoding: "utf8", timeout: 120_000 },
+);
+let adInserter = null;
+try {
+  adInserter = adInserterProbe.status === 0 ? JSON.parse(adInserterProbe.stdout.trim()) : null;
+} catch {
+  adInserter = null;
+}
+const installHint = `install with: ${adInserterPython} -m pip install -r backend/requirements.txt`;
 record(
   "Python (ad_inserter)",
   "REQUIRED",
-  adInserterVersion ? "OK" : "FAIL",
-  adInserterVersion ?? `not runnable: ${adInserterPython} (set PYTHON_BIN)`,
+  adInserter !== null && adInserter.broken.length === 0,
+  adInserter === null
+    ? adInserterProbe.error
+      ? `not runnable: ${adInserterPython} (set PYTHON_BIN)`
+      : `${adInserterPython} could not run the import check: ${
+          (adInserterProbe.stderr || "").trim().split("\n").slice(-1)[0] || "no output"
+        }`
+    : adInserter.broken.length === 0
+      ? `Python ${adInserter.version} at ${adInserterPython}; ${AD_INSERTER_MODULES.join(", ")} import`
+      : `Python ${adInserter.version} at ${adInserterPython} cannot import ` +
+        `${adInserter.broken.join("; ")} -- every analysis would fail. ${installHint}`,
 );
 
 for (const tool of ["ffmpeg", "ffprobe"]) {
@@ -101,7 +191,7 @@ for (const tool of ["ffmpeg", "ffprobe"]) {
   record(
     tool,
     "REQUIRED",
-    version ? "OK" : "FAIL",
+    Boolean(version),
     version ? version.split("\n")[0] : "not on PATH",
   );
 }
@@ -111,13 +201,13 @@ for (const tool of ["ffmpeg", "ffprobe"]) {
 record(
   "frontend dependencies",
   "REQUIRED",
-  exists("frontend/node_modules") ? "OK" : "FAIL",
+  exists("frontend/node_modules"),
   exists("frontend/node_modules") ? "installed" : "run: cd frontend && npm ci",
 );
 record(
   "backend dependencies",
   "REQUIRED",
-  exists("backend/node_modules") ? "OK" : "FAIL",
+  exists("backend/node_modules"),
   exists("backend/node_modules") ? "installed" : "run: cd backend && npm ci",
 );
 
@@ -146,7 +236,7 @@ const mlExtras = pipeline.status === 0 && missingModules.length === 0;
 record(
   "ml learned-feature extras",
   "OPTIONAL",
-  mlExtras ? "OK" : "WARN",
+  mlExtras,
   mlExtras
     ? "torch, transformers, sentence-transformers, librosa, slotify_rank importable"
     : `missing: ${missingModules.join(", ") || "unknown"} -- the learned ranker ` +
@@ -168,7 +258,7 @@ const checkpointReady =
 record(
   "learned ranker checkpoint",
   "OPTIONAL",
-  checkpointReady ? "OK" : "WARN",
+  checkpointReady,
   checkpointReady
     ? // The label source is the whole difference between a checkpoint that
       // demonstrates the plumbing and one an evaluation result describes, so it
@@ -213,7 +303,7 @@ if (checkpointReady && mlExtras) {
     record(
       "learned ranker loads",
       "OPTIONAL",
-      "OK",
+      true,
       `${identity.model_variant} (${identity.parameter_count} params), trained on label_source=${source}` +
         (source === "human"
           ? ""
@@ -223,7 +313,7 @@ if (checkpointReady && mlExtras) {
     record(
       "learned ranker loads",
       "OPTIONAL",
-      "WARN",
+      false,
       (describe.stderr || "").trim().split("\n").slice(-1)[0] ||
         "the checkpoint could not be loaded",
     );
@@ -235,35 +325,58 @@ if (checkpointReady && mlExtras) {
 record(
   "ELEVENLABS_API_KEY",
   "OPTIONAL",
-  process.env.ELEVENLABS_API_KEY ? "OK" : "WARN",
-  process.env.ELEVENLABS_API_KEY
+  Boolean(apiEnv.ELEVENLABS_API_KEY),
+  apiEnv.ELEVENLABS_API_KEY
     ? "set -- voice cloning and TTS enabled"
     : "not set -- ranking works, ad generation disabled",
 );
 record(
   "OPENAI_API_KEY",
   "OPTIONAL",
-  process.env.OPENAI_API_KEY ? "OK" : "WARN",
-  process.env.OPENAI_API_KEY
+  Boolean(apiEnv.OPENAI_API_KEY),
+  apiEnv.OPENAI_API_KEY
     ? "set -- sponsor copy and slot narration enabled"
     : "not set -- optional enrichment disabled",
 );
 
 // -- ports ------------------------------------------------------------------
 
+// REQUIRED: neither server can start on a taken port. The UI port has no
+// fallback either -- the demo starts Vite with --strictPort, so it fails rather
+// than drifting to 5174 behind a URL that points at whatever holds 5173.
 const ports = [
-  { port: Number.parseInt(process.env.PORT ?? "3001", 10), label: "backend" },
-  { port: 5173, label: "frontend" },
+  {
+    port: apiPort(apiEnv),
+    label: "backend",
+    otherwise: ", or set PORT to a free one (the demo points the UI's /api proxy at it)",
+  },
+  {
+    port: UI_PORT,
+    label: "frontend",
+    otherwise: "; the demo starts Vite with --strictPort, so it will not move to another port",
+  },
 ];
-for (const { port, label } of ports) {
+const findHolder = (port) =>
+  process.platform === "win32"
+    ? `\`netstat -ano | findstr :${port}\``
+    : `\`lsof -nP -iTCP:${port} -sTCP:LISTEN\``;
+const stopCommand = (pid) =>
+  process.platform === "win32" ? `taskkill /pid ${pid} /T /F` : `kill ${pid}`;
+for (const { port, label, otherwise } of ports) {
   // eslint-disable-next-line no-await-in-loop
-  const free = await portFree(port);
-  record(
-    `port ${port} (${label})`,
-    "REQUIRED",
-    free ? "OK" : "WARN",
-    free ? "available" : "in use -- stop the other process or change the port",
-  );
+  const busy = await portBusy(port);
+  const holder = busy === "EADDRINUSE" ? portHolder(port) : null;
+  let detail = "available";
+  if (busy && busy !== "EADDRINUSE") {
+    detail = `cannot be bound (${busy})${otherwise}`;
+  } else if (holder) {
+    detail =
+      `in use by ${holder.name ?? "a process"} (pid ${holder.pid}) -- ` +
+      `stop it with \`${stopCommand(holder.pid)}\`${otherwise}`;
+  } else if (busy) {
+    detail = `in use -- find the process with ${findHolder(port)} and stop it${otherwise}`;
+  }
+  record(`port ${port} (${label})`, "REQUIRED", !busy, detail);
 }
 
 // -- report -----------------------------------------------------------------

@@ -4,9 +4,15 @@ name: CI
 # downloads and no network access beyond the package registries, because the
 # placement engine's core -- the baseline, the metrics, the dataset pipeline and
 # the inference contract -- is meant to be reproducible by anyone who clones the
-# repository. Anything that needs Hugging Face weights lives in model-smoke.yml
-# and is triggered manually, so a Hugging Face outage cannot turn an unrelated
-# pull request red.
+# repository. Anything that needs Hugging Face weights or the Internet Archive
+# lives in model-smoke.yml and runs manually or on a weekly schedule, so an
+# outage of either cannot turn an unrelated pull request red.
+#
+# Actions are referenced by major tag (actions/checkout@v4), not by commit SHA.
+# A SHA pin is the stronger guarantee -- a tag can be moved to different code --
+# and is the thing to switch to if a job here is ever given a secret. Today no
+# job has one, and the token is read-only (below), so a moved tag could break
+# or falsify a build but not publish anything.
 
 on:
   push:
@@ -17,6 +23,10 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+# Nothing here writes to the repository, so the GITHUB_TOKEN cannot either.
+permissions:
+  contents: read
 
 jobs:
   frontend:
@@ -52,10 +62,17 @@ jobs:
 
       - name: Repository hygiene
         # Judges what is COMMITTED, not what is in a working tree. A cache, a
-        # credential or a corpus file is permanent once it is in the history.
+        # credential, a corpus file or an oversized blob is permanent once it is
+        # in the history.
         run: node scripts/check-hygiene.mjs
 
   backend:
+    # The API spawns `python -m ad_inserter.analyze_cli` for every analysis, so
+    # the backend is not tested without the Python it runs: the ad_inserter
+    # dependencies and ffmpeg are installed here, the Python tests run, and the
+    # Node route tests run with SLOTIFY_REQUIRE_ANALYSER=1 -- without it the
+    # insert-sections route test skips when the analyser cannot start, and a
+    # missing dependency would read as a pass.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -64,12 +81,29 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: backend/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install ffmpeg
+        # pydub decodes and exports through ffmpeg.
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install the ad_inserter dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt pytest
+      - name: Python tests (ad_inserter)
+        run: python -m pytest backend/tests/python -q
       - run: npm ci
         working-directory: backend
       - run: npm run typecheck
         working-directory: backend
       - run: npm test
         working-directory: backend
+        env:
+          PYTHON_BIN: python
+          SLOTIFY_REQUIRE_ANALYSER: "1"
 
   ml:
     runs-on: ubuntu-latest
@@ -79,6 +113,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          # Without this the cache is keyed on **/requirements.txt -- here
+          # backend/requirements.txt, which this job never installs -- so a
+          # change to what this job does install would not refresh it.
+          cache-dependency-path: ml/pyproject.toml
       - name: Install ffmpeg
         # The dataset pipeline decodes through the same ffmpeg the product uses
         # rather than a Python decoding library, so the audio-marked tests need it.
@@ -101,8 +139,10 @@ jobs:
     # The committed source registry is generated from the committed corpus plan.
     # Re-resolving it needs the Internet Archive, so it is NOT on the pull-request
     # path: an Archive outage must not turn an unrelated change red. This job
-    # proves the plan and the registry still parse, offline, on every push, and
-    # the networked `dataset discover --check` runs on the weekly schedule.
+    # proves the plan and the registry still parse, offline, on every push. The
+    # networked `dataset discover --check` is the `corpus-registry-live` job in
+    # model-smoke.yml: weekly and on demand, and a job of its own, so it runs
+    # whether or not the Hugging Face model smoke tests pass.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -110,6 +150,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: ml/pyproject.toml
       - name: Install the package
         working-directory: ml
         run: |
@@ -120,10 +161,17 @@ jobs:
         run: python -m pytest tests/test_discover.py -q
 
   parity:
-    # The TypeScript scorer is the source of truth for heuristic_offline_v1 and
-    # the Python port must reproduce it exactly. Regenerating the golden fixture
-    # here and asserting it is unchanged catches a drift that neither language's
-    # own tests would notice.
+    # The TypeScript scorer is the source of truth for heuristic_offline_v1.
+    # This job checks one thing: that backend/scripts/dump-heuristic-golden.ts,
+    # run against the TypeScript scorer as it stands, still produces exactly the
+    # committed golden fixture. A TypeScript change that would move the frozen
+    # baseline fails here.
+    #
+    # It does not run the Python port. The port is held to the same committed
+    # fixture by ml/tests/test_heuristic.py, in the ml job; the two jobs together
+    # are the cross-language parity check. Nor does it exercise the route
+    # itself: the dump script mirrors the route's slot finalisation rather than
+    # importing it, so an edit to that block in the route alone is not seen here.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

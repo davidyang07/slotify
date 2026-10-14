@@ -13,7 +13,8 @@ install:
 	npm run install:all
 
 # The one command. Frontend lint/test/build, backend typecheck/test, the
-# checkpoint-selection tests, then the ML suite, repository hygiene, and -- when
+# scripts' own tests (checkpoint selection, hygiene rules, demo configuration),
+# then the ML suite, repository hygiene, and -- when
 # a local corpus is present -- dataset validation, split-leakage checks, feature
 # validation and queue integrity.
 verify:
