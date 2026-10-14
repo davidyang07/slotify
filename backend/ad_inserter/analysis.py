@@ -12,6 +12,20 @@ from pydub.silence import detect_silence
 from pydub.utils import which
 
 
+# Song-mode valley picking. Valleys closer together than this are treated as
+# one, and frames this close to either end of the track are ignored, so the
+# candidates spread through the song instead of collapsing into a quiet intro
+# or outro. The values match the heuristic scorer's 6 s slot separation and 5 s
+# edge guard, so valleys are not spent on spots the slot selection would skip
+# as too close to another or the scorer would penalise as too near an edge.
+SONG_VALLEY_MIN_SEPARATION_MS = 6000.0
+SONG_VALLEY_EDGE_GUARD_MS = 5000.0
+
+# Whisper models take seconds and hundreds of MB to load; each process loads a
+# given model once and reuses it for every snippet.
+_WHISPER_MODELS: Dict[str, Any] = {}
+
+
 @dataclass
 class SongAnalysis:
     candidates_ms: List[int]
@@ -72,7 +86,16 @@ def _rms_minima_times(
     frame_ms: float = 50.0,
     hop_ms: float = 25.0,
     top_k: int = 12,
+    min_separation_ms: float = SONG_VALLEY_MIN_SEPARATION_MS,
+    edge_guard_ms: float = SONG_VALLEY_EDGE_GUARD_MS,
 ) -> List[float]:
+    """Times (seconds, chronological) of up to ``top_k`` low-energy valleys.
+
+    Frames are taken quietest first, skipping any within ``min_separation_ms``
+    of a valley already picked, so a quiet stretch yields one valley rather
+    than a run of adjacent frames. Frames within ``edge_guard_ms`` of either end
+    are excluded, unless the clip is too short to leave any.
+    """
     frame_length = int(sr * frame_ms / 1000.0)
     hop_length = int(sr * hop_ms / 1000.0)
     if y.size < frame_length or frame_length <= 0 or hop_length <= 0:
@@ -83,9 +106,26 @@ def _rms_minima_times(
     rms = np.sqrt(np.mean(np.square(windows), axis=1))
     if rms.size == 0:
         return []
-    idx = np.argsort(rms)[:top_k]
-    times = (idx * hop_length) / float(sr)
-    return times.tolist()
+
+    # Frame centres, so the edge guard and separation measure the valley itself.
+    times = (np.arange(rms.size) * hop_length + frame_length / 2.0) / float(sr)
+    duration = y.size / float(sr)
+    guard = edge_guard_ms / 1000.0
+    eligible = (times >= guard) & (times <= duration - guard)
+    if not eligible.any():
+        eligible = np.ones(rms.size, dtype=bool)
+
+    separation = min_separation_ms / 1000.0
+    picked: List[float] = []
+    for idx in np.argsort(rms, kind="stable"):
+        if not eligible[idx]:
+            continue
+        t = float(times[idx])
+        if all(abs(t - other) >= separation for other in picked):
+            picked.append(t)
+            if len(picked) >= top_k:
+                break
+    return sorted(picked)
 
 
 def analyze_song(path: Path) -> SongAnalysis:
@@ -113,9 +153,12 @@ def analyze_song(path: Path) -> SongAnalysis:
             if t_ms not in seen:
                 candidates_ms.append(t_ms)
                 seen.add(t_ms)
+    # librosa >= 0.10 returns tempo as a 1-element array, which NumPy 2 refuses
+    # to convert with float() directly.
+    tempo_values = np.atleast_1d(tempo) if tempo is not None else np.empty(0)
     return SongAnalysis(
         candidates_ms=candidates_ms,
-        tempo=float(tempo) if tempo is not None else None,
+        tempo=float(tempo_values[0]) if tempo_values.size else None,
         beat_times_ms=beat_times_ms,
     )
 
@@ -147,7 +190,10 @@ def transcribe_snippet(
         tmp_path = Path(tmp.name)
     try:
         snippet.export(tmp_path, format="wav")
-        model = whisper.load_model(model_name)
+        model = _WHISPER_MODELS.get(model_name)
+        if model is None:
+            model = whisper.load_model(model_name)
+            _WHISPER_MODELS[model_name] = model
         result = model.transcribe(str(tmp_path), fp16=False)
         return str(result.get("text", "")).strip()
     finally:

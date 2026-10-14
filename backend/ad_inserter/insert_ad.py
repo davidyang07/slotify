@@ -5,17 +5,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import tempfile
-import uuid
 from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, List, Optional
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.parse import quote
 
 from pydub import AudioSegment
 
-from ad_inserter import analysis, llm, mix, tts
+from ad_inserter import analysis, http_client, llm, mix, tts
+
+ELEVENLABS_VOICES_URL = "https://api.elevenlabs.io/v1/voices"
+VOICE_DELETE_TIMEOUT_S = 30.0
 
 
 def _default_model(provider: str) -> str:
@@ -24,42 +26,6 @@ def _default_model(provider: str) -> str:
 
 def _ensure_debug_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
-
-
-def _encode_multipart(
-    fields: Dict[str, str],
-    files: List[Dict[str, str | bytes]],
-) -> tuple[str, bytes]:
-    boundary = uuid.uuid4().hex
-    body = bytearray()
-
-    def _add_line(line: str) -> None:
-        body.extend(line.encode("utf-8"))
-        body.extend(b"\r\n")
-
-    for name, value in fields.items():
-        _add_line(f"--{boundary}")
-        _add_line(f'Content-Disposition: form-data; name="{name}"')
-        _add_line("")
-        _add_line(value)
-
-    for file_info in files:
-        name = str(file_info["name"])
-        filename = str(file_info["filename"])
-        content_type = str(file_info["content_type"])
-        data = bytes(file_info["data"])
-
-        _add_line(f"--{boundary}")
-        _add_line(
-            f'Content-Disposition: form-data; name="{name}"; filename="{filename}"'
-        )
-        _add_line(f"Content-Type: {content_type}")
-        _add_line("")
-        body.extend(data)
-        body.extend(b"\r\n")
-
-    _add_line(f"--{boundary}--")
-    return boundary, bytes(body)
 
 
 def _clone_voice(
@@ -81,30 +47,43 @@ def _clone_voice(
     if not files:
         return None
 
-    boundary, body = _encode_multipart(fields={"name": name}, files=files)
-    request = Request(
-        clone_url,
-        data=body,
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-        method="POST",
+    body = http_client.post_multipart(
+        clone_url, fields={"name": name}, files=files, label="Clone"
     )
+    payload = json.loads(body.decode("utf-8"))
+    voice_id = payload.get("voiceId") if isinstance(payload, dict) else None
+    return str(voice_id) if voice_id else None
 
+
+def _delete_cloned_voice(voice_id: str) -> None:
+    """Delete a voice this run cloned, so clones do not use up voice slots.
+
+    ``/api/clone`` creates a permanent ElevenLabs voice, so the cleanup goes to
+    the ElevenLabs API directly with the inherited ``ELEVENLABS_API_KEY``.
+    Failures are logged, never raised: the ad has already been rendered.
+    """
+    api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
+    if not api_key:
+        print(
+            f"warning: ELEVENLABS_API_KEY not set; cloned voice {voice_id} "
+            "was not deleted.",
+            file=sys.stderr,
+        )
+        return
     try:
-        with urlopen(request) as response:
-            if response.status != 200:
-                raise RuntimeError(
-                    f"Clone request failed with status {response.status}."
-                )
-            payload = json.loads(response.read().decode("utf-8"))
-            voice_id = payload.get("voiceId")
-            return str(voice_id) if voice_id else None
-    except HTTPError as error:
-        detail = error.read().decode("utf-8", errors="ignore")
-        raise RuntimeError(
-            f"Clone request failed with status {error.code}: {detail}"
-        ) from error
-    except URLError as error:
-        raise RuntimeError(f"Clone request failed: {error.reason}") from error
+        http_client.send(
+            f"{ELEVENLABS_VOICES_URL}/{quote(voice_id, safe='')}",
+            label="Voice delete",
+            headers={"xi-api-key": api_key},
+            method="DELETE",
+            internal_auth=False,
+            timeout_s=VOICE_DELETE_TIMEOUT_S,
+        )
+    except Exception as error:  # noqa: BLE001 - cleanup must not fail the run
+        print(
+            f"warning: failed to delete cloned voice {voice_id}: {error}",
+            file=sys.stderr,
+        )
 
 
 def _build_speaker_sample(
@@ -193,7 +172,6 @@ def run() -> None:
     parser.add_argument("--llm-model", default=None)
     parser.add_argument("--min-offset-ms", type=int, default=30000)
     parser.add_argument("--end-buffer-ms", type=int, default=15000)
-    parser.add_argument("--duck-db", type=float, default=0.0)
     parser.add_argument("--crossfade-ms", type=int, default=250)
     parser.add_argument("--debug-dir", type=Path)
 
@@ -278,42 +256,57 @@ def run() -> None:
                 llm.AdSegment(speaker="B", text=args.product_blurb),
             ]
 
+    # Only the speakers the ad mode actually voices need a voice (A_ONLY must
+    # not fail for want of a speaker B voice), and only they are cloned.
+    needed_speakers = sorted({seg.speaker for seg in segments})
+    explicit_voices = {"A": args.voice_id_a, "B": args.voice_id_b}
     default_voice = os.getenv("ELEVENLABS_DEFAULT_VOICE_ID")
-    voice_id_a = _resolve_voice_id("A", args.voice_id_a, "ELEVENLABS_VOICE_ID_A", default_voice)
-    voice_id_b = _resolve_voice_id("B", args.voice_id_b, "ELEVENLABS_VOICE_ID_B", default_voice)
+    voice_map: Dict[str, str] = {}
 
-    if args.clone_voices:
-        if not diarization_available or not diarization:
-            raise RuntimeError("Voice cloning requires speaker diarization.")
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            samples: Dict[str, Path] = {}
-            for speaker in ["A", "B"]:
-                sample_audio = _build_speaker_sample(main_audio, diarization, speaker)
-                if len(sample_audio) == 0:
-                    continue
-                sample_path = tmp_path / f"speaker_{speaker.lower()}.wav"
-                sample_audio.export(sample_path, format="wav")
-                samples[speaker] = sample_path
+    # Voices cloned by this run; deleted once the ad is rendered (or on failure).
+    created_voice_ids: List[str] = []
+    try:
+        if args.clone_voices:
+            if not diarization_available or not diarization:
+                raise RuntimeError("Voice cloning requires speaker diarization.")
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = Path(tmp_dir)
+                for speaker in needed_speakers:
+                    sample_audio = _build_speaker_sample(
+                        main_audio, diarization, speaker
+                    )
+                    if len(sample_audio) == 0:
+                        continue
+                    sample_path = tmp_path / f"speaker_{speaker.lower()}.wav"
+                    sample_audio.export(sample_path, format="wav")
+                    cloned = _clone_voice(
+                        args.clone_url, f"Speaker {speaker} Clone", [sample_path]
+                    )
+                    if cloned:
+                        created_voice_ids.append(cloned)
+                        voice_map[speaker] = cloned
 
-            if "A" in samples:
-                cloned = _clone_voice(args.clone_url, "Speaker A Clone", [samples["A"]])
-                if cloned:
-                    voice_id_a = cloned
-            if "B" in samples:
-                cloned = _clone_voice(args.clone_url, "Speaker B Clone", [samples["B"]])
-                if cloned:
-                    voice_id_b = cloned
+        # Speakers not cloned (cloning off, or no usable sample) use the
+        # configured voices.
+        for speaker in needed_speakers:
+            if speaker not in voice_map:
+                voice_map[speaker] = _resolve_voice_id(
+                    speaker,
+                    explicit_voices[speaker],
+                    f"ELEVENLABS_VOICE_ID_{speaker}",
+                    default_voice,
+                )
 
-    voice_map = {"A": voice_id_a, "B": voice_id_b}
-
-    ad_audio = _concat_ad_segments(
-        segments=segments,
-        voice_map=voice_map,
-        tts_url=args.tts_url,
-        tts_model_id=args.tts_model_id,
-        tts_output_format=args.tts_output_format,
-    )
+        ad_audio = _concat_ad_segments(
+            segments=segments,
+            voice_map=voice_map,
+            tts_url=args.tts_url,
+            tts_model_id=args.tts_model_id,
+            tts_output_format=args.tts_output_format,
+        )
+    finally:
+        for voice_id in created_voice_ids:
+            _delete_cloned_voice(voice_id)
 
     if len(ad_audio) > 25000:
         raise RuntimeError("Ad audio is longer than 25 seconds; shorten the script.")
@@ -333,7 +326,6 @@ def run() -> None:
         main=main_audio,
         promo=ad_processed,
         insert_ms=chosen_ms,
-        duck_db=args.duck_db,
         crossfade_ms=args.crossfade_ms,
     )
 

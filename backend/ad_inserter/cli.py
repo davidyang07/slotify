@@ -3,15 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 import tempfile
-import uuid
 from pathlib import Path
 from typing import Dict, List, Optional
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from pydub import AudioSegment
 
-from ad_inserter import analysis, llm, mix, tts
+from ad_inserter import analysis, http_client, llm, mix, tts
 
 
 def _default_model(provider: str) -> str:
@@ -20,42 +17,6 @@ def _default_model(provider: str) -> str:
 
 def _ensure_debug_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
-
-
-def _encode_multipart(
-    fields: Dict[str, str],
-    files: List[Dict[str, str | bytes]],
-) -> tuple[str, bytes]:
-    boundary = uuid.uuid4().hex
-    body = bytearray()
-
-    def _add_line(line: str) -> None:
-        body.extend(line.encode("utf-8"))
-        body.extend(b"\r\n")
-
-    for name, value in fields.items():
-        _add_line(f"--{boundary}")
-        _add_line(f'Content-Disposition: form-data; name="{name}"')
-        _add_line("")
-        _add_line(value)
-
-    for file_info in files:
-        name = str(file_info["name"])
-        filename = str(file_info["filename"])
-        content_type = str(file_info["content_type"])
-        data = bytes(file_info["data"])
-
-        _add_line(f"--{boundary}")
-        _add_line(
-            f'Content-Disposition: form-data; name="{name}"; filename="{filename}"'
-        )
-        _add_line(f"Content-Type: {content_type}")
-        _add_line("")
-        body.extend(data)
-        body.extend(b"\r\n")
-
-    _add_line(f"--{boundary}--")
-    return boundary, bytes(body)
 
 
 def _merge_with_api(
@@ -71,9 +32,11 @@ def _merge_with_api(
         tmp_path = Path(tmp.name)
     try:
         insert_audio.export(tmp_path, format="mp3")
-        boundary, body = _encode_multipart(
+        merged = http_client.post_multipart(
+            merge_url,
             fields={
                 "insertAt": f"{insert_at_ms / 1000.0:.3f}",
+                # Seconds; /api/merge reads these as `crossfade` and `pause`.
                 "crossfade": str(crossfade),
                 "pause": str(pause),
             },
@@ -91,26 +54,9 @@ def _merge_with_api(
                     "data": tmp_path.read_bytes(),
                 },
             ],
+            label="Merge",
         )
-        request = Request(
-            merge_url,
-            data=body,
-            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-            method="POST",
-        )
-        with urlopen(request) as response:
-            if response.status != 200:
-                raise RuntimeError(
-                    f"Merge request failed with status {response.status}."
-                )
-            out_path.write_bytes(response.read())
-    except HTTPError as error:
-        detail = error.read().decode("utf-8", errors="ignore")
-        raise RuntimeError(
-            f"Merge request failed with status {error.code}: {detail}"
-        ) from error
-    except URLError as error:
-        raise RuntimeError(f"Merge request failed: {error.reason}") from error
+        out_path.write_bytes(merged)
     finally:
         try:
             tmp_path.unlink(missing_ok=True)
@@ -137,7 +83,6 @@ def run() -> None:
     parser.add_argument("--merge-url", default="http://localhost:3001/api/merge")
     parser.add_argument("--merge-crossfade", type=float, default=0.08)
     parser.add_argument("--merge-pause", type=float, default=0.2)
-    parser.add_argument("--duck-db", type=float, default=0.0)
 
     args = parser.parse_args()
     if not args.voice_id and not args.voice_ids:
@@ -254,11 +199,15 @@ def run() -> None:
                     candidates_for_prompt, min_offset_ms=min_insert_ms
                 )
 
-    transcript_before = snippets.get(chosen_ms, "TRANSCRIPT_UNAVAILABLE")
+    # build_snippets only covers the first few candidates; transcribe the
+    # chosen point on demand when it was not among them.
+    transcript_before = snippets.get(chosen_ms, "")
     if analysis.whisper_available() and not transcript_before and args.mode == "podcast":
         transcript_before = analysis.transcribe_snippet(
             main_audio, chosen_ms - 15000, chosen_ms
         )
+    if not transcript_before:
+        transcript_before = "TRANSCRIPT_UNAVAILABLE"
 
     context_audio = mix.context_window(main_audio, chosen_ms, window_ms=4000)
     target_lufs = mix.measure_lufs(context_audio)

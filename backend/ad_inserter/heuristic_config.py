@@ -35,6 +35,7 @@ __all__ = [
     "config_version",
     "load_profile",
     "silence_params",
+    "candidate_limits",
     "PRODUCT_V1",
     "LEGACY_CLI_V1",
 ]
@@ -81,6 +82,16 @@ def silence_params(profile_name: str) -> tuple[int, float, float]:
         float(detection["silence_threshold_offset_db"]),
         float(detection["fallback_silence_threshold_dbfs"]),
     )
+
+
+def candidate_limits(profile_name: str) -> tuple[int, int]:
+    """Return ``(max_candidates, snippet_count)`` for the analyser CLI defaults.
+
+    Only profiles that serve ``analyze_cli`` define these; ``legacy_cli_v1``
+    does not.
+    """
+    detection = load_profile(profile_name)["silence_detection"]
+    return int(detection["max_candidates"]), int(detection["snippet_count"])
 
 
 PRODUCT_V1 = load_profile(PRODUCT_PROFILE)

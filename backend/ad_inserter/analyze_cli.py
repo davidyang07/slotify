@@ -39,24 +39,43 @@ def _detect_podcast_silences(audio: AudioSegment) -> List[Dict[str, int]]:
     return silences
 
 
+def _longest_silences(
+    silences: List[Dict[str, int]], count: int
+) -> List[Dict[str, int]]:
+    """The ``count`` longest silences (ties go to the earlier one), in time order.
+
+    Selecting by length rather than taking the first ``count`` in time keeps
+    candidates spread across a long episode instead of bunched at its start.
+    """
+    if count <= 0:
+        return []
+    longest = sorted(silences, key=lambda entry: (-entry["silence_ms"], entry["mid_ms"]))
+    return sorted(longest[:count], key=lambda entry: entry["mid_ms"])
+
+
 def _build_snippets(
-    audio: AudioSegment, candidates_ms: List[int], max_snippets: int
+    audio: AudioSegment, candidates: List[Dict[str, int]], max_snippets: int
 ) -> Dict[int, str]:
+    """Transcribe the context before the ``max_snippets`` longest-silence candidates."""
     if not analysis.whisper_available():
         return {}
     snippets: Dict[int, str] = {}
-    for cand in candidates_ms[:max_snippets]:
+    for entry in _longest_silences(candidates, max_snippets):
+        cand = entry["mid_ms"]
         text = analysis.transcribe_snippet(audio, cand - 15000, cand)
         snippets[cand] = text
     return snippets
 
 
 def run() -> None:
+    default_max_candidates, default_snippet_count = heuristic_config.candidate_limits(
+        heuristic_config.PRODUCT_PROFILE
+    )
     parser = argparse.ArgumentParser(description="Analyze audio for insertion points.")
     parser.add_argument("--audio", required=True, type=Path)
     parser.add_argument("--mode", choices=["podcast", "song"], default="podcast")
-    parser.add_argument("--max-candidates", type=int, default=30)
-    parser.add_argument("--snippet-count", type=int, default=5)
+    parser.add_argument("--max-candidates", type=int, default=default_max_candidates)
+    parser.add_argument("--snippet-count", type=int, default=default_snippet_count)
     args = parser.parse_args()
 
     analysis.check_ffmpeg()
@@ -69,9 +88,8 @@ def run() -> None:
 
     if args.mode == "podcast":
         silences = _detect_podcast_silences(audio)
-        candidates = silences[: max(0, args.max_candidates)]
-        candidate_ms = [entry["mid_ms"] for entry in candidates]
-        snippets = _build_snippets(audio, candidate_ms, args.snippet_count)
+        candidates = _longest_silences(silences, args.max_candidates)
+        snippets = _build_snippets(audio, candidates, args.snippet_count)
     else:
         song = analysis.analyze_song(args.audio)
         tempo = song.tempo

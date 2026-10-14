@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
 import pyloudnorm as pyln
 from pydub import AudioSegment
+
+
+# Loudness matching never moves the promo by more than this. A larger
+# correction means one of the measurements is unreliable (near-silent context,
+# a clip shorter than the meter's 400 ms block), not that the promo is that far
+# off.
+MAX_LOUDNESS_GAIN_DB = 20.0
 
 
 @dataclass
@@ -25,16 +33,36 @@ def _audiosegment_to_float(audio: AudioSegment) -> np.ndarray:
 
 
 def measure_lufs(audio: AudioSegment) -> float:
+    """Integrated loudness in LUFS; ``-inf`` for digital silence or too-short clips."""
     meter = pyln.Meter(audio.frame_rate)
     samples = _audiosegment_to_float(audio)
     if samples.size == 0:
         return -70.0
-    return float(meter.integrated_loudness(samples))
+    try:
+        return float(meter.integrated_loudness(samples))
+    except ValueError:
+        # pyloudnorm rejects clips shorter than one 400 ms gating block.
+        return float("-inf")
 
 
 def match_loudness(promo: AudioSegment, target_lufs: float) -> LoudnessMatch:
+    """Gain ``promo`` toward ``target_lufs``.
+
+    Matching is skipped (the promo is returned unchanged) when either loudness
+    is not finite -- e.g. the context window is digital silence, which measures
+    as ``-inf`` and would otherwise mute the promo. The applied gain is clamped
+    to +/- ``MAX_LOUDNESS_GAIN_DB``.
+    """
     promo_before = measure_lufs(promo)
+    if not (math.isfinite(target_lufs) and math.isfinite(promo_before)):
+        return LoudnessMatch(
+            matched=promo,
+            target_lufs=target_lufs,
+            promo_before_lufs=promo_before,
+            promo_after_lufs=promo_before,
+        )
     gain_db = target_lufs - promo_before
+    gain_db = max(-MAX_LOUDNESS_GAIN_DB, min(MAX_LOUDNESS_GAIN_DB, gain_db))
     matched = promo.apply_gain(gain_db)
     promo_after = measure_lufs(matched)
     return LoudnessMatch(
@@ -69,22 +97,26 @@ def insert_with_crossfade(
     main: AudioSegment,
     promo: AudioSegment,
     insert_ms: int,
-    duck_db: float = 0.0,
     crossfade_ms: int = 250,
 ) -> AudioSegment:
-    insert_ms = max(0, insert_ms)
+    """Splice ``promo`` into ``main`` at ``insert_ms`` with crossfaded joins.
+
+    The result is ``main[:insert_ms] + promo + main[insert_ms:]``: the original
+    audio pauses for the promo and resumes where it left off, so nothing plays
+    under the promo and the promo is never truncated. Each join is a crossfade
+    of up to ``crossfade_ms`` (limited by the audio on either side of the join,
+    and to half the promo so the two joins never overlap), so the output is
+    ``len(main) + len(promo)`` minus the two crossfade overlaps.
+    """
+    insert_ms = min(max(0, insert_ms), len(main))
     pre = main[:insert_ms]
-    post = main[insert_ms + len(promo) :]
-    mid = main[insert_ms : insert_ms + len(promo)]
+    post = main[insert_ms:]
+    crossfade_ms = max(0, crossfade_ms)
+    half_promo = len(promo) // 2
 
-    if duck_db > 0:
-        mid = mid.apply_gain(-duck_db).fade_in(100).fade_out(100)
-
-    mid = mid.overlay(promo)
-
-    cf1 = min(crossfade_ms, len(pre), len(mid))
-    merged = pre.append(mid, crossfade=cf1)
-    cf2 = min(crossfade_ms, len(merged), len(post))
+    cf1 = min(crossfade_ms, len(pre), half_promo)
+    merged = pre.append(promo, crossfade=cf1)
+    cf2 = min(crossfade_ms, len(post), half_promo)
     merged = merged.append(post, crossfade=cf2)
     return merged
 

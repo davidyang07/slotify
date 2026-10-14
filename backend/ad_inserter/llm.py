@@ -74,6 +74,63 @@ def _build_prompt(
     return "\n".join(prompt_lines)
 
 
+def _load_json_object(raw_text: str) -> Dict[str, Any]:
+    """Parse the JSON object in an LLM reply.
+
+    Raises ``ValueError`` (``json.JSONDecodeError`` included) when the reply is
+    not JSON or its top level is not an object.
+    """
+    cleaned = raw_text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z0-9_-]*\n", "", cleaned)
+        cleaned = re.sub(r"\n```$", "", cleaned)
+    if not cleaned.startswith("{"):
+        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        if match:
+            cleaned = match.group(0)
+    data = json.loads(cleaned)
+    if not isinstance(data, dict):
+        raise ValueError(f"expected a JSON object, got {type(data).__name__}")
+    return data
+
+
+def _parse_chosen_index(value: Any, candidate_count: int) -> Optional[int]:
+    """Validate ``chosen_index``: null, or an integer index into the candidates."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"chosen_index is not an integer: {value!r}")
+    if isinstance(value, int):
+        index = value
+    elif isinstance(value, float) and value.is_integer():
+        index = int(value)
+    elif isinstance(value, str):
+        index = int(value.strip())
+    else:
+        raise ValueError(f"chosen_index is not an integer: {value!r}")
+    if not 0 <= index < candidate_count:
+        raise ValueError(
+            f"chosen_index {index} is out of range for {candidate_count} candidates"
+        )
+    return index
+
+
+def _parse_promo_choice(
+    raw_text: str, candidate_count: int
+) -> tuple[str, Optional[int], str]:
+    """Return ``(promo_text, chosen_index, rationale)``; ``ValueError`` if malformed."""
+    data = _load_json_object(raw_text)
+    for key in ("promo_text", "chosen_index"):
+        if key not in data:
+            raise ValueError(f"missing key {key!r}")
+    promo_text = data["promo_text"]
+    if not isinstance(promo_text, str) or not promo_text.strip():
+        raise ValueError("promo_text must be a non-empty string")
+    chosen_index = _parse_chosen_index(data["chosen_index"], candidate_count)
+    rationale = str(data.get("rationale") or "").strip()
+    return promo_text.strip(), chosen_index, rationale
+
+
 def generate_promo_and_choice(
     provider: str,
     model: str,
@@ -123,23 +180,19 @@ def generate_promo_and_choice(
     chosen_index: Optional[int] = None
     rationale = ""
 
+    # Any malformed reply -- not JSON, not an object, a missing key, a
+    # non-integer or out-of-range index -- takes the same fallback.
     try:
-        cleaned = raw_text.strip()
-        if cleaned.startswith("```"):
-            cleaned = re.sub(r"^```[a-zA-Z0-9_-]*\n", "", cleaned)
-            cleaned = re.sub(r"\n```$", "", cleaned)
-        if not cleaned.startswith("{"):
-            match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-            if match:
-                cleaned = match.group(0)
-        data = json.loads(cleaned)
-        promo_text = str(data.get("promo_text", promo_text)).strip()
-        chosen_index_val = data.get("chosen_index")
-        if chosen_index_val is not None:
-            chosen_index = int(chosen_index_val)
-        rationale = str(data.get("rationale", "")).strip()
+        promo_text, chosen_index, rationale = _parse_promo_choice(
+            raw_text, len(candidates)
+        )
     except json.JSONDecodeError:
         rationale = "LLM response was not valid JSON; falling back to heuristic insertion."
+    except ValueError as error:
+        rationale = (
+            f"LLM response was not in the expected shape ({error}); "
+            "falling back to heuristic insertion."
+        )
 
     return LLMResult(
         promo_text=promo_text,
@@ -176,15 +229,7 @@ def _build_ad_script_prompt(
 
 
 def _parse_ad_segments(raw_text: str) -> List[AdSegment]:
-    cleaned = raw_text.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```[a-zA-Z0-9_-]*\n", "", cleaned)
-        cleaned = re.sub(r"\n```$", "", cleaned)
-    if not cleaned.startswith("{"):
-        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-        if match:
-            cleaned = match.group(0)
-    data = json.loads(cleaned)
+    data = _load_json_object(raw_text)
     segments_raw = data.get("segments", [])
     segments: List[AdSegment] = []
     if isinstance(segments_raw, list):
@@ -247,7 +292,8 @@ def generate_ad_script(
 
     try:
         segments = _parse_ad_segments(raw_text)
-    except json.JSONDecodeError:
+    except ValueError:
+        # Not JSON (json.JSONDecodeError) or not a JSON object.
         segments = []
 
     if not segments:
