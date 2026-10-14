@@ -1,74 +1,68 @@
-import { spawn } from "node:child_process";
-import { BACKEND_DIR, pythonBin } from "../config";
+import { BACKEND_DIR, analyserTimeoutMs, pipelineTimeoutMs, pythonBin } from "../config";
+import { HEURISTIC_V1 } from "../lib/heuristic-config";
+import { pythonEnv, runProcess, SubprocessError } from "../lib/subprocess";
+
+// Candidate and snippet budgets come from the canonical config, like every
+// other baseline constant; the analyser keeps the longest silences.
+const { max_candidates: MAX_CANDIDATES, snippet_count: SNIPPET_COUNT } =
+  HEURISTIC_V1.silence_detection;
 
 /**
  * Run `python -m ad_inserter.analyze_cli` for the given audio and parse its
  * JSON stdout. Resolves to the parsed analysis payload.
  */
-export const runPythonAnalyze = (
+export const runPythonAnalyze = async (
   audioPath: string,
   mode: string,
-): Promise<any> =>
-  new Promise((resolve, reject) => {
-    const args = [
-      "-m",
-      "ad_inserter.analyze_cli",
-      "--audio",
-      audioPath,
-      "--mode",
-      mode,
-      "--snippet-count",
-      "12",
-    ];
-    const child = spawn(pythonBin, args, {
-      cwd: BACKEND_DIR,
-      env: process.env,
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) {
-        try {
-          resolve(JSON.parse(stdout.trim() || "{}"));
-        } catch (parseError) {
-          reject(parseError);
-        }
-      } else {
-        reject(new Error(stderr || `analyze_cli exited with code ${code}`));
-      }
-    });
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<any> => {
+  const args = [
+    "-m",
+    "ad_inserter.analyze_cli",
+    "--audio",
+    audioPath,
+    "--mode",
+    mode,
+    "--max-candidates",
+    String(MAX_CANDIDATES),
+    "--snippet-count",
+    String(SNIPPET_COUNT),
+  ];
+  const { stdout } = await runProcess(pythonBin, args, {
+    label: "analyze_cli",
+    cwd: BACKEND_DIR,
+    env: pythonEnv(),
+    timeoutMs: analyserTimeoutMs,
+    timeoutEnvVar: "SLOTIFY_ANALYSER_TIMEOUT_MS",
+    signal,
   });
+  try {
+    return JSON.parse(stdout.trim() || "{}");
+  } catch (error) {
+    throw new SubprocessError(
+      "analyze_cli printed output that is not JSON.",
+      "analyze_cli",
+      "output",
+      `${error instanceof Error ? error.message : String(error)}\n${stdout.slice(0, 2000)}`,
+    );
+  }
+};
 
 /**
  * Run a Python `ad_inserter` module that writes its result to a file (the
  * single- and two-speaker insertion pipelines). Resolves when it exits 0.
  */
-export const runPythonModule = (
+export const runPythonModule = async (
   args: string[],
   label = "ad_inserter",
-): Promise<void> =>
-  new Promise((resolve, reject) => {
-    const child = spawn(pythonBin, args, {
-      cwd: BACKEND_DIR,
-      env: process.env,
-    });
-    let stderr = "";
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(stderr || `${label} exited with code ${code}`));
-      }
-    });
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<void> => {
+  await runProcess(pythonBin, args, {
+    label,
+    cwd: BACKEND_DIR,
+    env: pythonEnv(),
+    timeoutMs: pipelineTimeoutMs,
+    timeoutEnvVar: "SLOTIFY_PIPELINE_TIMEOUT_MS",
+    signal,
   });
+};

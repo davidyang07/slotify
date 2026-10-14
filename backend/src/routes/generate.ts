@@ -1,19 +1,23 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { Router } from "express";
 import { upload } from "../middleware/upload";
 import { runPythonModule } from "../services/python";
 import { apiBaseUrl } from "../config";
+import { failureBody } from "../lib/errors";
+import { asyncHandler, clientAbortSignal } from "../lib/http";
+import { optionalString } from "../lib/request-fields";
+import { sendAudioFile } from "../lib/stream";
+import { makeTempDir, removeTempDir } from "../lib/temp";
 
 export const generateRouter = Router();
 
-generateRouter.post("/api/generate", upload.single("audio"), async (req, res) => {
+generateRouter.post("/api/generate", upload.single("audio"), asyncHandler(async (req, res) => {
   const audioFile = req.file;
-  const voiceId = req.body?.voiceId?.toString()?.trim();
-  const voiceIds = req.body?.voiceIds?.toString()?.trim();
-  const brand = req.body?.brand?.toString()?.trim();
-  const productDesc = req.body?.productDesc?.toString()?.trim();
+  const voiceId = optionalString(req.body, "voiceId", 200);
+  const voiceIds = optionalString(req.body, "voiceIds", 2_000);
+  const brand = optionalString(req.body, "brand", 200);
+  const productDesc = optionalString(req.body, "productDesc");
 
   if (!audioFile) {
     res.status(400).json({ error: "audio file is required." });
@@ -31,63 +35,39 @@ generateRouter.post("/api/generate", upload.single("audio"), async (req, res) =>
   }
 
   const resolvedDesc = productDesc || `A short audio ad spot for ${brand}.`;
+  const signal = clientAbortSignal(req, res);
 
-  const tempDir = await fs.promises.mkdtemp(
-    path.join(os.tmpdir(), "ad-generate-"),
-  );
-  const basePath = path.join(tempDir, "base.mp3");
-  const outPath = path.join(tempDir, "out.mp3");
-  const cleanup = async () => {
-    await Promise.all(
-      [basePath, outPath].map((filePath) =>
-        fs.promises.unlink(filePath).catch(() => undefined),
-      ),
-    );
-    await fs.promises.rmdir(tempDir).catch(() => undefined);
-  };
-
+  let tempDir: string | null = null;
   try {
+    tempDir = await makeTempDir("ad-generate-");
+    const basePath = path.join(tempDir, "base.mp3");
+    const outPath = path.join(tempDir, "out.mp3");
     await fs.promises.writeFile(basePath, audioFile.buffer);
 
+    // `--flag=value`: a brand such as "-Sale" is otherwise read by argparse as
+    // an option and the pipeline exits 2.
     const args = [
       "-m",
       "ad_inserter.cli",
-      "--main",
-      basePath,
-      ...(voiceIds ? ["--voice-ids", voiceIds] : ["--voice-id", voiceId]),
-      "--product-name",
-      brand,
-      "--product-desc",
-      resolvedDesc,
-      "--out",
-      outPath,
-      "--tts-url",
-      `${apiBaseUrl}/api/tts`,
-      "--merge-url",
-      `${apiBaseUrl}/api/merge`,
+      `--main=${basePath}`,
+      voiceIds ? `--voice-ids=${voiceIds}` : `--voice-id=${voiceId}`,
+      `--product-name=${brand}`,
+      `--product-desc=${resolvedDesc}`,
+      `--out=${outPath}`,
+      `--tts-url=${apiBaseUrl}/api/tts`,
+      `--merge-url=${apiBaseUrl}/api/merge`,
     ];
 
-    await runPythonModule(args, "ad_inserter");
-    await fs.promises.access(outPath);
-    res.setHeader("Content-Type", "audio/mpeg");
-    const stream = fs.createReadStream(outPath);
-    stream.on("error", (streamError) => {
-      if (!res.headersSent) {
-        res.status(500).json({
-          error:
-            streamError instanceof Error
-              ? streamError.message
-              : "Failed to stream output.",
-        });
-      }
-    });
-    res.on("close", cleanup);
-    res.on("finish", cleanup);
-    stream.pipe(res);
+    await runPythonModule(args, "ad_inserter", { signal });
+    await sendAudioFile(res, outPath);
   } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : "Generation failed.",
-    });
-    await cleanup();
+    const body = failureBody("Generation failed.", error);
+    if (!res.headersSent) {
+      res.status(500).json(body);
+    } else {
+      res.destroy();
+    }
+  } finally {
+    await removeTempDir(tempDir);
   }
-});
+}));

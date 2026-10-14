@@ -9,7 +9,12 @@
 
 import { rankWithHeuristic, type RankingResult } from "../lib/ranking";
 import { resolveRankerMode } from "../lib/ranker-mode";
-import { runLearnedRanker, relativeToRepo } from "./learned-ranker";
+import {
+  LearnedRankerError,
+  runLearnedRanker,
+  relativeToRepo,
+  type LearnedRankingPayload,
+} from "./learned-ranker";
 import type { Candidate, InsertionMode } from "../types";
 
 export interface RankRequest {
@@ -21,6 +26,8 @@ export interface RankRequest {
   mode: InsertionMode;
   minSeparationSeconds: number;
   count: number;
+  /** Aborted when the client has gone; stops the learned ranker's subprocess. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -61,13 +68,35 @@ export const rankCandidates = async (
       : result;
   }
 
-  const payload = await runLearnedRanker({
-    audioPath: request.audioPath,
-    checkpointPath: resolved.checkpointPath,
-    normalizerPath: resolved.normalizerPath,
-    episodeId: request.episodeId,
-    skipTranscription: process.env.SLOTIFY_RANKER_SKIP_TRANSCRIPTION === "1",
-  });
+  let payload: LearnedRankingPayload;
+  try {
+    payload = await runLearnedRanker({
+      audioPath: request.audioPath,
+      checkpointPath: resolved.checkpointPath,
+      normalizerPath: resolved.normalizerPath,
+      episodeId: request.episodeId,
+      skipTranscription: process.env.SLOTIFY_RANKER_SKIP_TRANSCRIPTION === "1",
+      signal: request.signal,
+    });
+  } catch (error) {
+    // RANKER_MODE=learned asked for the model and must not quietly get the
+    // baseline; a client that has gone needs no ranking at all. In auto mode
+    // a failed model run is the same situation as a missing checkpoint.
+    if (resolved.requested !== "auto" || request.signal?.aborted) throw error;
+    console.warn(
+      "Learned ranker failed at runtime; RANKER_MODE=auto is serving the heuristic baseline.",
+      error instanceof LearnedRankerError ? `${error.message}\n${error.detail}` : error,
+    );
+    const reason =
+      error instanceof LearnedRankerError ? error.message : "unexpected error (see server log)";
+    return {
+      ...rankWithHeuristic(request),
+      warnings: [
+        `RANKER_MODE=auto fell back to the heuristic baseline because the learned ` +
+          `ranker failed at runtime: ${reason}`,
+      ],
+    };
+  }
 
   // Candidate generation happens twice under the learned path: once here, from
   // the analyser, and once inside the ML feature pipeline, which needs the
@@ -104,11 +133,19 @@ export const rankCandidates = async (
       // Already computed over every candidate the model scored.
       normalizedScore: Math.round(entry.normalized_score),
       textAvailable: entry.text_available,
+      // A neighbour within 1.5 s lends its snippet, not its detector's claims.
+      generatedBy: matched?.ms === entry.insertion_ms ? (matched.generatedBy ?? null) : null,
     };
   });
 
   const warnings = [...payload.warnings];
-  if (payload.model.training_label_source !== "human") {
+  if (payload.model.training_label_source === "weak_heuristic") {
+    warnings.push(
+      "The learned ranker is a distillation of the heuristic baseline, trained " +
+        "without human labels, so its ranking is not independent evidence of " +
+        "placement quality.",
+    );
+  } else if (payload.model.training_label_source !== "human") {
     // The single most important thing a viewer of this demo needs to know.
     warnings.push(
       `The learned ranker was trained with label_source=` +
@@ -130,6 +167,7 @@ export const rankCandidates = async (
     scoreScale: "episode_relative_min_max",
     modelVariant: payload.model.model_variant,
     modelRunId: payload.model.model_run_id,
+    trainingLabelSource: payload.model.training_label_source,
     warnings,
   };
 };

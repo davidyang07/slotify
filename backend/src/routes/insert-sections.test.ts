@@ -25,17 +25,21 @@ import { BACKEND_DIR } from "../config";
 const REPO_ROOT = path.resolve(BACKEND_DIR, "..");
 const SAMPLE_AUDIO = path.join(BACKEND_DIR, "audio_tests", "ryan-test1.mp3");
 
-/** Whether the Python analyser can run here. Skips rather than fails if not. */
-const analyserAvailable = (): boolean => {
-  if (!fs.existsSync(SAMPLE_AUDIO)) return false;
-  const probe = spawnSync(process.env.PYTHON_BIN ?? "python", ["-c", "import pydub"], {
+/** Why the Python analyser cannot run here, or null if it can. */
+const analyserUnavailableReason = (): string | null => {
+  if (!fs.existsSync(SAMPLE_AUDIO)) return `${path.relative(REPO_ROOT, SAMPLE_AUDIO)} is missing`;
+  const python = process.env.PYTHON_BIN ?? "python";
+  const probe = spawnSync(python, ["-c", "import pydub"], {
     cwd: BACKEND_DIR,
     timeout: 60_000,
   });
-  return probe.status === 0;
+  return probe.status === 0 ? null : `${python} cannot import pydub`;
 };
 
-const available = analyserAvailable();
+const unavailableReason = analyserUnavailableReason();
+// Locally a missing analyser skips these tests. CI sets SLOTIFY_REQUIRE_ANALYSER=1
+// so the only end-to-end route test cannot pass by skipping.
+const requireAnalyser = process.env.SLOTIFY_REQUIRE_ANALYSER === "1";
 
 let server: Server;
 let baseUrl: string;
@@ -55,8 +59,13 @@ const audioForm = (filePath: string, filename = "audio.mp3"): FormData => {
   return form;
 };
 
-describe("POST /api/insert-sections", { skip: !available && "python analyser unavailable" }, () => {
+const skip = unavailableReason !== null && !requireAnalyser && `python analyser unavailable: ${unavailableReason}`;
+
+describe("POST /api/insert-sections", { skip }, () => {
   before(async () => {
+    if (unavailableReason !== null) {
+      assert.fail(`SLOTIFY_REQUIRE_ANALYSER=1 but the analyser cannot run: ${unavailableReason}.`);
+    }
     process.env.RANKER_MODE = "heuristic";
     delete process.env.ELEVENLABS_API_KEY;
     delete process.env.OPENAI_API_KEY;
@@ -64,10 +73,12 @@ describe("POST /api/insert-sections", { skip: !available && "python analyser una
     const express = (await import("express")).default;
     const { insertSectionsRouter } = await import("./insert-sections");
     const { capabilitiesRouter } = await import("./capabilities");
+    const { errorHandler } = await import("../middleware/error-handler");
     const app = express();
     app.use(express.json());
     app.use(capabilitiesRouter);
     app.use(insertSectionsRouter);
+    app.use(errorHandler);
     await new Promise<void>((resolve) => {
       server = app.listen(0, "127.0.0.1", resolve);
     });
@@ -92,6 +103,7 @@ describe("POST /api/insert-sections", { skip: !available && "python analyser una
     assert.equal(body.provenance.mode, "heuristic");
     assert.equal(body.provenance.isCalibratedProbability, false);
     assert.equal(body.provenance.candidateGeneration, "signal_offline_v1");
+    assert.equal(body.provenance.trainingLabelSource, null);
 
     for (const slot of body.slots) {
       assert.equal(slot.source, "heuristic_offline_v1");
@@ -145,6 +157,8 @@ describe("POST /api/insert-sections", { skip: !available && "python analyser una
     assert.ok(body.error.includes("no insertion points"));
     // The client gets the failure, not the repository's internal paths.
     assert.ok(!String(body.detail).includes("Traceback"));
+    assert.ok(!String(body.detail).includes(os.tmpdir()), body.detail);
+    assert.ok(!String(body.detail).includes(REPO_ROOT), body.detail);
   });
 
   test("a request with no audio is rejected before anything runs", async () => {

@@ -8,6 +8,7 @@ const saved = {
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   RANKER_MODE: process.env.RANKER_MODE,
   SLOTIFY_RANKER_CHECKPOINT: process.env.SLOTIFY_RANKER_CHECKPOINT,
+  SLOTIFY_API_TOKEN: process.env.SLOTIFY_API_TOKEN,
 };
 
 const restore = () => {
@@ -49,6 +50,15 @@ describe("capabilities", () => {
     const capabilities = readCapabilities();
     assert.equal(capabilities.learnedRanker, false);
     assert.match(capabilities.ranker.reason, /unusable/);
+  });
+
+  test("whether a bearer token is required is reported", () => {
+    delete process.env.SLOTIFY_API_TOKEN;
+    assert.equal(readCapabilities().authRequired, false);
+    process.env.SLOTIFY_API_TOKEN = "  ";
+    assert.equal(readCapabilities().authRequired, false);
+    process.env.SLOTIFY_API_TOKEN = "s3cret";
+    assert.equal(readCapabilities().authRequired, true);
   });
 
   test("the baseline version is named so a client can record it", () => {

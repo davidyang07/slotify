@@ -4,6 +4,7 @@ import path from "node:path";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { runFfmpeg, getAudioDuration } from "./ffmpeg";
 import { streamToBuffer } from "../lib/stream";
+import type { SponsorLanguage } from "../lib/sponsor-options";
 
 /**
  * The ElevenLabs client, built on first use.
@@ -33,6 +34,28 @@ export const getElevenLabs = (): ElevenLabsClient => {
   return client;
 };
 
+export const DEFAULT_TTS_MODEL = "eleven_multilingual_v2";
+
+// English-only models would read Spanish copy with English phonetics.
+const ENGLISH_ONLY_MODELS = new Set(["eleven_monolingual_v1", "eleven_turbo_v2", "eleven_flash_v2"]);
+// Only these accept `languageCode`; ElevenLabs rejects it for other models, and
+// eleven_multilingual_v2 infers the language from the text instead.
+const LANGUAGE_CODE_MODELS = new Set(["eleven_turbo_v2_5", "eleven_flash_v2_5"]);
+
+/** The model (and, where supported, language code) for a read in `language`. */
+export const ttsModelFor = (
+  modelId: string | undefined,
+  language: SponsorLanguage | undefined,
+): { modelId: string; languageCode?: string } => {
+  let model = modelId ?? DEFAULT_TTS_MODEL;
+  if (language && language !== "en" && ENGLISH_ONLY_MODELS.has(model)) {
+    model = DEFAULT_TTS_MODEL;
+  }
+  return language && LANGUAGE_CODE_MODELS.has(model)
+    ? { modelId: model, languageCode: language }
+    : { modelId: model };
+};
+
 export interface SponsorBlock {
   tempDir: string;
   outputPath: string;
@@ -50,56 +73,57 @@ export const buildSponsorBlock = async ({
   modelId,
   outputFormat,
   pauseMs,
+  language,
+  signal,
 }: {
   voiceId: string;
   statements: string[];
   modelId?: string;
   outputFormat?: string;
   pauseMs?: number;
+  language?: SponsorLanguage;
+  /** Stops ffmpeg when aborted (the client went away). */
+  signal?: AbortSignal;
 }): Promise<SponsorBlock> => {
   const tempDir = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "sponsor-block-"),
   );
-  const cleanup = async (paths: string[]) => {
-    await Promise.all(
-      paths.map((filePath) =>
-        fs.promises.unlink(filePath).catch(() => undefined),
-      ),
-    );
-    await fs.promises.rmdir(tempDir).catch(() => undefined);
-  };
+  // The whole directory, so no path added later (sponsor_block.mp3 included)
+  // can be missed on an error path.
+  const cleanup = () =>
+    fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
 
   const statementPaths: string[] = [];
-  const allPaths: string[] = [];
   try {
     for (let index = 0; index < statements.length; index += 1) {
       const statement = statements[index];
       const audio = await getElevenLabs().textToSpeech.convert(voiceId, {
         text: statement,
-        modelId: modelId ?? "eleven_multilingual_v2",
+        ...ttsModelFor(modelId, language),
         outputFormat: (outputFormat ?? "mp3_44100_128") as any,
       });
       const buffer = await streamToBuffer(audio);
       const statementPath = path.join(tempDir, `statement-${index}.mp3`);
       await fs.promises.writeFile(statementPath, buffer);
       statementPaths.push(statementPath);
-      allPaths.push(statementPath);
     }
 
     const pauseSeconds = Math.max(0, (pauseMs ?? 150) / 1000);
     const pausePath = path.join(tempDir, "pause.mp3");
     if (statements.length > 1 && pauseSeconds > 0) {
-      await runFfmpeg([
-        "-y",
-        "-f",
-        "lavfi",
-        "-i",
-        `anullsrc=channel_layout=stereo:sample_rate=44100`,
-        "-t",
-        pauseSeconds.toString(),
-        pausePath,
-      ]);
-      allPaths.push(pausePath);
+      await runFfmpeg(
+        [
+          "-y",
+          "-f",
+          "lavfi",
+          "-i",
+          `anullsrc=channel_layout=stereo:sample_rate=44100`,
+          "-t",
+          pauseSeconds.toFixed(3),
+          pausePath,
+        ],
+        { signal },
+      );
     }
 
     const concatInputs: string[] = [];
@@ -141,22 +165,17 @@ export const buildSponsorBlock = async ({
         "2",
         outputPath,
       ];
-      await runFfmpeg(args);
+      await runFfmpeg(args, { signal });
     }
 
-    const duration = await getAudioDuration(outputPath);
+    const duration = await getAudioDuration(outputPath, { signal });
     if (duration !== null && duration > 20) {
       throw new Error("Sponsor block exceeds 20s limit.");
     }
 
-    return {
-      tempDir,
-      outputPath,
-      duration,
-      cleanup: () => cleanup([...allPaths, outputPath]),
-    };
+    return { tempDir, outputPath, duration, cleanup };
   } catch (error) {
-    await cleanup(allPaths);
+    await cleanup();
     throw error;
   }
 };

@@ -13,6 +13,7 @@ import { BASELINE_VERSION } from "./heuristic-config";
 import { scoreCandidate, selectTopSlots } from "./candidates";
 import type {
   Candidate,
+  CandidateGenerator,
   InsertionMode,
   RankerMode,
   RecommendationSource,
@@ -39,6 +40,8 @@ export interface RankedCandidate {
    * candidate the model read a transcript for.
    */
   textAvailable: boolean | null;
+  /** The detector that proposed this point, when it is known. */
+  generatedBy: CandidateGenerator | null;
 }
 
 export interface RankingResult {
@@ -49,6 +52,7 @@ export interface RankingResult {
   scoreScale: ScoreScale;
   modelVariant: string | null;
   modelRunId: string | null;
+  trainingLabelSource: string | null;
   warnings: string[];
 }
 
@@ -91,6 +95,7 @@ export const rankWithHeuristic = ({
       // needs no reference to the other candidates.
       normalizedScore: Math.round(Math.min(100, Math.max(0, entry.score * 100))),
       textAvailable: null,
+      generatedBy: entry.generatedBy ?? null,
     })),
     source: BASELINE_VERSION as RecommendationSource,
     mode: "heuristic",
@@ -98,6 +103,7 @@ export const rankWithHeuristic = ({
     scoreScale: "absolute_unit_interval",
     modelVariant: null,
     modelRunId: null,
+    trainingLabelSource: null,
     warnings: [],
   };
 };

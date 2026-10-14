@@ -8,6 +8,7 @@
  */
 
 import { Router } from "express";
+import { configuredApiToken } from "../config";
 import { resolveRankerMode } from "../lib/ranker-mode";
 import { BASELINE_VERSION, HEURISTIC_CONFIG_VERSION } from "../lib/heuristic-config";
 
@@ -21,6 +22,8 @@ export interface Capabilities {
   /** Optional OpenAI enrichment: sponsor copy and slot narration. */
   openaiEnhancement: boolean;
   learnedRanker: boolean;
+  /** Every route but this one and /api/health needs `Authorization: Bearer`. */
+  authRequired: boolean;
   ranker: {
     requested: string;
     active: "learned" | "heuristic";
@@ -62,6 +65,7 @@ export const readCapabilities = (): Capabilities => {
     tts: elevenlabs,
     openaiEnhancement: Boolean(process.env.OPENAI_API_KEY),
     learnedRanker,
+    authRequired: configuredApiToken() !== null,
     ranker,
   };
 };

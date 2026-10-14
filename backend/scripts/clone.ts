@@ -3,6 +3,8 @@
  *
  * Usage:
  *   npx tsx scripts/clone.ts path/to/sample1.wav [path/to/sample2.wav ...]
+ *
+ * Set SLOTIFY_API_TOKEN when the API requires one.
  */
 
 import "dotenv/config";
@@ -26,8 +28,10 @@ for (const filePath of filePaths) {
   form.append("files", new Blob([buffer]), fileName);
 }
 
-const response = await fetch(`${apiBase}/api/speech`, {
+const token = process.env.SLOTIFY_API_TOKEN?.trim();
+const response = await fetch(`${apiBase}/api/clone`, {
   method: "POST",
+  headers: token ? { Authorization: `Bearer ${token}` } : {},
   body: form,
 });
 

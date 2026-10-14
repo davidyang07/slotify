@@ -2,11 +2,19 @@
 
 export type InsertionMode = "podcast" | "song";
 
+/** Which detector proposed a candidate. */
+export type CandidateGenerator = "analyser" | "transcript";
+
 /** A candidate insertion point discovered during analysis. */
 export interface Candidate {
   ms: number;
   silenceMs: number;
   snippet: string;
+  /**
+   * The silence/song analyser or the transcript's sentence ends. Signals may
+   * only claim what that detector measured (e.g. beat alignment).
+   */
+  generatedBy?: CandidateGenerator;
 }
 
 /** A candidate with a computed desirability score in [0, 1]. */
@@ -68,6 +76,11 @@ export interface RankerProvenance {
   mode: RankerMode;
   modelVariant: string | null;
   modelRunId: string | null;
+  /**
+   * What the learned model's training labels were, e.g. "human" or
+   * "weak_heuristic"; null when the heuristic ranked.
+   */
+  trainingLabelSource: string | null;
   scoreScale: ScoreScale;
   /**
    * Always false today. `placement_score` is a ranking score, not a calibrated

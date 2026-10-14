@@ -57,6 +57,8 @@ export interface HeuristicProfile {
     fallback_silence_threshold_dbfs: number;
     max_candidates: number;
     snippet_count: number;
+    /** How the analyser picks `max_candidates` silences; documentation only. */
+    candidate_selection: string;
   };
   merge: { min_gap_ms: number };
   scoring: HeuristicScoringConfig;
@@ -80,6 +82,7 @@ export interface HeuristicProfile {
     confidence_max: number;
     time_seconds_decimals: number;
   };
+  sentence_boundary_pattern: { regex: string };
 }
 
 interface HeuristicConfigFile {
@@ -87,6 +90,146 @@ interface HeuristicConfigFile {
   canonical_profile: string;
   profiles: Record<string, HeuristicProfile>;
 }
+
+type Shape = "number" | "integer" | "string" | "boolean" | "number[]" | "regex";
+
+/**
+ * Every key the TypeScript and Python loaders read from the canonical profile,
+ * with its shape. A key missing here used to surface as NaN scores rather than
+ * as an error.
+ */
+const CANONICAL_SCHEMA: Record<string, Record<string, Shape>> = {
+  silence_detection: {
+    min_silence_len_ms: "number",
+    silence_threshold_offset_db: "number",
+    fallback_silence_threshold_dbfs: "number",
+    max_candidates: "integer",
+    snippet_count: "integer",
+    candidate_selection: "string",
+  },
+  merge: { min_gap_ms: "number" },
+  scoring: {
+    base_score: "number",
+    pause_reward_max: "number",
+    pause_reward_saturation_ms: "number",
+    song_mode_bonus: "number",
+    sentence_end_reward: "number",
+    no_sentence_end_penalty: "number",
+    unavailable_snippet_sentinel: "string",
+    mid_episode_reward: "number",
+    mid_episode_min_ratio: "number",
+    mid_episode_max_ratio: "number",
+    edge_penalty: "number",
+    edge_guard_seconds: "number",
+    score_min: "number",
+    score_max: "number",
+  },
+  selection: {
+    min_separation_seconds: "number",
+    requested_count: "integer",
+    max_returned: "integer",
+    ratio_fallback_positions: "number[]",
+    ratio_fallback_score: "number",
+    spacing_fallback_score: "number",
+  },
+  route_fallback_candidates: {
+    ratio_positions: "number[]",
+    fixed_positions_ms: "number[]",
+  },
+  slot_finalisation: {
+    end_guard_ms: "number",
+    confidence_base: "number",
+    confidence_scale: "number",
+    confidence_min: "number",
+    confidence_max: "number",
+    time_seconds_decimals: "integer",
+  },
+  sentence_boundary_pattern: { regex: "regex" },
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const matchesShape = (value: unknown, shape: Shape): boolean => {
+  switch (shape) {
+    case "number":
+      return typeof value === "number" && Number.isFinite(value);
+    case "integer":
+      return Number.isInteger(value) && (value as number) >= 0;
+    case "string":
+      return typeof value === "string" && value.length > 0;
+    case "boolean":
+      return typeof value === "boolean";
+    case "number[]":
+      return (
+        Array.isArray(value) &&
+        value.every((entry) => typeof entry === "number" && Number.isFinite(entry))
+      );
+    case "regex":
+      if (typeof value !== "string") return false;
+      try {
+        new RegExp(value);
+        return true;
+      } catch {
+        return false;
+      }
+  }
+};
+
+const SHAPE_NAMES: Record<Shape, string> = {
+  number: "a finite number",
+  integer: "a non-negative integer",
+  string: "a non-empty string",
+  boolean: "a boolean",
+  "number[]": "an array of finite numbers",
+  regex: "a valid regular expression string",
+};
+
+/**
+ * Validate a parsed config file. Throws one error naming every bad key, so a
+ * broken edit is fixed in one pass. Exported for tests.
+ */
+export const validateHeuristicConfig = (
+  parsed: unknown,
+  where = HEURISTIC_CONFIG_PATH,
+): HeuristicConfigFile => {
+  if (!isRecord(parsed)) {
+    throw new Error(`Heuristic config ${where} is not a JSON object.`);
+  }
+  const problems: string[] = [];
+  for (const key of ["config_version", "canonical_profile"]) {
+    if (!matchesShape(parsed[key], "string")) problems.push(`${key} must be a non-empty string`);
+  }
+  const profiles = parsed.profiles;
+  const canonicalName = parsed.canonical_profile;
+  const canonical =
+    isRecord(profiles) && typeof canonicalName === "string" ? profiles[canonicalName] : undefined;
+  if (!isRecord(canonical)) {
+    throw new Error(
+      `Heuristic config ${where} declares canonical_profile ` +
+        `"${String(canonicalName)}" but no such profile exists.`,
+    );
+  }
+  if (!matchesShape(canonical.is_canonical_baseline, "boolean")) {
+    problems.push(`${canonicalName}.is_canonical_baseline must be a boolean`);
+  }
+  for (const [section, keys] of Object.entries(CANONICAL_SCHEMA)) {
+    const block = canonical[section];
+    if (!isRecord(block)) {
+      problems.push(`${canonicalName}.${section} must be an object`);
+      continue;
+    }
+    for (const [key, shape] of Object.entries(keys)) {
+      if (!matchesShape(block[key], shape)) {
+        problems.push(`${canonicalName}.${section}.${key} must be ${SHAPE_NAMES[shape]}`);
+      }
+    }
+  }
+  if (problems.length) {
+    throw new Error(`Heuristic config ${where} is invalid: ${problems.join("; ")}.`);
+  }
+  return parsed as unknown as HeuristicConfigFile;
+};
 
 const loadConfigFile = (): HeuristicConfigFile => {
   let raw: string;
@@ -98,16 +241,7 @@ const loadConfigFile = (): HeuristicConfigFile => {
         `${error instanceof Error ? error.message : String(error)}`,
     );
   }
-
-  const parsed = JSON.parse(raw) as HeuristicConfigFile;
-  const canonical = parsed.profiles?.[parsed.canonical_profile];
-  if (!canonical) {
-    throw new Error(
-      `Heuristic config ${HEURISTIC_CONFIG_PATH} declares canonical_profile ` +
-        `"${parsed.canonical_profile}" but no such profile exists.`,
-    );
-  }
-  return parsed;
+  return validateHeuristicConfig(JSON.parse(raw));
 };
 
 const configFile = loadConfigFile();

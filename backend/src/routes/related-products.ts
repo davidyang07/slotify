@@ -1,16 +1,16 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { Router } from "express";
 import { upload } from "../middleware/upload";
 import { requestTranscription } from "../services/openai";
+import { failureBody } from "../lib/errors";
+import { asyncHandler } from "../lib/http";
+import { asText } from "../lib/text";
 
 export const relatedProductsRouter = Router();
 
 relatedProductsRouter.post(
   "/api/related-products",
   upload.single("audio"),
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
     const audioFile = req.file;
     if (!audioFile) {
       res.status(400).json({ error: "audio file is required." });
@@ -33,21 +33,8 @@ relatedProductsRouter.post(
       return;
     }
 
-    const tempDir = await fs.promises.mkdtemp(
-      path.join(os.tmpdir(), "related-products-"),
-    );
-    const audioPath = path.join(
-      tempDir,
-      `${Date.now()}-${audioFile.originalname || "audio.mp3"}`,
-    );
-    const cleanup = async () => {
-      await fs.promises.unlink(audioPath).catch(() => undefined);
-      await fs.promises.rmdir(tempDir).catch(() => undefined);
-    };
-
     try {
-      await fs.promises.writeFile(audioPath, audioFile.buffer);
-
+      // The upload goes to Whisper straight from memory; nothing touches disk.
       const transcriptResponse = await requestTranscription(
         audioFile.buffer,
         audioFile.originalname || "audio.mp3",
@@ -65,7 +52,7 @@ relatedProductsRouter.post(
         ? transcript.segments
         : [];
       const transcriptText = segments
-        .map((segment: any) => String(segment.text ?? "").trim())
+        .map((segment: any) => asText(segment?.text).trim())
         .filter(Boolean)
         .join(" ")
         .slice(0, 3000);
@@ -114,10 +101,10 @@ relatedProductsRouter.post(
         const parsed = JSON.parse(rawContent);
         if (Array.isArray(parsed.products)) {
           terms = parsed.products
-            .map((item: any) => (item?.term ? String(item.term) : ""))
+            .map((item: any) => asText(item?.term).trim())
             .filter(Boolean);
         } else if (Array.isArray(parsed.terms)) {
-          terms = parsed.terms.map((item: any) => String(item)).filter(Boolean);
+          terms = parsed.terms.map((item: any) => asText(item).trim()).filter(Boolean);
         }
       } catch {
         terms = [];
@@ -160,12 +147,7 @@ relatedProductsRouter.post(
         results,
       });
     } catch (error) {
-      res.status(500).json({
-        error:
-          error instanceof Error ? error.message : "Related products failed.",
-      });
-    } finally {
-      await cleanup();
+      res.status(500).json(failureBody("Related products failed.", error));
     }
-  },
+  }),
 );

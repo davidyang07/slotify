@@ -3,6 +3,8 @@
  *
  * Usage:
  *   npx tsx scripts/speak.ts <voiceId>
+ *
+ * Set SLOTIFY_API_TOKEN when the API requires one.
  */
 
 import { play } from "@elevenlabs/elevenlabs-js";
@@ -19,9 +21,13 @@ if (!voiceId) {
   throw new Error("Provide a voiceId as argv[2] or VOICE_ID.");
 }
 
-const response = await fetch(`${apiBase}/api/clone`, {
+const token = process.env.SLOTIFY_API_TOKEN?.trim();
+const response = await fetch(`${apiBase}/api/tts`, {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  },
   body: JSON.stringify({
     voiceId,
     text,

@@ -1,46 +1,14 @@
 import "dotenv/config";
-import cors from "cors";
-import express from "express";
 
-import { port, allowedOrigins } from "./config";
-import { healthRouter } from "./routes/health";
-import { capabilitiesRouter, readCapabilities } from "./routes/capabilities";
-import { cloneRouter } from "./routes/clone";
-import { mergeRouter } from "./routes/merge";
-import { insertSectionsRouter } from "./routes/insert-sections";
-import { relatedProductsRouter } from "./routes/related-products";
-import { ttsRouter } from "./routes/tts";
-import { generateRouter } from "./routes/generate";
-import { adInsertRouter } from "./routes/ad-insert";
+import { createApp } from "./app";
+import { port, allowedOrigins, configuredApiToken, rateLimitsFromEnv } from "./config";
+import { readCapabilities } from "./routes/capabilities";
 
-
-const app = express();
-
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-        return;
-      }
-      callback(new Error("CORS blocked"));
-    },
-  }),
-);
-app.use(express.json({ limit: "2mb" }));
-
-app.use(healthRouter);
-app.use(capabilitiesRouter);
-app.use(cloneRouter);
-app.use(mergeRouter);
-app.use(insertSectionsRouter);
-app.use(relatedProductsRouter);
-app.use(ttsRouter);
-app.use(generateRouter);
-app.use(adInsertRouter);
+const app = createApp();
 
 app.listen(port, () => {
   const capabilities = readCapabilities();
+  const limits = rateLimitsFromEnv();
   console.log(`API listening on http://localhost:${port}`);
   console.log(`CORS allowed origins: ${allowedOrigins.join(", ")}`);
   // Placement is the core demo and needs no credentials, so the startup banner
@@ -54,5 +22,12 @@ app.listen(port, () => {
     `OpenAI enrichment: ${
       capabilities.openaiEnhancement ? "enabled" : "disabled (OPENAI_API_KEY not set)"
     }`,
+  );
+  console.log(
+    `Auth: ${configuredApiToken() ? "bearer token required (SLOTIFY_API_TOKEN)" : "open (SLOTIFY_API_TOKEN not set)"}`,
+  );
+  const describe = (perMin: number) => (perMin > 0 ? `${perMin}/min` : "off");
+  console.log(
+    `Rate limits per client IP: paid ${describe(limits.paidPerMin)}, compute ${describe(limits.computePerMin)}`,
   );
 });

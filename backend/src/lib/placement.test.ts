@@ -91,6 +91,46 @@ describe("placement signals are measured, never decorative", () => {
   });
 });
 
+describe("song-mode signals claim only what the song analysis measured", () => {
+  const songSignals = (overrides: {
+    generatedBy?: "analyser" | "transcript";
+    beatsDetected?: boolean;
+  }) =>
+    buildPlacementSignals({
+      mode: "song",
+      silenceMs: 0,
+      snippet: "",
+      timeSeconds: 60,
+      durationSeconds: 180,
+      ...overrides,
+    }).map((signal) => signal.label);
+
+  test("a beat-snapped valley from the song analysis is beat-aligned", () => {
+    assert.ok(
+      songSignals({ generatedBy: "analyser", beatsDetected: true }).includes(
+        "Beat-aligned low-energy valley",
+      ),
+    );
+  });
+
+  test("with no beat grid, the valley is not called beat-aligned", () => {
+    const labels = songSignals({ generatedBy: "analyser", beatsDetected: false });
+    assert.ok(labels.includes("Low-energy valley (no beat grid detected)"));
+    assert.ok(!labels.some((label) => label.startsWith("Beat-aligned")));
+  });
+
+  test("a transcript sentence end in a song is not beat-aligned", () => {
+    const labels = songSignals({ generatedBy: "transcript", beatsDetected: true });
+    assert.ok(!labels.some((label) => label.startsWith("Beat-aligned")));
+    assert.ok(labels.includes("Transcript sentence end, not beat-aligned"));
+  });
+
+  test("a candidate of unknown origin claims nothing about beats", () => {
+    const labels = songSignals({ beatsDetected: true });
+    assert.ok(!labels.some((label) => /beat|valley/i.test(label)));
+  });
+});
+
 describe("rationale never claims more than the signals", () => {
   test("with no supporting signal it says so", () => {
     const rationale = buildRationale(

@@ -82,3 +82,23 @@ describe("parsing the learned ranker's output", () => {
     assert.deepEqual(parsed.ranked, []);
   });
 });
+
+describe("the payload must say what the model is", () => {
+  test("a payload without the training label source is refused", () => {
+    const { training_label_source: _source, ...model } = validPayload.model;
+    assert.throws(
+      () => parseLearnedRanking(JSON.stringify({ ...validPayload, model })),
+      /training\s+label source/,
+    );
+  });
+
+  test("a payload with no model block is refused, not a TypeError later", () => {
+    const { model: _model, ...withoutModel } = validPayload;
+    assert.throws(() => parseLearnedRanking(JSON.stringify(withoutModel)), LearnedRankerError);
+  });
+
+  test("a JSON value that is not an object is refused", () => {
+    assert.throws(() => parseLearnedRanking("null"), LearnedRankerError);
+    assert.throws(() => parseLearnedRanking('{"schema_version": {"toString": 1}}'), LearnedRankerError);
+  });
+});

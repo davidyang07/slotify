@@ -20,6 +20,7 @@
 import { HEURISTIC_V1 } from "./heuristic-config";
 import { endsWithSentenceBoundary } from "./text";
 import type {
+  CandidateGenerator,
   InsertionMode,
   PlacementSignal,
   ScoreScale,
@@ -40,6 +41,8 @@ export const buildPlacementSignals = ({
   timeSeconds,
   durationSeconds,
   transcriptAvailable = null,
+  generatedBy = null,
+  beatsDetected = false,
 }: {
   mode: InsertionMode;
   silenceMs: number;
@@ -52,6 +55,10 @@ export const buildPlacementSignals = ({
    * analyser's snippet, so it passes null and the snippet is used instead.
    */
   transcriptAvailable?: boolean | null;
+  /** Which detector proposed this point; null when unknown (learned path). */
+  generatedBy?: CandidateGenerator | null;
+  /** Whether the song analysis found a beat grid to snap its valleys to. */
+  beatsDetected?: boolean;
 }): PlacementSignal[] => {
   const signals: PlacementSignal[] = [];
   const hasSnippet =
@@ -83,8 +90,18 @@ export const buildPlacementSignals = ({
     });
   }
 
-  if (mode === "song") {
-    signals.push({ kind: "supporting", label: "Beat-aligned low-energy valley" });
+  // Song analysis proposes low-energy valleys, snapped to the nearest beat when
+  // it found any. Only its own candidates can claim that, and only the beat
+  // alignment it actually performed.
+  if (mode === "song" && generatedBy === "analyser") {
+    signals.push({
+      kind: "supporting",
+      label: beatsDetected
+        ? "Beat-aligned low-energy valley"
+        : "Low-energy valley (no beat grid detected)",
+    });
+  } else if (mode === "song" && generatedBy === "transcript") {
+    signals.push({ kind: "caution", label: "Transcript sentence end, not beat-aligned" });
   }
 
   if (durationSeconds) {

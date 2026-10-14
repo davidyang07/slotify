@@ -14,9 +14,10 @@
  * parsed is a failure, not something to substitute for.
  */
 
-import { spawn } from "node:child_process";
 import path from "node:path";
+import { clientSafeDetail } from "../lib/errors";
 import { mlDir, mlPythonBin, REPO_ROOT } from "../lib/ranker-mode";
+import { pythonEnv, runProcess, SubprocessError } from "../lib/subprocess";
 
 export interface LearnedRankedCandidate {
   candidate_id: string;
@@ -55,7 +56,16 @@ export interface LearnedRankingPayload {
 /** Schema versions this client knows how to read. */
 const SUPPORTED_SCHEMA_VERSIONS = new Set(["inference-v1.0.0"]);
 
-export class LearnedRankerError extends Error {}
+/** `message` is safe to show a client; `detail` (stderr) is for the server log. */
+export class LearnedRankerError extends Error {
+  constructor(
+    message: string,
+    readonly detail = "",
+  ) {
+    super(message);
+    this.name = "LearnedRankerError";
+  }
+}
 
 export interface RunLearnedRankerOptions {
   audioPath: string;
@@ -65,6 +75,8 @@ export interface RunLearnedRankerOptions {
   /** Skip Whisper transcription. Faster; every candidate is then text-masked. */
   skipTranscription?: boolean;
   timeoutMs?: number;
+  /** Kills the ranker when aborted (the client went away). */
+  signal?: AbortSignal;
 }
 
 const DEFAULT_TIMEOUT_MS = Number.parseInt(
@@ -72,97 +84,74 @@ const DEFAULT_TIMEOUT_MS = Number.parseInt(
   10,
 );
 
-export const runLearnedRanker = ({
+export const runLearnedRanker = async ({
   audioPath,
   checkpointPath,
   normalizerPath,
   episodeId,
   skipTranscription = false,
   timeoutMs = DEFAULT_TIMEOUT_MS,
-}: RunLearnedRankerOptions): Promise<LearnedRankingPayload> =>
-  new Promise((resolve, reject) => {
-    const args = [
-      "-m",
-      "slotify_rank.cli",
-      "infer",
-      "rank",
-      "--audio",
-      audioPath,
-      "--checkpoint",
-      checkpointPath,
-      "--episode-id",
-      episodeId,
-      "--output",
-      "-",
-    ];
-    if (normalizerPath) args.push("--normalizer", normalizerPath);
-    if (skipTranscription) args.push("--no-transcribe");
+  signal,
+}: RunLearnedRankerOptions): Promise<LearnedRankingPayload> => {
+  const args = [
+    "-m",
+    "slotify_rank.cli",
+    "infer",
+    "rank",
+    "--audio",
+    audioPath,
+    "--checkpoint",
+    checkpointPath,
+    "--episode-id",
+    episodeId,
+    "--output",
+    "-",
+  ];
+  if (normalizerPath) args.push("--normalizer", normalizerPath);
+  if (skipTranscription) args.push("--no-transcribe");
 
-    const child = spawn(mlPythonBin(), args, {
+  let stdout: string;
+  try {
+    ({ stdout } = await runProcess(mlPythonBin(), args, {
+      label: "the learned ranker",
       cwd: mlDir,
-      env: {
-        ...process.env,
+      env: pythonEnv({
         // The ml package is installed into ml/.venv in editable mode, but a
         // bare `python` on PATH would not see it; src/ on PYTHONPATH makes the
         // subprocess work either way.
         PYTHONPATH: [path.join(mlDir, "src"), process.env.PYTHONPATH]
           .filter(Boolean)
           .join(path.delimiter),
-      },
-    });
-
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      child.kill();
-      reject(
-        new LearnedRankerError(
-          `The learned ranker did not finish within ${timeoutMs} ms. Transcription ` +
-            "dominates the runtime on long audio; raise SLOTIFY_RANKER_TIMEOUT_MS " +
-            "or use a shorter clip.",
-        ),
+      }),
+      timeoutMs,
+      signal,
+    }));
+  } catch (error) {
+    if (!(error instanceof SubprocessError)) throw error;
+    if (error.reason === "timeout") {
+      throw new LearnedRankerError(
+        `The learned ranker did not finish within ${timeoutMs} ms. Transcription ` +
+          "dominates the runtime on long audio; raise SLOTIFY_RANKER_TIMEOUT_MS " +
+          "or use a shorter clip.",
+        error.stderr,
       );
-    }, timeoutMs);
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      reject(
-        new LearnedRankerError(
-          `Could not start the learned ranker (${mlPythonBin()}): ${error.message}`,
-        ),
+    }
+    if (error.reason === "exit") {
+      const last = clientSafeDetail(error.stderr);
+      throw new LearnedRankerError(
+        last ? `${error.message.replace(/\.$/, "")}: ${last}` : error.message,
+        error.stderr,
       );
-    });
-    child.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (code !== 0) {
-        reject(
-          new LearnedRankerError(
-            stderr.trim() || `The learned ranker exited with code ${code}.`,
-          ),
-        );
-        return;
-      }
-      try {
-        resolve(parseLearnedRanking(stdout));
-      } catch (error) {
-        reject(error);
-      }
-    });
-  });
+    }
+    throw new LearnedRankerError(
+      error.reason === "spawn"
+        ? `Could not start the learned ranker (${path.basename(mlPythonBin())}).`
+        : error.message,
+      `${error.message}\n${error.stderr}`,
+    );
+  }
+  return parseLearnedRanking(stdout);
+};
 
 /** Parse and validate the CLI's stdout. Exported so it can be tested directly. */
 export const parseLearnedRanking = (stdout: string): LearnedRankingPayload => {
@@ -177,8 +166,14 @@ export const parseLearnedRanking = (stdout: string): LearnedRankingPayload => {
     );
   }
 
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new LearnedRankerError("The learned ranker's output is not a JSON object.");
+  }
   const payload = parsed as Partial<LearnedRankingPayload>;
-  if (!SUPPORTED_SCHEMA_VERSIONS.has(String(payload.schema_version))) {
+  if (
+    typeof payload.schema_version !== "string" ||
+    !SUPPORTED_SCHEMA_VERSIONS.has(payload.schema_version)
+  ) {
     throw new LearnedRankerError(
       `Unsupported inference schema_version ${JSON.stringify(payload.schema_version)}; ` +
         `this API reads ${[...SUPPORTED_SCHEMA_VERSIONS].join(", ")}.`,
@@ -195,6 +190,27 @@ export const parseLearnedRanking = (stdout: string): LearnedRankingPayload => {
     throw new LearnedRankerError(
       "The learned ranker claims calibrated probabilities, which no model in this " +
         "repository has been calibrated to produce.",
+    );
+  }
+  if (!Array.isArray(payload.warnings) || !Array.isArray(payload.excluded)) {
+    throw new LearnedRankerError(
+      "The learned ranker's output has no warnings or excluded list; refusing to report a ranking.",
+    );
+  }
+  const model = payload.model;
+  if (
+    !model ||
+    typeof model !== "object" ||
+    typeof model.model_variant !== "string" ||
+    typeof model.model_run_id !== "string" ||
+    typeof model.training_label_source !== "string" ||
+    !model.training_label_source
+  ) {
+    // The provenance a response reports -- above all what the model was trained
+    // on -- comes from here. A ranking that cannot say is not reported.
+    throw new LearnedRankerError(
+      "The learned ranker's output does not identify the model and its training " +
+        "label source; refusing to report a ranking.",
     );
   }
   return payload as LearnedRankingPayload;

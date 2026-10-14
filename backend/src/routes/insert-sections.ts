@@ -16,7 +16,6 @@
  */
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { Router } from "express";
 import { upload } from "../middleware/upload";
@@ -37,11 +36,22 @@ import {
   clampSlotMs,
   dedupeByMs,
 } from "../lib/placement";
+import { asText, endsWithSentenceBoundary, parseJsonField } from "../lib/text";
+import { failureBody, logFailure } from "../lib/errors";
+import { asyncHandler, clientAbortSignal, HttpError } from "../lib/http";
 import {
-  endsWithSentenceBoundary,
-  parseJsonField,
-  normalizeStatements,
-} from "../lib/text";
+  fieldOf,
+  optionalEnum,
+  optionalNumber,
+  optionalStatements,
+  optionalString,
+} from "../lib/request-fields";
+import {
+  SPONSOR_LANGUAGES,
+  SPONSOR_TONES,
+  type SponsorCopyOptions,
+} from "../lib/sponsor-options";
+import { makeTempDir, removeTempDir } from "../lib/temp";
 import type {
   Candidate,
   InsertionMode,
@@ -68,35 +78,88 @@ const currentRankerMode = (): string => {
 };
 const MAX_SLOTS = HEURISTIC_V1.selection.max_returned;
 const MIN_SEPARATION_SECONDS = HEURISTIC_V1.selection.min_separation_seconds;
+/** The UI's maximum. Each sponsor without a statement is one OpenAI call. */
+const MAX_SPONSORS = 3;
 
-/** Build the sponsor statements the client asked for, if any. */
-const buildSponsorStatements = async (body: any): Promise<SponsorStatement[]> => {
-  const sponsorsField = parseJsonField(body?.sponsors);
-  if (Array.isArray(sponsorsField)) {
-    return Promise.all(
-      sponsorsField.map(async (entry: any, index: number) => {
-        const name = String(entry?.name ?? entry?.brand ?? "").trim();
-        const productDesc = String(entry?.productDesc ?? "").trim();
-        const rawStatement = String(entry?.statement ?? "").trim();
-        const statement =
-          rawStatement || (await generateBrandStatement({ name, productDesc }));
-        return {
-          id: entry?.id ?? `sponsor-${index + 1}`,
-          name,
-          statement,
-          generated: !rawStatement,
-        };
-      }),
-    );
+interface SponsorRequest {
+  id: string;
+  name: string;
+  productDesc: string;
+  /** Empty when the server is to write it. */
+  statement: string;
+}
+
+/**
+ * Validate the sponsors the client asked for, before any analysis runs. The
+ * `sponsors` field is a JSON array (multipart carries it as a string);
+ * otherwise `statements`/`statement` are taken as given.
+ */
+const parseSponsorRequests = (body: unknown): SponsorRequest[] => {
+  const raw = fieldOf(body, "sponsors");
+  if (raw !== undefined && raw !== null && raw !== "") {
+    const sponsors = typeof raw === "string" ? parseJsonField(raw) : raw;
+    if (!Array.isArray(sponsors)) {
+      throw new HttpError(400, "sponsors must be a JSON array.");
+    }
+    if (sponsors.length > MAX_SPONSORS) {
+      throw new HttpError(400, `At most ${MAX_SPONSORS} sponsors per request.`);
+    }
+    return sponsors.map((entry: unknown, index: number) => {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new HttpError(400, `sponsors[${index}] must be an object.`);
+      }
+      return {
+        id: optionalString(entry, "id", 100) ?? `sponsor-${index + 1}`,
+        name: optionalString(entry, "name", 200) ?? optionalString(entry, "brand", 200) ?? "",
+        productDesc: optionalString(entry, "productDesc") ?? "",
+        statement: optionalString(entry, "statement") ?? "",
+      };
+    });
   }
-  const statements = normalizeStatements(body?.statements ?? body?.statement);
+  const statements =
+    optionalStatements(body, "statements") ?? optionalStatements(body, "statement") ?? [];
   return statements.map((statement, index) => ({
     id: `sponsor-${index + 1}`,
     name: "",
+    productDesc: "",
     statement,
-    generated: false,
   }));
 };
+
+/**
+ * Fill in the statements the server writes. Tone and language shape only
+ * those; a statement the user supplied is used verbatim.
+ */
+const buildSponsorStatements = (
+  sponsors: SponsorRequest[],
+  options: SponsorCopyOptions,
+): Promise<SponsorStatement[]> =>
+  Promise.all(
+    sponsors.map(async (sponsor) => ({
+      id: sponsor.id,
+      name: sponsor.name,
+      statement:
+        sponsor.statement ||
+        (await generateBrandStatement({
+          name: sponsor.name,
+          productDesc: sponsor.productDesc,
+          ...options,
+        })),
+      generated: !sponsor.statement,
+    })),
+  );
+
+/** Provenance for a response in which nothing was ranked. */
+const unrankedProvenance = () => ({
+  candidateGeneration: CANDIDATE_GENERATION,
+  source: null,
+  mode: currentRankerMode(),
+  modelVariant: null,
+  modelRunId: null,
+  trainingLabelSource: null,
+  scoreScale: null,
+  isCalibratedProbability: false,
+});
 
 /**
  * Optional extra candidates from OpenAI's transcription. Purely additive: a
@@ -115,7 +178,7 @@ const transcriptCandidates = async (
     const segments = Array.isArray(transcript?.segments) ? transcript.segments : [];
     return segments
       .map((segment: any, index: number) => {
-        const text = String(segment.text ?? "").trim();
+        const text = asText(segment?.text).trim();
         if (!endsWithSentenceBoundary(text)) return null;
         const end = Number(segment.end ?? 0);
         if (!Number.isFinite(end)) return null;
@@ -125,6 +188,7 @@ const transcriptCandidates = async (
           ms: Math.round(end * 1000),
           silenceMs: Math.round(Math.max(0, (nextStart - end) * 1000)),
           snippet: text,
+          generatedBy: "transcript" as const,
         };
       })
       .filter(Boolean) as Candidate[];
@@ -137,70 +201,64 @@ const transcriptCandidates = async (
 insertSectionsRouter.post(
   "/api/insert-sections",
   upload.single("audio"),
-  async (req, res) => {
+  asyncHandler(async (req, res) => {
+    const rejected = (status: number, error: string) =>
+      res.status(status).json({ placementStatus: "unavailable", error, slots: [], points: [] });
+
     const audioFile = req.file;
     if (!audioFile) {
-      res.status(400).json({
-        placementStatus: "unavailable",
-        error: "audio file is required.",
-        slots: [],
-        points: [],
-      });
+      rejected(400, "audio file is required.");
       return;
     }
 
-    const requestedCount = Number.parseInt(req.body?.count ?? String(MAX_SLOTS), 10);
-    const count = Number.isFinite(requestedCount)
-      ? Math.min(MAX_SLOTS, Math.max(1, requestedCount))
-      : MAX_SLOTS;
-    const mode: InsertionMode =
-      String(req.body?.mode ?? "podcast").trim().toLowerCase() === "song"
-        ? "song"
-        : "podcast";
-
-    const tempDir = await fs.promises.mkdtemp(
-      path.join(os.tmpdir(), "insert-sections-"),
-    );
-    const audioPath = path.join(
-      tempDir,
-      `${Date.now()}-${path.basename(audioFile.originalname || "audio.mp3")}`,
-    );
-    const cleanup = async () => {
-      await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
-    };
-
+    let count: number;
+    let mode: InsertionMode;
+    let sponsors: SponsorRequest[];
+    let copyOptions: SponsorCopyOptions;
     try {
+      const requestedCount = optionalNumber(req.body, "count");
+      count =
+        requestedCount !== undefined
+          ? Math.min(MAX_SLOTS, Math.max(1, Math.trunc(requestedCount)))
+          : MAX_SLOTS;
+      mode = optionalEnum(req.body, "mode", ["podcast", "song"] as const) ?? "podcast";
+      copyOptions = {
+        tone: optionalEnum(req.body, "tone", SPONSOR_TONES),
+        language: optionalEnum(req.body, "language", SPONSOR_LANGUAGES),
+      };
+      sponsors = parseSponsorRequests(req.body);
+    } catch (error) {
+      if (!(error instanceof HttpError)) throw error;
+      rejected(error.status, error.message);
+      return;
+    }
+
+    const signal = clientAbortSignal(req, res);
+    let tempDir: string | null = null;
+    try {
+      tempDir = await makeTempDir("insert-sections-");
+      const audioPath = path.join(
+        tempDir,
+        `${Date.now()}-${path.basename(audioFile.originalname || "audio.mp3")}`,
+      );
       await fs.promises.writeFile(audioPath, audioFile.buffer);
-      const probedDuration = await getAudioDuration(audioPath).catch(() => null);
+      const probedDuration = await getAudioDuration(audioPath, { signal }).catch(() => null);
 
       let analysis: any;
       try {
-        analysis = await runPythonAnalyze(audioPath, mode);
+        analysis = await runPythonAnalyze(audioPath, mode, { signal });
       } catch (error) {
-        const full = error instanceof Error ? error.message : String(error);
         // The analyser's stderr is a Python traceback. The whole thing goes to
         // the server log; the client gets the final line, which is the actual
         // error, without the repository's internal paths.
-        const lines = full
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter(Boolean);
-        const detail = lines[lines.length - 1] ?? full;
-        console.error("Audio analysis failed.", full);
+        const detail = logFailure("Audio analysis failed.", error);
+        if (signal.aborted) return;
         res.status(502).json({
           placementStatus: "unavailable",
           slots: [],
           points: [],
           duration: probedDuration,
-          provenance: {
-            candidateGeneration: CANDIDATE_GENERATION,
-            source: null,
-            mode: currentRankerMode(),
-            modelVariant: null,
-            modelRunId: null,
-            scoreScale: null,
-            isCalibratedProbability: false,
-          },
+          provenance: unrankedProvenance(),
           error: "Audio analysis failed; no insertion points can be reported.",
           detail,
         });
@@ -214,9 +272,12 @@ insertSectionsRouter.post(
       const snippets: Record<number, string> = Object.fromEntries(
         Object.entries(analysis?.snippets ?? {}).map(([key, value]) => [
           Number.parseInt(key, 10),
-          String(value ?? "").trim(),
+          asText(value).trim(),
         ]),
       );
+      // Song candidates are beat-snapped only when the analyser found beats.
+      const beatsDetected =
+        Array.isArray(analysis?.beat_times_ms) && analysis.beat_times_ms.length > 0;
 
       const signalCandidates: Candidate[] = Array.isArray(analysis?.candidates)
         ? (analysis.candidates
@@ -228,6 +289,7 @@ insertSectionsRouter.post(
                 ms: Math.round(ms),
                 silenceMs: Number.isFinite(silenceMs) ? silenceMs : 0,
                 snippet: snippets[Math.round(ms)] ?? "",
+                generatedBy: "analyser" as const,
               };
             })
             .filter(Boolean) as Candidate[])
@@ -245,7 +307,7 @@ insertSectionsRouter.post(
       );
       const candidates = mergeCandidates(bounded, extra);
 
-      const sponsorStatements = await buildSponsorStatements(req.body);
+      const sponsorStatements = await buildSponsorStatements(sponsors, copyOptions);
 
       if (candidates.length === 0) {
         res.json({
@@ -254,15 +316,7 @@ insertSectionsRouter.post(
           points: [],
           duration: durationSeconds,
           candidateCount: 0,
-          provenance: {
-            candidateGeneration: CANDIDATE_GENERATION,
-            source: null,
-            mode: currentRankerMode(),
-            modelVariant: null,
-            modelRunId: null,
-            scoreScale: null,
-            isCalibratedProbability: false,
-          },
+          provenance: unrankedProvenance(),
           sponsorStatements,
           warning:
             "Analysis completed but found no eligible insertion point in this audio.",
@@ -278,6 +332,7 @@ insertSectionsRouter.post(
         mode,
         minSeparationSeconds: MIN_SEPARATION_SECONDS,
         count,
+        signal,
       });
 
       const clamped = ranking.ranked.map((entry) => ({
@@ -295,6 +350,8 @@ insertSectionsRouter.post(
           timeSeconds,
           durationSeconds,
           transcriptAvailable: entry.textAvailable,
+          generatedBy: entry.generatedBy,
+          beatsDetected,
         });
         return {
           candidate_id: entry.candidateId,
@@ -344,6 +401,7 @@ insertSectionsRouter.post(
         mode: ranking.mode,
         modelVariant: ranking.modelVariant,
         modelRunId: ranking.modelRunId,
+        trainingLabelSource: ranking.trainingLabelSource,
         scoreScale: ranking.scoreScale,
         isCalibratedProbability: false,
       };
@@ -360,14 +418,12 @@ insertSectionsRouter.post(
         warning: ranking.warnings.length ? ranking.warnings.join(" ") : null,
       });
     } catch (error) {
-      res.status(500).json({
-        placementStatus: "unavailable",
-        slots: [],
-        points: [],
-        error: error instanceof Error ? error.message : "Insert analysis failed.",
-      });
+      const body = failureBody("Insert analysis failed.", error);
+      if (!res.headersSent && !signal.aborted) {
+        res.status(500).json({ placementStatus: "unavailable", slots: [], points: [], ...body });
+      }
     } finally {
-      await cleanup();
+      await removeTempDir(tempDir);
     }
-  },
+  }),
 );
