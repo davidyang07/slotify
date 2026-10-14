@@ -203,6 +203,7 @@ python -m pytest backend/tests/python   # the audio pipeline (needs backend/requ
 | [`docs/model-inference.md`](docs/model-inference.md) | How a request becomes a learned ranking |
 | [`docs/ad-inserter.md`](docs/ad-inserter.md) | The insertion pipeline, two-speaker modes and voice cloning |
 | [`docs/demo-runbook.md`](docs/demo-runbook.md) | The 2-3 minute demo walkthrough |
+| [`DESIGN.md`](DESIGN.md) | The UI design system: tokens, components and rules (read by AI coding agents too) |
 | [`ml/README.md`](ml/README.md) | Every ML command |
 
 ## License
