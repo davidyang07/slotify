@@ -1,0 +1,120 @@
+/* ═══════════════════════════════════════════════════
+   app-header and file-bar
+   56px on canvas with a bottom hairline: wordmark left, the file bar and the
+   GitHub link right. No step links.
+   ═══════════════════════════════════════════════════ */
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "brand file github";
+  align-items: center;
+  column-gap: var(--space-md);
+  min-height: var(--nav-height);
+  padding-inline: max(var(--gutter), calc((100% - var(--content-max)) / 2));
+  background: var(--canvas);
+  border-bottom: 1px solid var(--hairline);
+  font-size: 14px;
+  color: var(--ink-subtle);
+}
+
+.brand {
+  grid-area: brand;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xxs);
+  margin-left: calc(var(--space-xxs) * -1);
+  border-radius: var(--r-md);
+  color: var(--ink);
+}
+
+.github-link {
+  grid-area: github;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  color: var(--ink-subtle);
+}
+
+.github-link:hover {
+  background: var(--surface-1);
+  color: var(--ink);
+}
+
+/* ── file-bar ────────────────────────────────────── */
+
+.file-bar {
+  grid-area: file;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+/* mono, ink-muted. The name ellipsizes; format, size and duration never do. */
+.file-bar-text {
+  display: flex;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.file-bar-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-bar-meta {
+  flex-shrink: 0;
+  white-space: pre;
+}
+
+.file-bar-input {
+  display: none;
+}
+
+.file-bar .secondary {
+  flex-shrink: 0;
+}
+
+/* ── Responsive ──────────────────────────────────── */
+
+/* Below 1024px the header scrolls away: the ad panel no longer sticks under it. */
+@media (max-width: 1023px) {
+  .app-header {
+    position: relative;
+  }
+}
+
+/* Phones: the file bar takes its own row under the wordmark, so the name has
+   room to ellipsize instead of pushing the header wider than the screen. */
+@media (max-width: 639px) {
+  .app-header.has-file {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand github"
+      "file file";
+    row-gap: 0;
+    padding-bottom: var(--space-xs);
+  }
+
+  .app-header.has-file .brand,
+  .app-header.has-file .github-link {
+    margin-block: 10px;
+  }
+
+  .app-header.has-file .file-bar {
+    justify-content: space-between;
+  }
+}

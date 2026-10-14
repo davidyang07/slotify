@@ -46,7 +46,7 @@ flowchart LR
 
 | Component | Stack | Role |
 | --- | --- | --- |
-| `frontend/` | React 19, TypeScript, Vite | Upload → analyze → select → generate → export |
+| `frontend/` | React 19, TypeScript, Vite | One-screen workspace: drop a file, pick breaks, render |
 | `backend/src/` | Node, Express, TypeScript (`tsx`, no build step) | Product API, ffmpeg muxing, ElevenLabs and OpenAI calls |
 | `backend/ad_inserter/` | Python, librosa, ffmpeg | Audio analysis and the insertion/mixing pipeline |
 | `ml/src/slotify_rank/` | Python, PyTorch, transformers, sentence-transformers | Features, model, training, evaluation, product inference |
@@ -120,7 +120,7 @@ npm run preflight
 npm run demo
 ```
 
-Then open <http://localhost:5173>, drop in an audio file, and click **Analyze**.
+Then open <http://localhost:5173> and drop in an audio file; analysis starts on drop.
 In development the UI calls the API through Vite's proxy, so it is same-origin
 and needs no CORS setup.
 

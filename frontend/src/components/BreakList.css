@@ -1,0 +1,420 @@
+/* ═══════════════════════════════════════════════════
+   break-list, break-row, score-bar, reason-tag, inline-progress
+   ═══════════════════════════════════════════════════ */
+
+.break-list {
+  min-width: 0;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+}
+
+/* ── Header ──────────────────────────────────────── */
+
+/* Title and meta left; the provenance chip and the weak-label notice right. */
+.break-list-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title prov"
+    "meta prov";
+  align-items: start;
+  gap: var(--space-xxs) var(--space-lg);
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* card-title */
+.break-list-title {
+  grid-area: title;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.3px;
+}
+
+.break-list-meta {
+  grid-area: meta;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-subtle);
+}
+
+.break-list-provenance {
+  grid-area: prov;
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  max-width: 300px;
+  min-width: 0;
+}
+
+/* provenance-chip */
+.provenance-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xs);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+/* The weak-label notice: caption ink-subtle with an icon -- a caveat has no
+   colour of its own, so amber keeps one meaning. */
+.weak-label-notice {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-subtle);
+  text-align: right;
+  text-wrap: pretty;
+}
+
+/* Inline with the first line of the text, wherever that line breaks. */
+.weak-label-notice svg {
+  display: inline-block;
+  margin-right: 5px;
+  vertical-align: -2px;
+  color: var(--ink-muted);
+}
+
+/* ── inline-progress ─────────────────────────────── */
+
+.inline-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm) var(--space-md);
+  padding: var(--space-lg) var(--space-md);
+}
+
+.inline-progress-text {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+/* ── Messages: failed, cancelled, nothing found ─── */
+
+.break-list-message {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-xs);
+  padding: var(--space-lg) var(--space-md);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.break-list-message > button {
+  margin-top: var(--space-xs);
+}
+
+.break-list-message-title {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.break-list-message-text {
+  max-width: 60ch;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-subtle);
+}
+
+/* ── break-row ───────────────────────────────────── */
+
+.break-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.break-row {
+  border-bottom: 1px solid var(--hairline);
+  font-size: 14px;
+  line-height: 1.5;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.break-row:hover {
+  background: var(--surface-2);
+}
+
+/* break-row-selected: surface-2 and a 2px amber left edge. An inset shadow
+   rather than a border, so selecting never shifts the row's content. */
+.break-row.is-selected {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.break-row-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: 52px;
+  padding: 8px var(--space-md);
+  cursor: pointer;
+}
+
+.break-check {
+  flex-shrink: 0;
+}
+
+/* mono, ink */
+.break-time {
+  flex: 0 0 48px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.break-score {
+  display: inline-flex;
+  flex: 0 0 100px;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.break-score-num {
+  flex: 0 0 28px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.break-score-num.is-empty {
+  color: var(--ink-subtle);
+}
+
+/* score-bar: 64 x 4, surface-3 track, ink-subtle fill. */
+.score-bar {
+  position: relative;
+  flex: 0 0 64px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+}
+
+.break-row:hover .score-bar,
+.break-row.is-selected .score-bar {
+  background: var(--surface-4);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+.score-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--ink-subtle);
+}
+
+.break-reasons {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xxs) var(--space-sm);
+  min-width: 0;
+}
+
+/* reason-tag: caption, ink-subtle, joined by " · ". */
+.break-tags {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-subtle);
+}
+
+.reason-tag {
+  white-space: nowrap;
+}
+
+/* The compact per-break sponsor select (only with more than one sponsor). */
+.break-reasons .break-sponsor {
+  width: auto;
+  min-width: 0;
+  max-width: 200px;
+  min-height: 40px;
+  padding: 6px 28px 6px 10px;
+  font-size: 14px;
+}
+
+.break-preview,
+.break-expand {
+  flex-shrink: 0;
+}
+
+.break-preview.is-disabled,
+.break-preview.is-disabled:hover {
+  background: transparent;
+  color: var(--ink-tertiary);
+  cursor: not-allowed;
+}
+
+.break-expand svg {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.break-row.is-expanded .break-expand svg {
+  transform: rotate(180deg);
+}
+
+/* ── Details and inline preview ──────────────────── */
+
+/* Indented to the timestamp column: 16px padding + 18px checkbox + 12px gap. */
+.break-details,
+.break-output {
+  display: grid;
+  gap: var(--space-xs);
+  padding: 0 var(--space-md) var(--space-sm) 46px;
+}
+
+.break-signals {
+  display: grid;
+  gap: var(--space-xxs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-subtle);
+}
+
+.break-signal {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.break-signal svg {
+  flex-shrink: 0;
+  color: var(--ink-muted);
+}
+
+.break-rationale {
+  max-width: 70ch;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-subtle);
+}
+
+.break-meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-subtle);
+}
+
+.break-note {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.break-audio {
+  width: 100%;
+  max-width: 420px;
+  height: 40px;
+}
+
+/* ── "Add a break at mm:ss" ──────────────────────── */
+
+.break-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs) var(--space-sm);
+  min-height: 52px;
+  padding: 10px var(--space-md);
+}
+
+.break-add-label {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+
+.break-add-time {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xxs);
+}
+
+.break-add .break-add-input {
+  width: 52px;
+  min-height: 40px;
+  padding: 8px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-align: center;
+}
+
+.break-add-colon {
+  font-family: var(--font-mono);
+  color: var(--ink-subtle);
+}
+
+.break-add-error {
+  flex-basis: 100%;
+}
+
+/* ── Responsive ──────────────────────────────────── */
+
+@media (max-width: 639px) {
+  .break-list-header {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "title"
+      "meta"
+      "prov";
+  }
+
+  .break-list-provenance {
+    justify-items: start;
+    max-width: none;
+    margin-top: var(--space-xs);
+  }
+
+  .weak-label-notice {
+    text-align: left;
+  }
+
+  /* Reason tags wrap to a second line under the timestamp. */
+  .break-row-main {
+    flex-wrap: wrap;
+    row-gap: 2px;
+    padding-block: 8px 10px;
+  }
+
+  .break-reasons {
+    order: 10;
+    flex-basis: 100%;
+    padding-left: 30px;
+  }
+
+  .break-score {
+    flex: 1 1 auto;
+  }
+
+  .break-preview {
+    margin-left: auto;
+  }
+
+  .break-details,
+  .break-output {
+    padding-left: 46px;
+  }
+}

@@ -1,8 +1,9 @@
 # Slotify frontend
 
-React 19 + TypeScript + Vite. Upload an episode, get ranked ad-insertion
-points from the backend, then (with ElevenLabs configured on the server)
-generate and merge sponsor reads in the host's cloned voice.
+React 19 + TypeScript + Vite. One screen: drop an episode, read the ranked
+ad-insertion points the backend returns, pick some, and (with ElevenLabs
+configured on the server) render sponsor reads in the host's cloned voice.
+`../DESIGN.md` is the design system it follows.
 
 ## Development
 
@@ -53,7 +54,10 @@ rebuild.
 
 ## Layout
 
-- `src/App.tsx`: the upload, analyze and export flow.
+- `src/App.tsx`: the workspace's state and its API calls (analysis, voice clone, TTS, merge).
+- `src/components/`: presentational pieces -- `EmptyState` (no file yet), `AppHeader` (wordmark and the file bar with Replace), `WaveformPanel`, `BreakList` / `BreakRow`, `AdPanel`, `RightsModal`, `ProcessingOverlay` (voice cloning only).
+- `src/lib/format.ts`: timestamps, sizes and the file bar text.
+- `src/lib/workspace.ts`: reason tags for a break row, "Add a break at mm:ss" parsing, the Render label and why it is off.
 - `src/lib/api.ts`: the one fetch helper (base URL, bearer token, error messages).
 - `src/lib/capabilities.ts`: what the backend can do, and why generation is off when it is.
 - `src/lib/recommendations.ts`: parses `/api/insert-sections` without inventing slots or scores.

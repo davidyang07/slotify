@@ -392,6 +392,8 @@ landing page: what the user has decided is always visible.
   - Main column: the `waveform-panel` full width, then the `break-list`.
   - Right column (≥1024px): the `ad-panel`, 360px, sticky below the header.
   - Below 1024px the ad panel stacks under the break list.
+  - Below 640px the `file-bar` moves to a second header row (name, format, size,
+    duration and Replace don't fit in 56px at 375px); the name ellipsizes.
 - Max content width 1280px, centred.
 
 ### Whitespace
@@ -434,7 +436,7 @@ No step links.
 - **`button-primary-wide`** — Render, full width of the ad panel, 44px tall.
 - **`button-secondary`** — surface-1 with a hairline border: Replace, Add sponsor, Add break, Download, Cancel.
 - **`button-tertiary`** — text-only: remove a sponsor, expand a row's details.
-- **`button-disabled`** — surface-2, ink-tertiary label, hairline border; never a dimmed amber. A disabled Render says why underneath in caption ink-subtle (e.g. "Needs an ElevenLabs key on the server").
+- **`button-disabled`** — surface-2, ink-tertiary label, hairline border; never a dimmed amber. A disabled Render says why underneath in caption ink-subtle, before anyone clicks (e.g. "Add a sponsor name to render.", "Ad generation needs an ElevenLabs API key on the server.").
 
 ### Empty state and file
 - **`dropzone`** — surface-1, 1px dashed hairline-strong, 16px radius, keyboard-focusable; on drag-over **`dropzone-active`**. One caption line lists accepted formats and the size limit.
@@ -444,7 +446,9 @@ No step links.
 **`waveform-panel`** — canvas well inside a 12px hairline frame, full width of
 the main column. Bars in `{colors.wave}`; unselected markers
 `{colors.wave-marker}`; selected markers `{colors.accent}`; the insertion cursor
-`{colors.ink}`. Clicking a marker selects or focuses its row. Start/end time in
+is a pair of small `{colors.ink}` triangles above and below the focused marker,
+so a selected marker stays amber. Clicking a marker toggles its row. A play
+button and playhead in the panel play the original audio; start/end time in
 mono caption.
 
 ### Break list

@@ -1,0 +1,154 @@
+/* ═══════════════════════════════════════════════════
+   waveform-panel
+   A canvas well inside a 12px hairline frame, full width of the main column.
+   ═══════════════════════════════════════════════════ */
+
+.waveform-panel {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+  padding: var(--space-md);
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+}
+
+.waveform-well {
+  position: relative;
+  height: 120px;
+  cursor: pointer;
+}
+
+.waveform-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The played portion, in --wave-strong, clipped to the playhead. */
+.waveform-canvas-played {
+  pointer-events: none;
+}
+
+.waveform-message {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-md);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-subtle);
+  text-align: center;
+}
+
+/* ── Markers ─────────────────────────────────────── */
+
+/* A 20px-wide hit area; the visible marker is the 2px line inside it. */
+.waveform-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  margin-left: -10px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  cursor: pointer;
+}
+
+.waveform-marker::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 9px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--wave-marker);
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.waveform-marker:hover::before {
+  background: var(--ink-subtle);
+}
+
+.waveform-marker.is-selected::before,
+.waveform-marker.is-selected:hover::before {
+  background: var(--accent);
+}
+
+.waveform-marker:focus-visible {
+  outline-offset: 0;
+}
+
+/* The insertion cursor: ink caps above and below the focused break's marker,
+   so the marker keeps its own colour. */
+.waveform-cursor {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 0;
+  pointer-events: none;
+}
+
+.waveform-cursor::before,
+.waveform-cursor::after {
+  content: "";
+  position: absolute;
+  left: -5px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+}
+
+.waveform-cursor::before {
+  top: 0;
+  border-top: 6px solid var(--ink);
+}
+
+.waveform-cursor::after {
+  bottom: 0;
+  border-bottom: 6px solid var(--ink);
+}
+
+.waveform-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--wave-strong);
+  pointer-events: none;
+}
+
+/* ── Footer: play the original, start and end time ─ */
+
+.waveform-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-left: calc(var(--space-xs) * -1);
+}
+
+.waveform-time {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-subtle);
+}
+
+.waveform-time-end {
+  margin-left: auto;
+}
+
+@media (max-width: 639px) {
+  .waveform-panel {
+    padding: var(--space-sm);
+  }
+
+  .waveform-well {
+    height: 96px;
+  }
+}

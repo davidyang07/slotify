@@ -1,16 +1,18 @@
 /* ═══════════════════════════════════════════════════
-   Slotify — app styles
+   Slotify — app shell and shared controls
    DESIGN.md: near-black canvas, a four-step surface ladder with 1px
    hairlines, one amber accent (brand mark, primary action, focus,
    selection). No gradients, glows or drop shadows. Tokens: index.css.
+   Component styles live next to their components in src/components/.
    ═══════════════════════════════════════════════════ */
 
 /* ── Processing overlay (processing-overlay) ─────── */
 
 /* `.app > .processing-screen`, not `.processing-screen`: the overlay is a direct
-   child of .app, and `.app > *` (later in this file, same specificity) would
-   otherwise make it position: relative -- a block at the bottom of the page,
-   with its Cancel button out of sight, instead of a full-screen overlay. */
+   child of .app, and a `.app > *` rule (the old landing page had one, making
+   every child position: relative) would otherwise win at equal specificity and
+   turn the overlay into a block at the bottom of the page, its Cancel button
+   out of sight, instead of a full-screen overlay. Only voice cloning uses it. */
 .app > .processing-screen {
   position: fixed;
   inset: 0;
@@ -26,40 +28,6 @@
   animation: fadeIn 200ms var(--ease-out) both;
 }
 
-.processing-waveform {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  height: 80px;
-  max-width: 100%;
-  overflow: hidden;
-}
-
-/* Bars in --wave; one amber "active" bar sweeps left to right. */
-.processing-bar {
-  flex: 0 0 3px;
-  width: 3px;
-  height: 6px;
-  border-radius: 2px;
-  background-color: var(--wave);
-  animation-name: barPulse, barActive;
-  animation-duration: var(--bar-dur, 0.7s), 2.6s;
-  animation-delay: var(--bar-delay, 0s), calc(var(--bar-index, 0) * 0.05s);
-  animation-timing-function: ease-in-out, linear;
-  animation-iteration-count: infinite, infinite;
-  animation-direction: alternate, normal;
-}
-
-@keyframes barPulse {
-  from { height: 6px; }
-  to   { height: var(--peak-h, 40px); }
-}
-
-@keyframes barActive {
-  0%, 1.9% { background-color: var(--accent); }
-  2%, 100% { background-color: var(--wave); }
-}
-
 .processing-text {
   display: flex;
   flex-direction: column;
@@ -69,6 +37,7 @@
   text-align: center;
 }
 
+/* headline */
 .processing-status {
   font-size: 28px;
   font-weight: 600;
@@ -83,9 +52,66 @@
   color: var(--ink-subtle);
 }
 
-/* A hung request must never lock the screen, so the overlay can be dismissed. */
 .processing-cancel {
   margin-top: var(--space-md);
+}
+
+/* ── Bar animation (overlay and inline-progress) ─── */
+
+.bars {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.bars-overlay {
+  gap: 3px;
+  height: 80px;
+}
+
+.bars-inline {
+  gap: 2px;
+  height: 24px;
+}
+
+/* Bars in --wave; one amber "active" bar sweeps left to right. */
+.bar {
+  flex: 0 0 3px;
+  width: 3px;
+  height: 4px;
+  border-radius: 2px;
+  background-color: var(--wave);
+  animation-name: barPulse, barActive;
+  animation-duration: var(--bar-dur, 0.7s), 2.6s;
+  animation-delay: var(--bar-delay, 0s), calc(var(--bar-index, 0) * 0.05s);
+  animation-timing-function: ease-in-out, linear;
+  animation-iteration-count: infinite, infinite;
+  animation-direction: alternate, normal;
+}
+
+/* 24 bars sweep in 1.2s, so each is amber for 1/24 of the cycle. */
+.bars-inline .bar {
+  flex-basis: 2px;
+  width: 2px;
+  animation-name: barPulse, barActiveInline;
+  animation-duration: var(--bar-dur, 0.7s), 1.2s;
+}
+
+@keyframes barPulse {
+  from { height: 4px; }
+  to   { height: var(--peak-h, 40px); }
+}
+
+@keyframes barActive {
+  0%, 1.9% { background-color: var(--accent); }
+  2%, 100% { background-color: var(--wave); }
+}
+
+@keyframes barActiveInline {
+  0%, 4.1% { background-color: var(--accent); }
+  4.2%, 100% { background-color: var(--wave); }
 }
 
 /* ── App shell ───────────────────────────────────── */
@@ -97,14 +123,8 @@
   width: 100%;
   max-width: 100vw;
   min-height: 100vh;
-  overflow-x: hidden;
   background: var(--canvas);
   color: var(--ink);
-}
-
-.app > * {
-  position: relative;
-  z-index: 1;
 }
 
 @keyframes fadeIn {
@@ -117,144 +137,44 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Top nav (top-nav) ───────────────────────────── */
+/* ── The workspace ───────────────────────────────── */
 
-.topbar {
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-md);
-  height: var(--nav-height);
-  padding-inline: max(var(--gutter), calc((100% - var(--content-max)) / 2));
-  background: var(--canvas);
-  border-bottom: 1px solid var(--hairline);
-  font-size: 14px;
-  color: var(--ink-subtle);
-}
-
-.logo {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-xs);
-  flex-shrink: 0;
-  padding: var(--space-xxs);
-  margin-left: calc(var(--space-xxs) * -1);
-  border-radius: var(--r-md);
-  color: var(--ink);
-}
-
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  min-width: 0;
-}
-
-.nav-steps {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xxs);
-}
-
-/* Step links are button-tertiary; the current one is nav-link-active. */
-.nav-button {
-  min-height: 36px;
-  padding: 6px 12px;
-  border: 0;
-  border-radius: var(--r-md);
-  background: transparent;
-  color: var(--ink-subtle);
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.2;
-}
-
-.nav-button:hover:not(:disabled) {
-  background: var(--surface-1);
-  color: var(--ink);
-}
-
-.nav-button.active,
-.nav-button.active:hover:not(:disabled) {
-  background: var(--surface-2);
-  color: var(--ink);
-}
-
-.nav-button:disabled {
-  color: var(--ink-tertiary);
-  cursor: not-allowed;
-}
-
-.github-link {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  border-radius: var(--r-md);
-  color: var(--ink-subtle);
-}
-
-.github-link:hover {
-  background: var(--surface-1);
-  color: var(--ink);
-}
-
-/* ── Page layout ─────────────────────────────────── */
-
-.page {
+/* Main column (waveform, break list) and the 360px ad panel from 1024px;
+   one column below. 16px between them, 24px gutters (16px on phones). */
+.workspace {
   flex: 1;
   display: grid;
-  align-content: start;
-  gap: var(--space-xl);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-md);
   width: 100%;
   max-width: calc(var(--content-max) + 2 * var(--gutter));
   margin: 0 auto;
-  padding: var(--space-xxl) var(--gutter);
+  padding: var(--space-lg) var(--gutter) var(--space-xxl);
   animation: rise 240ms var(--ease-out) both;
+}
+
+.workspace-main {
+  display: grid;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
 }
 
 /* ── Text ────────────────────────────────────────── */
 
 /* eyebrow */
-.eyebrow,
-.timeline-title,
-.inline-preview-title,
-.sponsor-header,
-.slot-preview-label {
+.eyebrow {
   font-size: 12px;
   font-weight: 500;
   line-height: 1.3;
   letter-spacing: 0.4px;
   text-transform: uppercase;
-  color: var(--ink-subtle);
-}
-
-/* headline: screen titles */
-.page-header h2 {
-  font-size: 28px;
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -0.6px;
-  color: var(--ink);
-}
-
-/* card-title */
-h3,
-.upload-title,
-.modal-title {
-  font-size: 18px;
-  font-weight: 500;
-  line-height: 1.3;
-  letter-spacing: -0.3px;
-  color: var(--ink);
-}
-
-.subtitle {
-  max-width: 40rem;
-  font-size: 15px;
-  line-height: 1.5;
   color: var(--ink-subtle);
 }
 
@@ -265,178 +185,12 @@ h3,
   color: var(--ink-subtle);
 }
 
-.helper-error {
-  color: var(--danger);
-}
-
 .optional {
   font-weight: 400;
   color: var(--ink-subtle);
 }
 
-/* ── Panel (panel) ───────────────────────────────── */
-
-.page-card {
-  display: grid;
-  gap: var(--space-lg);
-  min-width: 0;
-  padding: var(--space-xl);
-  background: var(--surface-1);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-xl);
-}
-
-.page-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-md);
-}
-
-.page-header > div {
-  display: grid;
-  gap: var(--space-xs);
-  min-width: 0;
-}
-
-.upload-header-row {
-  flex-direction: column;
-}
-
-.upload-header {
-  width: 100%;
-}
-
-/* ── Step indicator ──────────────────────────────── */
-
-.upload-flow,
-.task-timeline {
-  position: relative;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  justify-items: center;
-  width: 100%;
-  max-width: 360px;
-  margin: 0 auto;
-}
-
-.flow-line,
-.task-line {
-  position: absolute;
-  top: 7.5px;
-  left: calc(100% / 6);
-  right: calc(100% / 6);
-  height: 1px;
-  background: var(--hairline-strong);
-}
-
-.flow-step,
-.task-step {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  justify-items: center;
-  gap: var(--space-xs);
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--ink-subtle);
-}
-
-.flow-step.active,
-.task-step.active {
-  color: var(--ink);
-  font-weight: 500;
-}
-
-.flow-dot,
-.task-dot {
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--canvas);
-  border: 1px solid var(--hairline-tertiary);
-  font-size: 10px;
-  line-height: 1;
-  color: var(--ink-subtle);
-}
-
-/* Future step: a small ink-tertiary dot. */
-.flow-dot::after,
-.task-dot::after {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ink-tertiary);
-}
-
-/* Current step: an amber dot. */
-.flow-dot.active,
-.task-dot.active {
-  border-color: var(--accent-line);
-}
-
-.flow-dot.active::after,
-.task-dot.active::after {
-  background: var(--accent);
-}
-
-/* Completed step: ink-subtle with a check. */
-.task-dot.complete {
-  background: var(--surface-2);
-  border-color: var(--hairline-strong);
-}
-
-.task-dot.complete::after {
-  content: none;
-}
-
-/* ── Upload ──────────────────────────────────────── */
-
-.upload-grid,
-.upload-details {
-  display: grid;
-  gap: var(--space-lg);
-  min-width: 0;
-}
-
-/* dropzone */
-.upload-card {
-  position: relative;
-  display: grid;
-  justify-items: center;
-  gap: var(--space-xs);
-  min-width: 0;
-  padding: var(--space-xxl);
-  background: var(--surface-1);
-  border: 1px dashed var(--hairline-strong);
-  border-radius: var(--r-xl);
-  color: var(--ink-muted);
-  text-align: center;
-  cursor: pointer;
-  transition:
-    background-color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out);
-}
-
-.upload-card:hover {
-  border-color: var(--hairline-tertiary);
-}
-
-/* dropzone-active: dragging, or a file is chosen */
-.upload-card.drag-active,
-.upload-card.has-file,
-.upload-card.has-file:hover {
-  background: var(--surface-2);
-  border-color: var(--accent-line);
-}
-
-/* The file input stays in the tab order (it used to be display: none, which
-   made the dropzone unreachable by keyboard); the ring shows on the card. */
-input[type="file"] {
+.visually-hidden {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -446,228 +200,19 @@ input[type="file"] {
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
-  opacity: 0;
 }
 
-.upload-card:has(input:focus-visible) {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
-
-.upload-icon {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  margin-bottom: var(--space-xs);
-  background: var(--surface-2);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  color: var(--ink-muted);
-}
-
-.upload-card.has-file .upload-icon {
-  background: var(--surface-3);
-  color: var(--ink);
-}
-
-.upload-icon svg {
-  width: 20px;
-  height: 20px;
-}
-
-.upload-subtitle {
-  font-size: 14px;
-  color: var(--ink-muted);
-}
-
-.upload-helper {
-  max-width: 100%;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--ink-subtle);
-  overflow-wrap: anywhere;
-}
-
-/* File details: a card with a two-column definition grid, values in mono. */
-.file-info-panel {
-  min-width: 0;
-  overflow: hidden;
-  background: var(--surface-1);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
-  animation: rise 200ms var(--ease-out) both;
-}
-
-.file-info-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-sm);
-  width: 100%;
-  min-height: 48px;
-  padding: var(--space-sm) var(--space-md);
-  border: 0;
-  border-radius: var(--r-lg);
-  background: transparent;
-  color: var(--ink);
-  text-align: left;
-}
-
-.file-info-header:hover {
-  background: var(--surface-2);
-}
-
-/* Inset, because the panel clips anything drawn outside it. */
-.file-info-header:focus-visible {
-  outline-offset: -2px;
-}
-
-.file-info-name {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.file-info-led {
-  flex-shrink: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--success);
-}
-
-.file-info-arrow {
-  display: flex;
-  flex-shrink: 0;
-  color: var(--ink-subtle);
-}
-
-.file-info-body {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 240ms var(--ease-out);
-}
-
-.file-info-panel.open .file-info-body {
-  max-height: 240px;
-}
-
-.file-info-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  border-top: 1px solid var(--hairline);
-}
-
-.file-info-item {
-  display: grid;
-  gap: var(--space-xxs);
-  min-width: 0;
-  padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--hairline);
-}
-
-.file-info-item:nth-child(odd) {
-  border-right: 1px solid var(--hairline);
-}
-
-.file-info-item:nth-last-child(-n + 2) {
-  border-bottom: 0;
-}
-
-.file-info-key {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--ink-subtle);
-}
-
-.file-info-val {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--ink);
-}
-
-.file-info-tag {
-  padding: 0 6px;
-  background: var(--surface-2);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-xs);
-  font-size: 12px;
-  color: var(--ink-muted);
-}
-
-/* status-ok */
-.file-info-val.file-info-ready {
-  font-family: var(--font-sans);
-  font-size: 14px;
-  color: var(--success);
-}
-
-/* Audio players */
-.inline-preview {
-  display: grid;
-  gap: var(--space-sm);
-  min-width: 0;
-  padding: var(--space-md);
-  background: var(--surface-1);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
-}
-
-.inline-preview audio,
-.export-output-audio {
-  display: block;
-  width: 100%;
-  height: 40px;
-}
-
-/* ── Sponsor cards and fields ────────────────────── */
-
-.sponsor-list {
-  display: grid;
-  gap: var(--space-sm);
-}
-
-.sponsor-card {
-  display: grid;
-  gap: var(--space-md);
-  min-width: 0;
-  padding: var(--space-lg);
-  background: var(--surface-1);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
-}
-
-.sponsor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-sm);
-  min-height: 24px;
-}
+/* ── Fields ──────────────────────────────────────── */
 
 .field {
   display: grid;
-  gap: var(--space-xs);
+  gap: 6px;
+  width: 100%;
   min-width: 0;
-  text-align: left;
 }
 
 /* Labels: body-sm ink-muted, above the field. */
-.field label,
-.slot-select label,
-.voice-setting-field label {
+.field label {
   font-size: 14px;
   font-weight: 400;
   line-height: 1.5;
@@ -693,12 +238,24 @@ select {
 }
 
 textarea {
-  min-height: 88px;
+  min-height: 64px;
   resize: vertical;
 }
 
+/* A chevron drawn in ink-subtle, so selects match on every surface. */
 select {
+  appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='m4 6 4 4 4-4' stroke='%238a8f98' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px;
   cursor: pointer;
+}
+
+select option {
+  background: var(--surface-3);
+  color: var(--ink);
 }
 
 input[type="text"]:hover,
@@ -721,6 +278,45 @@ select:focus {
   opacity: 1;
 }
 
+/* Checkbox: 6px radius; checked is the selected state, so amber. */
+.checkbox {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline-tertiary);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.checkbox:hover {
+  border-color: var(--ink-tertiary);
+}
+
+.checkbox::after {
+  content: "";
+  width: 5px;
+  height: 9px;
+  margin-top: -2px;
+  border: solid var(--on-accent);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+}
+
+.checkbox:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkbox:checked::after {
+  transform: rotate(45deg) scale(1);
+}
+
 /* ── Buttons ─────────────────────────────────────── */
 
 .primary,
@@ -741,7 +337,9 @@ select:focus {
   line-height: 1.2;
   letter-spacing: 0;
   text-align: center;
+  text-decoration: none;
   text-transform: none;
+  white-space: nowrap;
 }
 
 /* button-primary */
@@ -801,466 +399,36 @@ select:focus {
   cursor: not-allowed;
 }
 
-.secondary.small,
 .ghost.small {
-  padding: 6px 12px;
+  min-height: 32px;
+  padding: 6px 10px;
   font-size: 13px;
 }
 
-/* ── Waveform panel (waveform-panel) ─────────────── */
-
-.timeline-card {
+/* Icon-only button-tertiary: preview, expand, close, play. */
+.icon-button {
   display: grid;
-  gap: var(--space-sm);
-  min-width: 0;
-  padding: var(--space-md);
-  background: var(--canvas);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
-}
-
-.timeline-waveform {
-  position: relative;
-  width: 100%;
-}
-
-/* The canvas is painted in --canvas, --wave, --wave-marker, --accent and
-   --ink by drawWaveform in App.tsx. */
-.waveform {
-  height: 160px;
-  overflow: hidden;
-  background: var(--canvas);
-}
-
-.waveform canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.timeline-markers {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.timeline-markers > * {
-  pointer-events: auto;
-}
-
-/* The inline `left` already subtracts half the 16px width. */
-.timeline-dot {
-  position: absolute;
-  top: 50%;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  transform: translateY(-50%);
-  border: 2px solid var(--ink-subtle);
-  border-radius: 50%;
-  background: var(--canvas);
-}
-
-.timeline-dot:hover {
-  border-color: var(--ink-muted);
-}
-
-.timeline-dot.active,
-.timeline-dot.active:hover {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.timeline-labels {
-  display: flex;
-  justify-content: space-between;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--ink-subtle);
-}
-
-/* ── Add custom slot ─────────────────────────────── */
-
-.add-slot-section {
-  display: grid;
-  justify-items: start;
-  gap: var(--space-md);
-}
-
-.add-slot-form {
-  display: grid;
-  justify-items: start;
-  gap: var(--space-md);
-  width: 100%;
-  padding: var(--space-lg);
-  background: var(--surface-1);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
-  animation: rise 200ms var(--ease-out) both;
-}
-
-.add-slot-inputs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 160px));
-  gap: var(--space-md);
-  width: 100%;
-}
-
-.add-slot-form input {
-  font-family: var(--font-mono);
-}
-
-/* ── Slot cards (slot-card) ──────────────────────── */
-
-.slot-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-md);
-}
-
-.slot-preview {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-  min-width: 0;
-  padding: 20px;
-  background: var(--surface-1);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
-  transition:
-    background-color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out);
-}
-
-.slot-preview:hover {
-  background: var(--surface-2);
-  border-color: var(--hairline-strong);
-}
-
-/* slot-card-selected */
-.slot-preview.active,
-.slot-preview.active:hover {
-  background: var(--surface-2);
-  border-color: var(--accent-line);
-}
-
-.slot-preview-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-sm);
-}
-
-/* mono-display */
-.slot-preview-time {
-  margin-top: var(--space-xxs);
-  font-family: var(--font-mono);
-  font-size: 32px;
-  font-weight: 500;
-  line-height: 1.1;
-  letter-spacing: -1px;
-  color: var(--ink);
-}
-
-/* score-badge: mono pill on surface-2 */
-.slot-badge {
-  flex-shrink: 0;
-  padding: 2px 8px;
-  background: var(--surface-2);
-  border: 1px solid transparent;
-  border-radius: var(--r-pill);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--ink-muted);
-}
-
-/* On a lifted card the badge steps up the ladder so it stays visible. */
-.slot-preview:hover .slot-badge,
-.slot-preview.active .slot-badge {
-  background: var(--surface-4);
-  border-color: var(--hairline);
-}
-
-/* A manual slot carries no score, so its badge is deliberately quieter -- it
-   must not read like a weak detection. */
-.slot-badge.badge-manual {
-  color: var(--ink-subtle);
-}
-
-/* Which ranker produced the slot: a mono provenance label. */
-.slot-source {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--ink-subtle);
-}
-
-.slot-select {
-  display: grid;
-  gap: var(--space-xs);
-}
-
-.slot-preview-notes {
-  display: grid;
-  gap: var(--space-xs);
-  padding-top: var(--space-md);
-  border-top: 1px solid var(--hairline);
-}
-
-.note {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-xs);
-  font-size: 14px;
-  line-height: 1.4;
-  color: var(--ink-muted);
-}
-
-/* A small success check for what was measured... */
-.note-icon {
-  display: grid;
-  flex: 0 0 16px;
   place-items: center;
-  width: 16px;
-  height: 16px;
-  margin-top: 1px;
-  color: var(--success);
-}
-
-/* ...and no warning colour: a caution is ink-muted with an icon. */
-.note-icon.down {
-  border: 1px solid var(--hairline-tertiary);
-  border-radius: 50%;
-  font-size: 10px;
-  font-weight: 600;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  font-size: 20px;
   line-height: 1;
   color: var(--ink-muted);
 }
 
-.note-caution {
-  color: var(--ink-muted);
-}
-
-.slot-rationale {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--ink-subtle);
-}
-
-.slot-preview-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-xs);
-  margin-top: auto;
-}
-
-.slot-preview-actions > button {
-  flex: 1 1 0;
-  min-width: max-content;
-}
-
-/* Selected: still button-secondary, with an amber check label. */
-.select-slot.selected {
-  color: var(--accent);
-}
-
-.select-slot-check {
-  flex-shrink: 0;
-}
-
-/* ── Provenance (provenance-chip) ────────────────── */
-
-.provenance-strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-xs) var(--space-sm);
-  margin-top: var(--space-xs);
-}
-
-.provenance-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  background: var(--surface-2);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-xs);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--ink-muted);
-}
-
-.provenance-note {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--ink-subtle);
-}
-
-/* What the ranker was trained on, when that limits what its order means:
-   ink-subtle body-sm, never hidden. */
-.provenance-note.provenance-caveat {
-  flex-basis: 100%;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-/* ── Voice settings ──────────────────────────────── */
-
-.voice-settings-section {
-  display: grid;
-  gap: var(--space-lg);
-  min-width: 0;
-  padding: var(--space-lg);
-  background: var(--surface-1);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
-}
-
-.voice-settings-header {
-  display: grid;
-  gap: var(--space-xxs);
-}
-
-.voice-settings-subtitle {
-  font-size: 14px;
-  color: var(--ink-subtle);
-}
-
-.voice-settings-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-lg);
-}
-
-.voice-setting-field {
-  display: grid;
-  align-content: start;
-  gap: var(--space-xs);
-  min-width: 0;
-}
-
-/* ── Export ──────────────────────────────────────── */
-
-.export-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-lg);
-}
-
-.export-card,
-.export-note {
-  display: grid;
-  align-content: start;
-  gap: var(--space-md);
-  min-width: 0;
-  padding: var(--space-lg);
-  background: var(--surface-1);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
-}
-
-.summary-item {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-md);
-  padding-bottom: var(--space-sm);
-  border-bottom: 1px solid var(--hairline);
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.summary-item span {
-  flex-shrink: 0;
-  color: var(--ink-subtle);
-}
-
-.summary-item strong {
-  min-width: 0;
-  font-weight: 500;
+.icon-button:hover:not(:disabled) {
+  background: var(--surface-3);
   color: var(--ink);
-  text-align: right;
-  overflow-wrap: anywhere;
 }
 
-.summary-item .summary-mono {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 400;
-}
-
-.export-output {
-  display: grid;
-  gap: var(--space-md);
-  padding-top: var(--space-lg);
-  border-top: 1px solid var(--hairline);
-}
-
-.export-output-preview {
-  display: grid;
-  gap: var(--space-sm);
-}
-
-.export-note p {
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--ink-muted);
-}
-
-.export-note .export-note-hint {
-  color: var(--ink-subtle);
-}
-
-/* Render progress: a quiet bar, no colour of its own. */
-.loader {
-  position: relative;
-  width: 100%;
-  height: 2px;
-  overflow: hidden;
-  background: var(--hairline);
-  border-radius: var(--r-pill);
-}
-
-.loader::after {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 40%;
-  background: var(--ink-muted);
-  animation: slide 1.4s var(--ease-out) infinite;
-}
-
-@keyframes slide {
-  from { transform: translateX(-100%); }
-  to   { transform: translateX(250%); }
-}
-
-/* ── Empty state ─────────────────────────────────── */
-
-.empty-state {
-  display: grid;
-  justify-items: start;
-  gap: var(--space-sm);
-  padding: var(--space-xl) var(--space-lg);
-  background: var(--surface-1);
-  border: 1px dashed var(--hairline-strong);
-  border-radius: var(--r-lg);
-}
-
-.empty-state p {
-  max-width: 60ch;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--ink-muted);
-}
-
-.empty-state .empty-state-note {
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--ink-subtle);
+.icon-button:disabled {
+  color: var(--ink-tertiary);
+  cursor: not-allowed;
 }
 
 /* ── Modal ───────────────────────────────────────── */
@@ -1296,14 +464,18 @@ select:focus {
   gap: var(--space-sm);
 }
 
+/* card-title */
 .modal-title {
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.3px;
 }
 
 .modal-icon {
-  font-size: 16px;
   color: var(--ink-muted);
 }
 
@@ -1328,38 +500,8 @@ select:focus {
   cursor: pointer;
 }
 
-/* Checkbox: 6px radius; checked is the selected state, so amber. */
-.modal-check input {
-  appearance: none;
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  margin: 2px 0 0;
-  padding: 0;
-  background: var(--surface-1);
-  border: 1px solid var(--hairline-tertiary);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-}
-
-.modal-check input::after {
-  content: "";
-  width: 5px;
-  height: 9px;
-  margin-top: -2px;
-  border: solid var(--on-accent);
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg) scale(0);
-}
-
-.modal-check input:checked {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.modal-check input:checked::after {
-  transform: rotate(45deg) scale(1);
+.modal-check .checkbox {
+  margin-top: 2px;
 }
 
 .modal-actions {
@@ -1369,38 +511,9 @@ select:focus {
   gap: var(--space-xs);
 }
 
-.icon-button {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--r-md);
-  background: transparent;
-  font-size: 20px;
-  line-height: 1;
-  color: var(--ink-subtle);
-}
-
-.icon-button:hover {
-  background: var(--surface-2);
-  color: var(--ink);
-}
-
 /* ── Status text ─────────────────────────────────── */
 
-.status-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-xs) var(--space-md);
-  width: 100%;
-  max-width: calc(var(--content-max) + 2 * var(--gutter));
-  margin: 0 auto;
-  padding: 0 var(--gutter) var(--space-lg);
-}
-
+/* Always with words; colour is never the only signal. */
 .status-ok,
 .status-error {
   font-size: 14px;
@@ -1417,51 +530,7 @@ select:focus {
 
 /* ── Responsive ──────────────────────────────────── */
 
-@media (min-width: 640px) {
-  .slot-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1024px) {
-  .slot-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 767px) {
-  .page {
-    gap: var(--space-lg);
-    padding-top: var(--space-xl);
-  }
-
-  .page-card {
-    padding: var(--space-lg);
-  }
-
-  .page-header h2 {
-    font-size: 24px;
-    letter-spacing: -0.5px;
-  }
-
-  .export-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  /* Step links tighten into a compact indicator; they stay usable. */
-  .topbar-actions {
-    gap: 0;
-  }
-
-  .nav-steps {
-    gap: 0;
-  }
-
-  .nav-button {
-    padding: 6px 8px;
-    font-size: 13px;
-  }
-
   .processing-status {
     font-size: 22px;
     letter-spacing: -0.4px;
@@ -1469,16 +538,8 @@ select:focus {
 }
 
 @media (max-width: 639px) {
-  .upload-card {
-    padding: var(--space-xl) var(--space-md);
-  }
-
-  .voice-settings-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .waveform {
-    height: 120px;
+  .workspace {
+    padding-top: var(--space-md);
   }
 
   .modal-card {
@@ -1486,18 +547,8 @@ select:focus {
   }
 }
 
-@media (max-width: 400px) {
-  .topbar {
-    gap: var(--space-xs);
-  }
-
-  .nav-button {
-    padding: 6px;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .processing-bar {
+  .bar {
     animation: none;
     height: var(--peak-h, 40px);
   }

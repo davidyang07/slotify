@@ -221,7 +221,7 @@ const announceUrl = (line) => {
   if (!served) return;
   announced = true;
   console.log("");
-  console.log(`  Open ${served} -- upload audio and click Analyze.`);
+  console.log(`  Open ${served} -- drop an audio file; analysis starts on drop.`);
   console.log(`  (/api is proxied to ${env.VITE_PROXY_TARGET})`);
   console.log("");
 };

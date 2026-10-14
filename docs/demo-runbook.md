@@ -89,8 +89,9 @@ one episode, and the signal is multimodal: a two-second pause is a good break if
 the topic also changed, and a bad one if the host just drew breath mid-sentence."
 
 **00:20 — Upload.**
-Drag the clip onto the upload card. The waveform renders client-side. Click
-**Analyze & recommend slots**.
+Drag the clip onto the dropzone. Analysis starts on drop; the waveform renders
+client-side while the break list shows progress. Type the sponsor name into the
+**Sponsor read** panel while it runs.
 
 Say while it runs: "This needs no API keys. Everything from here to the ranking
 is local."
@@ -107,7 +108,7 @@ embedding of the transcript either side plus their difference and product. Both
 encoders are frozen — I'm learning the ranking, not the representations."
 
 **01:00 — The ranking.**
-The analyze page shows the ranked slots. Point at:
+The break list fills in, ranked. Point at:
 
 - the **provenance chip** — "Learned ranker (gated)", so you can always tell
   which system produced the ordering;
@@ -115,23 +116,25 @@ The analyze page shows the ranked slots. Point at:
   probability. The product used to show '92% confidence' from
   `clamp(70 + score * 25, 70, 95)`, which reads like a calibrated number and was
   calibrated against nothing. I removed it.";
-- the **signals** under each slot — every one is measured. If no transcript was
-  available, it says so rather than filling the space.
+- the **reasons** on each row (expand a row for all of them) — every one is
+  measured. If no transcript was available, it says so rather than filling the
+  space.
 
-Note the slot count. **If it shows two slots, say so:** "It found two defensible
+Note the break count. **If it shows two, say so:** "It found two defensible
 points, so it shows two. It used to pad up to three with slots at 22, 48 and 72
 percent of the duration carrying hard-coded scores. That's the first thing I
 fixed."
 
 **01:40 — Selection and generation.**
-Select a slot. If `ELEVENLABS_API_KEY` is set, click **Preview** and let the
-sponsor read play. If it is not set, the buttons are disabled with the reason —
+Tick a break (or click its marker on the waveform). If `ELEVENLABS_API_KEY` is
+set, press the row's ▶ to preview the sponsor read in place. If it is not set,
+the controls are disabled with the reason —
 which is itself worth pointing at: "Generation is gated on the key. Placement
 isn't. That was a refactor: cloning used to run *before* analysis, so the whole
 ML demo depended on a paid API."
 
-**02:00 — Export.**
-Render, play the merged audio, download.
+**02:00 — Render.**
+Press **Render N ad breaks** in the panel, play the merged audio, download.
 
 **If they ask about architecture**, the README's Mermaid diagram is the fastest
 answer, and `docs/model-inference.md` traces a single request end to end.
