@@ -19,10 +19,10 @@ best — and reads both the waveform and the transcript to answer it.
 
 | Stage | What happens |
 | --- | --- |
-| **Analyze** | Candidate breakpoints generated from silence runs, pauses and RMS valleys, then ranked by a multimodal PyTorch model |
+| **Analyze** | Candidate breakpoints generated from silence runs, pauses and RMS valleys across the whole episode, then ranked by a multimodal PyTorch model (see [Model status](#model-status)) or the frozen signal-based heuristic |
 | **Preview** | Listen to the audio either side of a proposed cut before committing |
-| **Generate** | Sponsor copy written for the product, then voiced — optionally in a cloned voice |
-| **Merge / export** | Loudness-matched insertion with crossfades and ducking, via `ffmpeg` |
+| **Generate** | Sponsor copy written for the product in the chosen tone and language, then voiced — optionally in a cloned voice |
+| **Merge / export** | The read is spliced in — the episode pauses and resumes after it — with loudness matching and crossfaded joins, via `ffmpeg` |
 
 Placement analysis runs credential-free. API keys only unlock the copywriting
 and voice halves, and `GET /api/capabilities` tells the UI exactly which
@@ -55,8 +55,26 @@ Each candidate becomes one multimodal record: 110 handcrafted acoustic and
 structural scalars, a frozen Whisper speech representation, and a frozen MiniLM
 embedding of the transcript either side of the cut. A gated fusion model
 combines them, giving an unavailable modality exactly zero weight rather than a
-zero vector. Product inference reuses the same feature code the training
-pipeline uses, so training/serving skew is not expressible.
+zero vector. Product inference reuses the training pipeline's feature code, and
+before scoring the predictor checks the served features' column names and order,
+and the normalizer's, against what the checkpoint was trained on.
+
+## Model status
+
+There are **no human labels yet**. The checkpoint the product serves,
+`artifacts/training/gated-d8ed976101aa4c3b`, was trained on weak labels derived
+from the heuristic baseline's own scores, with that score among its inputs — it
+is a distillation of the heuristic, and it exists to prove the learned inference
+path end to end. Its ranking is not independent evidence of placement quality,
+and the evaluation refuses to report a headline for any model not trained on
+human labels. The API says so in every learned
+response (`provenance.trainingLabelSource` plus a warning), and the UI shows it.
+
+Future weak-label runs drop the `heuristic_*` inputs their labels came from, and
+the evaluation protocol (series-level bootstrap, a pre-registered 18 % threshold,
+a frozen label snapshot) is enforced in code for when human labels exist. See
+[`docs/model-training.md`](docs/model-training.md) and
+[`docs/experiment-protocol.md`](docs/experiment-protocol.md).
 
 ## Tech stack
 
@@ -75,7 +93,7 @@ pipeline uses, so training/serving skew is not expressible.
 
 ## Run it locally
 
-Requires Node.js >= 20, Python 3.12, and `ffmpeg` + `ffprobe` on `PATH`.
+Requires Node.js >= 22, Python 3.12, and `ffmpeg` + `ffprobe` on `PATH`.
 
 ```bash
 git clone https://github.com/davidyang07/slotify
@@ -84,33 +102,59 @@ cd slotify
 # 1) Node workspaces
 npm run install:all
 
-# 2) The ML package (CPU-only)
+# 2) Python: the ML package (CPU-only) and the audio pipeline's requirements,
+#    in one venv
 cd ml && python -m venv .venv
-.venv/Scripts/pip install -e ".[dev,label,features,sklearn]"   # Windows
-# .venv/bin/pip install -e ".[dev,label,features,sklearn]"     # macOS / Linux
+.venv/Scripts/pip install -e ".[dev,label,features,sklearn]" -r ../backend/requirements.txt   # Windows
+# .venv/bin/pip install -e ".[dev,label,features,sklearn]" -r ../backend/requirements.txt     # macOS / Linux
 cd ..
 
-# 3) Check your environment
+# 3) Point the API at that interpreter
+echo "PYTHON_BIN=$(pwd)/ml/.venv/Scripts/python.exe" >> backend/.env   # Windows (Git Bash)
+# echo "PYTHON_BIN=$(pwd)/ml/.venv/bin/python" >> backend/.env       # macOS / Linux
+
+# 4) Check your environment
 npm run preflight
 
-# 4) Run it
+# 5) Run it
 npm run demo
 ```
 
 Then open <http://localhost:5173>, drop in an audio file, and click **Analyze**.
+In development the UI calls the API through Vite's proxy, so it is same-origin
+and needs no CORS setup.
 
 Optional keys in `backend/.env`:
 
 | Variable | Unlocks |
 | --- | --- |
-| `OPENAI_API_KEY` | Sponsor copy and slot narration |
+| `OPENAI_API_KEY` | Sponsor copy, tone and language, and slot narration |
 | `ELEVENLABS_API_KEY` | Voice cloning and TTS |
 | `HUGGINGFACE_TOKEN` | `pyannote` diarization for two-speaker mode |
+
+### Before exposing the API
+
+The API is open by default, for the local demo. Anything that can reach it can
+spend your OpenAI and ElevenLabs credit, so before it listens anywhere but your
+own machine:
+
+| Variable | Effect |
+| --- | --- |
+| `SLOTIFY_API_TOKEN` | When set, every route except `GET /api/health` and `GET /api/capabilities` requires `Authorization: Bearer <token>` |
+| `VITE_API_TOKEN` (frontend) | The token the UI sends. It is compiled into the bundle, so anyone who can load the page can read it: it keeps out clients that don't have the page, not users who do |
+| `SLOTIFY_RATE_LIMIT_PAID_PER_MIN` | Per-IP limit on routes that call OpenAI or ElevenLabs (default 10; `0` disables) |
+| `SLOTIFY_RATE_LIMIT_COMPUTE_PER_MIN` | Per-IP limit on analysis and merge (default 30) |
+| `SLOTIFY_MAX_UPLOAD_MB` | Upload size cap (default 200) |
+| `SLOTIFY_FFMPEG_TIMEOUT_MS`, `SLOTIFY_ANALYSER_TIMEOUT_MS`, `SLOTIFY_PIPELINE_TIMEOUT_MS` | Kill a stuck child process (defaults 2, 5 and 10 minutes) |
+
+Rate limits key on the client IP Express sees; behind a reverse proxy, that is
+the proxy's unless Express's `trust proxy` is configured.
 
 ### Ranker modes
 
 ```bash
-RANKER_MODE=auto       # default: the learned model when a checkpoint is configured
+RANKER_MODE=auto       # default: the learned model when a checkpoint is configured,
+                       # falling back to the heuristic (with a warning) if it fails
 RANKER_MODE=learned    # require the model; fail loudly if it is unusable
 RANKER_MODE=heuristic  # the frozen signal-based scorer, ~7 s per episode
 ```
@@ -125,10 +169,14 @@ python -m slotify_rank.cli infer rank \
   --top 3
 ```
 
+The output's `warnings` state that this checkpoint is a weak-label distillation
+of the heuristic (see [Model status](#model-status)).
+
 ### Tests
 
 ```bash
-npm run verify:all     # frontend, backend, scripts and the ML suite
+npm run verify:all                      # frontend, backend, scripts and the ML suite
+python -m pytest backend/tests/python   # the audio pipeline (needs backend/requirements.txt)
 ```
 
 ## Where things are
