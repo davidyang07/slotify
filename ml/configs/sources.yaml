@@ -30,14 +30,15 @@ defaults:
 # ---------------------------------------------------------------------------
 # Smoke dataset only.
 #
-# These are the product's existing test clips (~20-30 s each, ~4.6 min total).
+# These are the product's own team-recorded test clips (~15-25 s each,
+# ~2 min total).
 # They exist to exercise import -> probe -> normalize -> generate -> label ->
 # export -> validate -> stats end to end. They are NOT a training corpus, and
 # `dataset stats` reports them as what they are.
 #
-# `drake.mp3`, `ryan-rap.mp3` and `james-rap.mp3` are music: marked
-# content_type: music, which puts them outside TARGET_DOMAIN_CONTENT_TYPES and
-# therefore out of every headline statistic and out of the test partition.
+# `ryan-rap.mp3` and `james-rap.mp3` are music: marked content_type: music,
+# which puts them outside TARGET_DOMAIN_CONTENT_TYPES and therefore out of every
+# headline statistic and out of the test partition.
 # ---------------------------------------------------------------------------
 sources:
   - id: fixture-convo
@@ -56,14 +57,6 @@ sources:
     content_type: conversational
     notes: "Smoke fixture. Not part of the portfolio corpus."
 
-  - id: fixture-rogan-test1
-    source_type: existing_repository_fixture
-    path: backend/audio_tests/rogan-test1.mp3
-    title: "Fixture - podcast-style monologue"
-    series_id: fixture-podcastlike
-    content_type: podcast
-    notes: "Smoke fixture. Not part of the portfolio corpus."
-
   - id: fixture-ryan-test1
     source_type: existing_repository_fixture
     path: backend/audio_tests/ryan-test1.mp3
@@ -80,10 +73,10 @@ sources:
     content_type: narrated
     notes: "Smoke fixture. Not part of the portfolio corpus."
 
-  - id: fixture-drake
+  - id: fixture-james-rap
     source_type: existing_repository_fixture
-    path: backend/audio_tests/drake.mp3
-    title: "Fixture - music clip drake"
+    path: backend/audio_tests/final/james-rap.mp3
+    title: "Fixture - music clip james rap"
     series_id: fixture-music
     content_type: music
     notes: >-

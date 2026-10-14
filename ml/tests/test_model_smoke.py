@@ -39,12 +39,12 @@ from slotify_rank.embeddings.pooling import pool_across_chunks
 
 pytestmark = [pytest.mark.model_smoke, pytest.mark.slow]
 
-#: The shortest spoken-word fixture in the repository (~19 s).
+#: A single-speaker spoken-word fixture from the repository (~23 s).
 FIXTURE = (
     find_repo_root()
     / "data"
     / "normalized"
-    / "fixture-podcast-style-monologue_eefa0528f230.wav"
+    / "fixture-narrated-speech-ryan_af62f43d417f.wav"
 )
 
 TINY_EN_DIMENSION = 384

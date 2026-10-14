@@ -519,7 +519,7 @@ python -m slotify_rank.cli infer describe \
 
 # Rank one audio file. JSON on stdout, progress on stderr.
 python -m slotify_rank.cli infer rank \
-  --audio ../backend/audio_tests/rogan-test1.mp3 \
+  --audio ../backend/audio_tests/ryan-test1.mp3 \
   --checkpoint ../artifacts/training/gated-d8ed976101aa4c3b/best_checkpoint.pt \
   --top 3
 

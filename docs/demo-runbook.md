@@ -17,7 +17,7 @@ optional paid APIs, and the demo is designed to work without them.
 Pick your clip. **60–120 seconds of speech.** Longer is worse: Whisper
 transcription is the dominant cost and runs at roughly real time on CPU, so a
 10-minute episode is a 90-second wait in front of an audience.
-`backend/audio_tests/rogan-test1.mp3` (19 s) is the safe default and is already
+`backend/audio_tests/ryan-test1.mp3` (23 s) is the safe default and is already
 in the repository.
 
 Warm the caches once, so the first run of the day is not the demo:
@@ -25,7 +25,7 @@ Warm the caches once, so the first run of the day is not the demo:
 ```bash
 cd ml
 python -m slotify_rank.cli infer rank \
-  --audio ../backend/audio_tests/rogan-test1.mp3 \
+  --audio ../backend/audio_tests/ryan-test1.mp3 \
   --checkpoint ../artifacts/training/gated-d8ed976101aa4c3b/best_checkpoint.pt \
   --top 3
 ```
@@ -127,7 +127,7 @@ If even that fails, the CLI is a complete demo on its own:
 ```bash
 cd ml
 python -m slotify_rank.cli infer rank \
-  --audio ../backend/audio_tests/rogan-test1.mp3 \
+  --audio ../backend/audio_tests/ryan-test1.mp3 \
   --checkpoint ../artifacts/training/gated-d8ed976101aa4c3b/best_checkpoint.pt \
   --top 3
 ```

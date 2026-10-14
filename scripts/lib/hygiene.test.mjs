@@ -49,7 +49,7 @@ test("credentials are findings, and the reason says so", () => {
 test("product media is exempt; corpus audio is not", () => {
   assert.deepEqual(
     hygieneFindings([
-      "backend/audio_tests/rogan-test1.mp3",
+      "backend/audio_tests/ryan-test1.mp3",
       "frontend/src/assets/slotify-soundwave.mp4",
     ]),
     []

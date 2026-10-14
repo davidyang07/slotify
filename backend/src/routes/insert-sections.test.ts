@@ -23,7 +23,7 @@ import type { Server } from "node:http";
 import { BACKEND_DIR } from "../config";
 
 const REPO_ROOT = path.resolve(BACKEND_DIR, "..");
-const SAMPLE_AUDIO = path.join(BACKEND_DIR, "audio_tests", "rogan-test1.mp3");
+const SAMPLE_AUDIO = path.join(BACKEND_DIR, "audio_tests", "ryan-test1.mp3");
 
 /** Whether the Python analyser can run here. Skips rather than fails if not. */
 const analyserAvailable = (): boolean => {

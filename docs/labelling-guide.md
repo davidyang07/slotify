@@ -118,7 +118,7 @@ though the gap is real.
 ### Music, intros and outros
 A break at the edge of a music bed, sting, or theme is usually **4–5** — that is exactly where real
 ads go. A break *inside* continuous music is **1–2**: it chops the music. If the file is entirely
-music (the repository's `drake.mp3`, `ryan-rap.mp3`), it is out-of-domain material kept only to
+music (the repository's `ryan-rap.mp3`, `james-rap.mp3`), it is out-of-domain material kept only to
 exercise the pipeline; label it if it appears, but it does not count toward target-domain results.
 
 ### Repeated or duplicate candidates
