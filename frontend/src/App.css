@@ -5,7 +5,11 @@
 
 /* ── Processing Screen ───────────────────────────── */
 
-.processing-screen {
+/* `.app > .processing-screen`, not `.processing-screen`: the overlay is a direct
+   child of .app, and `.app > *` (later in this file, same specificity) would
+   otherwise make it position: relative -- a block at the bottom of the page,
+   with its Cancel button out of sight, instead of a full-screen overlay. */
+.app > .processing-screen {
   position: fixed;
   inset: 0;
   background: rgba(6, 5, 9, 0.96);
