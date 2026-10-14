@@ -337,7 +337,7 @@ def test_split_without_config_uses_the_canonical_split_and_says_so(
 ):
     """No --config used to mean `SplitConfig()` -- the unstratified v1 rules --
     and every candidate was restamped with a split no other command read."""
-    from slotify_rank.config.versions import STRATIFIED_SPLIT_ALGORITHM_VERSION
+    from slotify_rank.config.versions import LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION
     from slotify_rank.data import manifests
     from slotify_rank.data.splits import (
         CANONICAL_SPLIT_CONFIG,
@@ -352,11 +352,13 @@ def test_split_without_config_uses_the_canonical_split_and_says_so(
     output = capsys.readouterr().out
     assert Path(CANONICAL_SPLIT_CONFIG).name in output
     assert "canonical default" in output
-    assert STRATIFIED_SPLIT_ALGORITHM_VERSION in output
+    # The canonical split is v4, under the algorithm v4 was frozen with.
+    assert CANONICAL_SPLIT_VERSION == "v4"
+    assert LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION in output
 
     manifest_path = data_root / "manifests" / f"splits_{CANONICAL_SPLIT_VERSION}.json"
     manifest = read_split_manifest(manifest_path)
-    assert manifest.algorithm_version == STRATIFIED_SPLIT_ALGORITHM_VERSION
+    assert manifest.algorithm_version == LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION
     assert not (data_root / "manifests" / "splits_v1.json").exists()
     by_episode = manifest.by_episode
     for candidate in manifests.read_candidates(data_root / "manifests" / "candidates.jsonl"):

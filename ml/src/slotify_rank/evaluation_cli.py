@@ -47,7 +47,7 @@ from typing import Any, Sequence
 
 from slotify_rank.data.paths import DataPaths
 from slotify_rank.evaluation.compare import CANONICAL_BASELINE
-from slotify_rank.experiment.canonical import CANONICAL_SPLIT_VERSION
+from slotify_rank.data.splits import CANONICAL_SPLIT_VERSION
 
 __all__ = ["register"]
 

@@ -27,7 +27,7 @@ from slotify_rank.data import manifests
 from slotify_rank.datasets.labels import DEFAULT_ALLOWED_LABEL_SOURCES
 from slotify_rank.data.paths import DataPaths
 from slotify_rank.data.splits import read_split_manifest
-from slotify_rank.experiment.canonical import CANONICAL_SPLIT_VERSION
+from slotify_rank.data.splits import CANONICAL_SPLIT_VERSION
 from slotify_rank.training.reporting import (
     RunArtifacts,
     append_epoch_metrics,

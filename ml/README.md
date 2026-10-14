@@ -247,7 +247,11 @@ cd ml
 
 # 6. Deterministic, series-grouped, leakage-safe splits. A manifest is
 #    immutable per version: v1 was the smoke corpus, v2 the first six real
-#    series, v3 the current one.
+#    series, v3 the one-podcast corpus, v4 the current corpus -- the canonical
+#    split experiment v2 is frozen against, and the default when --config is
+#    omitted. v5 (configs/splits_v5.yaml) is the same rules under the corrected
+#    per-content-type stratification; it is opt-in, recommended for a future
+#    pre-registered experiment or an unbalanced corpus (docs/dataset-card.md).
 .\.venv\Scripts\python.exe -m slotify_rank.cli dataset split --config configs/splits_v4.yaml
 
 # 7. Integrity gate. Non-zero exit on any error; --deep re-verifies every SHA-256.
@@ -382,7 +386,7 @@ src/slotify_rank/
 configs/heuristic_v1.yaml   run settings (never baseline constants)
 configs/sources.yaml        source registry
 configs/dataset_v1.yaml     candidate-generation recall settings
-configs/splits_v1.yaml      split ratios, seed, grouping
+configs/splits_v1.yaml      split ratios, seed, grouping (v4 canonical; v5 opt-in)
   transcription/schema.py   versioned transcript records (integer ms)
   transcription/segments.py chunk planning, overlap reconciliation, sentence ends
   transcription/local_whisper.py  local whisper-tiny.en via Transformers

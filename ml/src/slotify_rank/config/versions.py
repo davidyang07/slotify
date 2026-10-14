@@ -120,12 +120,13 @@ SPLIT_ALGORITHM_VERSION = "split-grouped-greedy-v1.0.0"
 #: claimed to do. v1.0.0 measured every stratum against corpus-wide targets, so
 #: whichever stratum was assigned first could fill a partition's whole budget
 #: and leave the next one nothing: 20 narrated series and 14 podcasts put zero
-#: podcasts in validation. Split v4 was produced by v1.0.0; v5 is the first
-#: split produced by v1.1.0.
+#: podcasts in validation. v1.1.0 is opt-in: a config gets it only by pinning
+#: it (split v5 does).
 STRATIFIED_SPLIT_ALGORITHM_VERSION = "split-stratified-greedy-v1.1.0"
-#: The algorithm that produced split v4. No longer implemented -- this build
-#: cannot regenerate a v1.0.0 manifest -- but still *readable*, so the v4
-#: manifest and every result reported against it stay inspectable.
+#: The algorithm that produced split v4, the canonical split experiment v2 is
+#: frozen against. Still implemented, unchanged, and selected by every
+#: stratified config that does not pin an algorithm, so v4 regenerates byte for
+#: byte.
 LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION = "split-stratified-greedy-v1.0.0"
 #: Every algorithm version this build can read a manifest from.
 SUPPORTED_SPLIT_ALGORITHM_VERSIONS = (

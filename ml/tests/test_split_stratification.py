@@ -103,6 +103,16 @@ def _v4_config(**overrides):
     return SplitConfig(**settings)
 
 
+def _v5_config(**overrides):
+    """v4's rules under the corrected per-content-type algorithm, which is
+    opt-in: only a pinned config gets it."""
+    settings = dict(
+        version="v5", pinned_algorithm_version=STRATIFIED_SPLIT_ALGORITHM_VERSION
+    )
+    settings.update(overrides)
+    return _v4_config(**settings)
+
+
 def _by_split(manifest):
     grouped: dict[str, list] = {"train": [], "validation": [], "test": []}
     for assignment in manifest.assignments:
@@ -193,8 +203,9 @@ def _minority_podcast_corpus():
 
 
 def test_targets_are_computed_within_each_content_type():
+    """Under v5's algorithm. (v4's, frozen, is the one that fails this.)"""
     manifest = compute_splits(
-        _minority_podcast_corpus(), _v4_config(min_series_per_partition=1)
+        _minority_podcast_corpus(), _v5_config(min_series_per_partition=1)
     )
     hours = _hours_by_split_and_type(manifest, lambda group: group.split("-")[0])
 
@@ -217,7 +228,7 @@ def test_targets_are_computed_within_each_content_type():
 def test_one_content_type_cannot_exhaust_a_partition_owed_to_another():
     """The order strata are walked in must not decide who gets validation."""
     manifest = compute_splits(
-        _minority_podcast_corpus(), _v4_config(min_series_per_partition=1)
+        _minority_podcast_corpus(), _v5_config(min_series_per_partition=1)
     )
     validation = [a.group_id for a in manifest.assignments if a.split == "validation"]
     assert any(group.startswith("podcast-") for group in validation)
@@ -229,7 +240,7 @@ def test_a_thin_podcast_share_still_fails_the_series_gate_honestly():
     three-series gate that is a corpus too thin for a podcast-only test set, and
     the splitter says so instead of padding test with other formats' share."""
     with pytest.raises(InsufficientGroups, match="test"):
-        compute_splits(_minority_podcast_corpus(), _v4_config())
+        compute_splits(_minority_podcast_corpus(), _v5_config())
 
 
 def test_stratification_spreads_the_target_format_across_partitions():
@@ -251,10 +262,36 @@ def test_the_unstratified_algorithm_is_untouched():
     # Recomputing gives the same answer, and the stratified flag is what selects
     # the other algorithm -- nothing else does.
     assert compute_splits(corpus, plain).to_dict() == manifest.to_dict()
+    # An unpinned stratified config keeps the algorithm v4 was written under;
+    # only a pin selects the per-content-type one.
     assert (
         compute_splits(corpus, _v4_config()).algorithm_version
+        == LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION
+    )
+    assert (
+        compute_splits(corpus, _v5_config()).algorithm_version
         == STRATIFIED_SPLIT_ALGORITHM_VERSION
     )
+
+
+def test_v4s_corpus_wide_targets_are_what_v5_corrects():
+    """The same rules on the minority-podcast corpus: v4's frozen algorithm
+    leaves validation without a podcast, v5's does not."""
+    corpus = _minority_podcast_corpus()
+    v4 = compute_splits(corpus, _v4_config(min_series_per_partition=1))
+    v5 = compute_splits(corpus, _v5_config(min_series_per_partition=1))
+
+    def podcasts_in(manifest, split):
+        return [
+            a.group_id
+            for a in manifest.assignments
+            if a.split == split and a.group_id.startswith("podcast-")
+        ]
+
+    assert podcasts_in(v4, "validation") == []
+    assert podcasts_in(v5, "validation")
+    assert v4.algorithm_version == LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION
+    assert v5.algorithm_version == STRATIFIED_SPLIT_ALGORITHM_VERSION
 
 
 # ---------------------------------------------------------------------------
@@ -360,7 +397,9 @@ def test_the_committed_v4_config_parses_and_selects_the_stratified_algorithm():
     assert config.stratify_by == "content_type"
     assert config.test_content_types == ("podcast",)
     assert config.min_series_per_partition >= 3
-    assert config.algorithm_version == STRATIFIED_SPLIT_ALGORITHM_VERSION
+    # Unpinned, so it keeps the algorithm it was frozen under.
+    assert config.pinned_algorithm_version is None
+    assert config.algorithm_version == LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION
 
 
 def test_the_committed_v5_config_pins_the_corrected_algorithm():
@@ -386,17 +425,54 @@ def test_the_committed_v5_config_pins_the_corrected_algorithm():
         assert getattr(config, name) == getattr(v4, name), name
 
 
-def test_a_config_pinned_to_another_algorithm_refuses_to_load(tmp_path: Path):
-    path = tmp_path / "splits_v4_pinned.yaml"
+def _pinned(tmp_path: Path, algorithm: str, stratify: bool = True) -> Path:
+    path = tmp_path / "splits_pinned.yaml"
     path.write_text(
         "split:\n"
-        "  version: v4\n"
-        f"  algorithm_version: {LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION}\n"
-        "  stratify_by: content_type\n",
+        "  version: pinned\n"
+        f"  algorithm_version: {algorithm}\n"
+        + ("  stratify_by: content_type\n" if stratify else ""),
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="frozen under the algorithm"):
-        load_split_config(path)
+    return path
+
+
+def test_a_pin_this_build_does_not_implement_is_refused(tmp_path: Path):
+    with pytest.raises(ValueError, match="not one this build implements"):
+        load_split_config(_pinned(tmp_path, "split-stratified-greedy-v9.9.9"))
+
+
+def test_a_pin_that_contradicts_stratify_by_is_refused(tmp_path: Path):
+    with pytest.raises(ValueError, match="stratify_by"):
+        load_split_config(
+            _pinned(tmp_path, STRATIFIED_SPLIT_ALGORITHM_VERSION, stratify=False)
+        )
+    with pytest.raises(ValueError, match="stratify_by"):
+        SplitConfig(pinned_algorithm_version=LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION)
+
+
+def test_a_pinned_algorithm_is_used_exactly(tmp_path: Path):
+    for algorithm in (
+        LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION,
+        STRATIFIED_SPLIT_ALGORITHM_VERSION,
+    ):
+        assert load_split_config(_pinned(tmp_path, algorithm)).algorithm_version == (
+            algorithm
+        )
+    plain = load_split_config(
+        _pinned(tmp_path, SPLIT_ALGORITHM_VERSION, stratify=False)
+    )
+    assert plain.algorithm_version == SPLIT_ALGORITHM_VERSION
+
+
+def test_an_unpinned_stratified_config_keeps_the_legacy_algorithm():
+    """So `dataset split --config splits_v4.yaml --force` cannot quietly change
+    what v4 means."""
+    assert (
+        SplitConfig(stratify_by="content_type").algorithm_version
+        == LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION
+    )
+    assert SplitConfig().algorithm_version == SPLIT_ALGORITHM_VERSION
 
 
 def test_the_canonical_split_config_declares_the_canonical_version():
@@ -421,3 +497,150 @@ def test_the_committed_v3_config_still_selects_the_original_algorithm():
     """v3 is history, and history has to keep reading."""
     config = load_split_config(_config("splits_v3.yaml"))
     assert config.algorithm_version == SPLIT_ALGORITHM_VERSION
+
+
+# ---------------------------------------------------------------------------
+# v1-v4 regenerate byte for byte
+# ---------------------------------------------------------------------------
+
+#: The commit whose ``data/splits.py`` produced splits v1-v4.
+_PRE_V5_COMMIT = "2f80944"
+
+
+def _fuzz_corpora():
+    """Seeded corpora of mixed content types, series sizes and durations."""
+    import random
+
+    rng = random.Random(20261014)
+    kinds = ["podcast", "narrated", "conversational", "music"]
+    for _ in range(60):
+        episodes = []
+        for series in range(rng.randint(6, 40)):
+            kind = rng.choice(kinds)
+            for index in range(rng.randint(1, 3)):
+                episodes.append(
+                    make_episode(
+                        title=f"s{series} {index}",
+                        series_id=f"s{series}",
+                        content_type=kind,
+                        sha_seed=f"{rng.randint(0, 15):x}",
+                        duration_ms=rng.randint(60_000, 7_200_000),
+                        episode_id=f"s{series}-e{index}",
+                    )
+                )
+        yield episodes
+
+
+def _outcome(module, episodes, config_path):
+    try:
+        return module.compute_splits(episodes, module.load_split_config(config_path))
+    except Exception as error:  # the refusal is part of the behaviour too
+        return ("error", type(error).__name__, str(error))
+
+
+def _rendered(outcome) -> str:
+    if isinstance(outcome, tuple):
+        return json.dumps(list(outcome))
+    return json.dumps(outcome.to_dict(), sort_keys=True)
+
+
+#: SHA-256 over every fuzz corpus's manifest under each committed pre-v5
+#: config, as produced by the code at ``_PRE_V5_COMMIT``. Pinned so the check
+#: runs without git history; the test below re-derives it from git when it can.
+_PRE_V5_DIGESTS = {
+    "splits_v1.yaml": "c0b63ad5b2510b0aa111d9b21a72ce6210b16f761e71e0a5150937a0ae61ef62",
+    "splits_v2.yaml": "eddf2a521becf6100bfa73dd62b357a4798a87c4f20d76ddacdf60fb4d0624b2",
+    "splits_v3.yaml": "b0bad9bf2ceb8f84c551cda09523cfef918a048fae5af42a0e73f55dd7d999e5",
+    "splits_v4.yaml": "a8128a220ef546242b1d27c2b9205f334d97dddc41528f91bd5cd28bfb8f7064",
+}
+
+
+def _digest(module, config_name: str) -> str:
+    import hashlib
+
+    lines = [
+        _rendered(_outcome(module, episodes, _config(config_name)))
+        for episodes in _fuzz_corpora()
+    ]
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
+@pytest.mark.parametrize(
+    "config_name",
+    ["splits_v1.yaml", "splits_v2.yaml", "splits_v3.yaml", "splits_v4.yaml"],
+)
+def test_committed_pre_v5_configs_regenerate_exactly(config_name):
+    from slotify_rank.data import splits as current
+
+    assert _digest(current, config_name) == _PRE_V5_DIGESTS[config_name]
+
+
+def _module_at_pre_v5_commit():
+    """``data/splits.py`` as of ``_PRE_V5_COMMIT``, imported in isolation."""
+    import shutil
+    import subprocess
+    import sys
+    import types
+
+    from slotify_rank.config import versions
+
+    git = shutil.which("git")
+    if git is None:
+        pytest.skip("git is not installed")
+    result = subprocess.run(
+        [git, "show", f"{_PRE_V5_COMMIT}:ml/src/slotify_rank/data/splits.py"],
+        cwd=find_repo_root(),
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"{_PRE_V5_COMMIT} is not in this checkout's history")
+    name = "_slotify_splits_pre_v5"
+    module = types.ModuleType(name)
+    sys.modules[name] = module
+    try:
+        code = compile(result.stdout, f"{_PRE_V5_COMMIT}:splits.py", "exec")
+        exec(code, module.__dict__)
+    finally:
+        sys.modules.pop(name, None)
+    # That code stamped its stratified manifests with the constant's value at the
+    # time, which is today's legacy name.
+    module.STRATIFIED_SPLIT_ALGORITHM_VERSION = (
+        versions.LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION
+    )
+    return module
+
+
+@pytest.mark.parametrize(
+    "config_name",
+    ["splits_v1.yaml", "splits_v2.yaml", "splits_v3.yaml", "splits_v4.yaml"],
+)
+def test_the_restored_legacy_path_matches_the_pre_v5_code(config_name):
+    """Manifest for manifest, refusal for refusal, against the old module."""
+    from slotify_rank.data import splits as current
+
+    old = _module_at_pre_v5_commit()
+    for episodes in _fuzz_corpora():
+        assert _rendered(_outcome(current, episodes, _config(config_name))) == (
+            _rendered(_outcome(old, episodes, _config(config_name)))
+        )
+
+
+def test_v5_differs_from_v4_only_by_algorithm(tmp_path: Path):
+    v4 = load_split_config(_config("splits_v4.yaml"))
+    v5 = load_split_config(_config("splits_v5.yaml"))
+    assert v4.algorithm_version == LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION
+    assert v5.algorithm_version == STRATIFIED_SPLIT_ALGORITHM_VERSION
+    manifest = compute_splits(_v4_shaped_corpus(), v5)
+    assert manifest.algorithm_version == STRATIFIED_SPLIT_ALGORITHM_VERSION
+
+
+def test_the_canonical_split_is_defined_once_and_is_the_experiments():
+    from slotify_rank.data import splits
+    from slotify_rank.experiment import canonical
+
+    assert canonical.CANONICAL_SPLIT_VERSION is splits.CANONICAL_SPLIT_VERSION
+    assert "CANONICAL_SPLIT_VERSION =" not in Path(canonical.__file__).read_text(
+        encoding="utf-8"
+    )
+    assert splits.CANONICAL_SPLIT_CONFIG == "ml/configs/splits_v4.yaml"

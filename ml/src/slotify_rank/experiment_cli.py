@@ -20,7 +20,7 @@ from slotify_rank.data import manifests
 from slotify_rank.data.checksum import sha256_file
 from slotify_rank.data.paths import DataPaths
 from slotify_rank.datasets.labels import AggregatedLabel, aggregate_labels
-from slotify_rank.experiment.canonical import CANONICAL_SPLIT_VERSION
+from slotify_rank.data.splits import CANONICAL_SPLIT_VERSION
 from slotify_rank.labelling.database import DEFAULT_ACCEPTABLE_THRESHOLD, LabelDatabase
 from slotify_rank.labelling.export import build_export_rows
 

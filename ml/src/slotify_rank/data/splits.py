@@ -42,14 +42,16 @@ series still lands in exactly one partition, and the leakage guarantee is
 character-for-character the same one. Only the order of consideration and the
 deficit each choice is measured against change.
 
-Algorithm ``split-stratified-greedy-v1.0.0`` (split v4) said the above but
-measured every content type against *corpus-wide* targets and totals. Whichever
-type went first could then fill a partition's whole budget and leave nothing
-for the next: twenty narrated series (60 h) and fourteen podcasts (14 h) put
-zero podcasts in validation, because the narrated series had already met
-validation's corpus-wide target. ``split-stratified-greedy-v1.1.0`` is the
-corrected algorithm; v4 manifests stay readable, but this build cannot
-regenerate them, which is why the corrected split is a new split version.
+That is algorithm ``split-stratified-greedy-v1.1.0`` (split v5, opt-in). The
+algorithm that produced split v4, ``split-stratified-greedy-v1.0.0``, said the
+above but measured every content type against *corpus-wide* targets and totals.
+Whichever type went first could then fill a partition's whole budget and leave
+nothing for the next: twenty narrated series (60 h) and fourteen podcasts
+(14 h) put zero podcasts in validation, because the narrated series had already
+met validation's corpus-wide target. Both are implemented, and a config gets the
+one it was written for (:attr:`SplitConfig.algorithm_version`): v4 -- the
+canonical split, which experiment v2 is frozen against -- regenerates byte for
+byte, and v5 pins the corrected algorithm.
 
 Two guard rails:
 
@@ -77,6 +79,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from slotify_rank.config.versions import (
+    LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION,
     SPLIT_ALGORITHM_VERSION,
     STRATIFIED_SPLIT_ALGORITHM_VERSION,
     SUPPORTED_SPLIT_ALGORITHM_VERSIONS,
@@ -100,15 +103,25 @@ __all__ = [
 
 _PARTITIONS = ("train", "validation", "test")
 
-#: The split every command defaults to, as a repository-relative path. One
-#: place, so ``dataset split`` cannot quietly default to something different
-#: from ``dataset validate`` / ``stats`` / ``prepare-experiment`` -- which is how
-#: a bare ``dataset split`` once restamped every candidate with an unstratified
-#: v1 split while every reader was looking for v4.
-CANONICAL_SPLIT_CONFIG = "ml/configs/splits_v5.yaml"
-#: The ``split.version`` that :data:`CANONICAL_SPLIT_CONFIG` declares (a test
-#: keeps the two in step).
-CANONICAL_SPLIT_VERSION = "v5"
+#: The split every command defaults to, as a repository-relative path: the one
+#: ``ml/configs/experiment_v2.yaml`` is frozen against. Defined here and nowhere
+#: else -- ``experiment.canonical`` and every CLI import it -- because the
+#: defaults once disagreed: a bare ``dataset split`` restamped every candidate
+#: with an unstratified v1 split, and ``training``, ``evaluation`` and
+#: ``experiment`` defaulted to v1, v2 and v4, so a model trained with the
+#: defaults was evaluated against a partition it was not selected on. v5 is the
+#: corrected per-content-type split and is opt-in (``--config``).
+CANONICAL_SPLIT_CONFIG = "ml/configs/splits_v4.yaml"
+#: The ``split.version`` that :data:`CANONICAL_SPLIT_CONFIG` declares (tests tie
+#: the two together, and both to the committed experiment).
+CANONICAL_SPLIT_VERSION = "v4"
+
+#: Algorithms :func:`compute_splits` implements, and so may be pinned.
+_IMPLEMENTED_ALGORITHMS = {
+    SPLIT_ALGORITHM_VERSION: False,  # value: whether it stratifies
+    LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION: True,
+    STRATIFIED_SPLIT_ALGORITHM_VERSION: True,
+}
 
 #: The checkout this module was imported from (``<repo>/ml/src/slotify_rank/
 #: data/splits.py``), used as the last place a repository-relative config path
@@ -178,6 +191,10 @@ class SplitConfig:
     #: partition by this rule keeps its eligibility rather than becoming
     #: unplaceable -- the rule shapes the split, it can never break it.
     max_group_share_of_partition: float | None = None
+    #: The algorithm the config pins (``split.algorithm_version`` in YAML), or
+    #: ``None`` for "the one this kind of config was written under". See
+    #: :attr:`algorithm_version`.
+    pinned_algorithm_version: str | None = None
 
     def __post_init__(self) -> None:
         if self.group_by not in ("series", "episode"):
@@ -219,12 +236,39 @@ class SplitConfig:
                 "max_group_share_of_partition must be in (0, 1], got "
                 f"{self.max_group_share_of_partition}"
             )
+        pinned = self.pinned_algorithm_version
+        if pinned is not None:
+            if pinned not in _IMPLEMENTED_ALGORITHMS:
+                raise ValueError(
+                    f"split algorithm {pinned!r} is not one this build implements "
+                    f"({sorted(_IMPLEMENTED_ALGORITHMS)}). A split version is "
+                    "frozen under the algorithm that produced it; refusing rather "
+                    "than regenerating it with a different one."
+                )
+            stratifies = _IMPLEMENTED_ALGORITHMS[pinned]
+            if stratifies != bool(self.stratify_by):
+                raise ValueError(
+                    f"split algorithm {pinned!r} "
+                    f"{'stratifies' if stratifies else 'does not stratify'}, but "
+                    f"stratify_by is {self.stratify_by!r}"
+                )
 
     @property
     def algorithm_version(self) -> str:
-        """The algorithm this configuration selects."""
+        """The algorithm this configuration selects.
+
+        A pinned algorithm is used exactly. An unpinned config keeps the
+        semantics it was written under -- configs v1-v4 predate pinning: a
+        stratified one gets ``split-stratified-greedy-v1.0.0`` (what produced
+        v4) and an unstratified one ``split-grouped-greedy-v1.0.0``. So a
+        committed config can never be regenerated, even with ``--force``, under
+        an algorithm it did not choose. The corrected per-content-type algorithm
+        is opt-in, by pinning it (``splits_v5.yaml`` does).
+        """
+        if self.pinned_algorithm_version is not None:
+            return self.pinned_algorithm_version
         return (
-            STRATIFIED_SPLIT_ALGORITHM_VERSION
+            LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION
             if self.stratify_by
             else SPLIT_ALGORITHM_VERSION
         )
@@ -431,8 +475,207 @@ def compute_splits(
             assignments=assignments,
         )
 
+    if config.algorithm_version == STRATIFIED_SPLIT_ALGORITHM_VERSION:
+        return _assign_within_content_types(groups, config)
+    # split-grouped-greedy-v1.0.0 and split-stratified-greedy-v1.0.0 are one
+    # walk: the code that produced splits v1-v4, kept verbatim so those configs
+    # keep regenerating their manifests byte for byte.
+    return _assign_against_corpus_targets(groups, config)
+
+
+def _assign_against_corpus_targets(
+    groups: Sequence[dict[str, Any]], config: SplitConfig
+) -> SplitManifest:
+    """The greedy walk of ``split-grouped-greedy-v1.0.0`` and
+    ``split-stratified-greedy-v1.0.0``, exactly as it shipped.
+
+    Every stratum is measured against **corpus-wide** duration targets, count
+    targets and running totals. Without stratification that is simply the
+    grouped-greedy algorithm. With it, it is the algorithm that produced split
+    v4: correct for v4's corpus as frozen, but a stratum assigned first can meet
+    a partition's corpus-wide target on its own and leave a later stratum none
+    of it (see :func:`_assign_within_content_types`). Not to be edited: splits
+    v1-v4 are reproducible only while this is byte-for-byte what produced them.
+    """
+    total_duration = sum(int(group["duration_ms"]) for group in groups) or len(groups)
+    targets = {name: ratio * total_duration for name, ratio in config.ratios.items()}
+    count_targets = _count_targets(groups, config, targets)
+    assigned_duration = {name: 0.0 for name in _PARTITIONS}
+    assigned_count = {name: 0 for name in _PARTITIONS}
+    assignments: list[SplitAssignment] = []
+
     # Without stratification there is a single stratum holding every group, and
     # everything below reduces to the original grouped-greedy walk.
+    strata: dict[str, list[dict[str, Any]]] = {}
+    for group in groups:
+        strata.setdefault(str(group["stratum"]), []).append(group)
+
+    def _eligible(group: Mapping[str, Any]) -> list[str]:
+        """Partitions this group may be assigned to."""
+        names = list(_PARTITIONS)
+        if config.require_target_domain_test and not group["is_target_domain"]:
+            names.remove("test")
+        if (
+            config.test_content_types
+            and "test" in names
+            and str(group["stratum"]) not in config.test_content_types
+        ):
+            names.remove("test")
+        return names
+
+    def _fullness(name: str) -> tuple[float, float, str]:
+        """How full a partition is, as the sort key that picks the emptiest.
+
+        Under stratification the *group count* leads and duration breaks the
+        tie; without it, duration alone decides, exactly as the original
+        grouped-greedy algorithm did.
+
+        Count has to lead because of an arithmetic trap: one show can be longer
+        than a whole partition's share of the hours -- a two-hour series against
+        a 2.8-hour test target -- so pure duration balancing hands that partition
+        most of its quota in a single group and effectively closes it. A
+        partition holding one show is the failure v3 shipped.
+
+        The *larger* of the two measures is taken, so a partition that has met
+        either its share of the shows or its share of the hours stops attracting
+        more. Count alone would let a partition restricted to long-form shows
+        overshoot its hours badly; duration alone is the trap above.
+
+        Ties break on remaining capacity, largest first, rather than
+        alphabetically. At the start every partition is equally empty, and an
+        alphabetic tie-break hands the single longest show in the corpus to
+        'test' -- which then spends most of its budget on one series and has room
+        for nothing else. Sending the longest shows where there is the most room
+        leaves the small partitions to be filled by several small series, which
+        is the point.
+        """
+        by_duration = (assigned_duration[name] - targets[name]) / max(
+            targets[name], 1.0
+        )
+        if not config.stratify_by:
+            return (by_duration, 0.0, name)
+        by_count = (assigned_count[name] - count_targets[name]) / max(
+            count_targets[name], 1.0
+        )
+        return (
+            max(by_count, by_duration),
+            assigned_duration[name] - targets[name],
+            name,
+        )
+
+    def _stratum_key(name: str) -> tuple[int, int, str]:
+        """Most-constrained stratum first, then longest, then by name.
+
+        A stratum barred from the test partition can only compete for train and
+        validation, so letting it go first means the strata that *are* eligible
+        for test see how much room is left and fill it. The other order fills
+        test from whatever happened to be largest and then overfills train with
+        the material that had nowhere else to go.
+
+        Eligibility is taken as the narrowest any member has, not the first
+        member's: a stratum is one content type today, but nothing here should
+        depend on that staying true.
+        """
+        members = strata[name]
+        return (
+            min(len(_eligible(group)) for group in members),
+            -sum(int(group["duration_ms"]) for group in members),
+            name,
+        )
+
+    for stratum in sorted(strata, key=_stratum_key):
+        # Largest groups first (they constrain the balance most); the seeded
+        # hash breaks ties so equal-duration groups land deterministically.
+        ordered = sorted(
+            strata[stratum],
+            key=lambda g: (
+                -int(g["duration_ms"]),
+                _group_order_key(str(g["group_id"]), config.seed),
+            ),
+        )
+
+        for group in ordered:
+            eligible = _eligible(group)
+            if not eligible:
+                raise InsufficientGroups(
+                    f"group {group['group_id']!r} (content type "
+                    f"{group['stratum']!r}) is eligible for no partition"
+                )
+
+            share = config.max_group_share_of_partition
+            if share is not None:
+                roomy = [
+                    name
+                    for name in eligible
+                    if int(group["duration_ms"]) <= share * targets[name]
+                ]
+                # Only when some partition can still take it. A group larger
+                # than every partition's allowance is a corpus problem, not a
+                # reason to fail the split.
+                eligible = roomy or eligible
+
+            # Every partition must end up non-empty, so one with nothing in it
+            # outranks pure deficit ordering.
+            empty = [name for name in eligible if assigned_count[name] == 0]
+            chosen = min(empty or eligible, key=_fullness)
+
+            assigned_duration[chosen] += int(group["duration_ms"])
+            assigned_count[chosen] += 1
+            assignments.append(
+                SplitAssignment(
+                    group_id=str(group["group_id"]),
+                    split=chosen,
+                    episode_ids=tuple(group["episode_ids"]),
+                    duration_ms=int(group["duration_ms"]),
+                    is_target_domain=bool(group["is_target_domain"]),
+                )
+            )
+
+    empty_partitions = [name for name in _PARTITIONS if assigned_count[name] == 0]
+    if empty_partitions:
+        raise InsufficientGroups(
+            f"Partition(s) {empty_partitions} ended up empty. With "
+            f"{len(groups)} group(s) and require_target_domain_test="
+            f"{config.require_target_domain_test}, a usable split is not possible; "
+            "add more target-domain series."
+        )
+
+    thin = {
+        name: assigned_count[name]
+        for name in _PARTITIONS
+        if assigned_count[name] < config.min_series_per_partition
+    }
+    if thin:
+        raise InsufficientGroups(
+            f"Partition(s) {thin} hold fewer than "
+            f"{config.min_series_per_partition} independent "
+            f"{config.group_by} group(s). A metric macro-averaged over one "
+            "group's episodes measures that group and not the task; widen the "
+            "corpus rather than lowering min_series_per_partition."
+        )
+
+    assignments.sort(key=lambda assignment: assignment.group_id)
+    return SplitManifest(
+        version=config.version,
+        algorithm_version=config.algorithm_version,
+        seed=config.seed,
+        group_by=config.group_by,
+        ratios=config.ratios,
+        degraded=False,
+        reason=None,
+        assignments=tuple(assignments),
+    )
+
+
+def _assign_within_content_types(
+    groups: Sequence[dict[str, Any]], config: SplitConfig
+) -> SplitManifest:
+    """The greedy walk of ``split-stratified-greedy-v1.1.0``.
+
+    Each content type is measured against its *own* duration targets, count
+    targets and running totals (renormalized over the partitions it may enter),
+    so no content type can exhaust a partition another was owed a share of.
+    """
     strata: dict[str, list[dict[str, Any]]] = {}
     for group in groups:
         strata.setdefault(str(group["stratum"]), []).append(group)
@@ -696,16 +939,16 @@ def read_split_manifest(path: Path) -> SplitManifest:
 
 
 def load_split_config(path: Path | str | None) -> SplitConfig:
-    """Load a split config such as ``ml/configs/splits_v5.yaml``.
+    """Load a split config such as ``ml/configs/splits_v4.yaml``.
 
     With no path, returns ``SplitConfig()`` -- the historical *unstratified* v1
     defaults. Commands do not rely on that: they default to
     :data:`CANONICAL_SPLIT_CONFIG`.
 
-    A config may pin ``split.algorithm_version``. When it does, loading fails
-    unless this build implements exactly that algorithm for it, so a split
-    version can never be regenerated by a different algorithm than the one it
-    was frozen under -- the manifest it produced would silently differ.
+    A config may pin ``split.algorithm_version``; it is then used exactly, and a
+    pin this build does not implement (or that contradicts ``stratify_by``) is
+    refused. Without a pin the config keeps the algorithm it was written under
+    (:attr:`SplitConfig.algorithm_version`).
     """
     if path is None:
         return SplitConfig()
@@ -733,21 +976,15 @@ def load_split_config(path: Path | str | None) -> SplitConfig:
         payload["test_content_types"] = tuple(
             str(value) for value in payload["test_content_types"]
         )
-    known = set(SplitConfig.__dataclass_fields__)
+    known = set(SplitConfig.__dataclass_fields__) - {"pinned_algorithm_version"}
     unknown = sorted(set(payload) - known)
     if unknown:
         raise ValueError(
             f"{config_path}: unknown split setting(s) {unknown}. Known: {sorted(known)}"
         )
-    config = SplitConfig(**payload)
-    if (
-        pinned_algorithm is not None
-        and str(pinned_algorithm) != config.algorithm_version
-    ):
-        raise ValueError(
-            f"{config_path} pins split algorithm {pinned_algorithm!r}, but this "
-            f"build implements {config.algorithm_version!r} for these settings. "
-            "A split version is frozen under the algorithm that produced it; "
-            "create a new split version rather than regenerating this one."
-        )
-    return config
+    if pinned_algorithm is not None:
+        payload["pinned_algorithm_version"] = str(pinned_algorithm)
+    try:
+        return SplitConfig(**payload)
+    except ValueError as error:
+        raise ValueError(f"{config_path}: {error}") from error

@@ -7,7 +7,7 @@ from the same files.
 
 ```powershell
 cd ml
-.\.venv\Scripts\python.exe -m slotify_rank.cli dataset stats
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset stats   # split v4, the canonical split
 ```
 
 > **The committed statistics predate the current code and must be regenerated locally before they
@@ -15,10 +15,10 @@ cd ml
 > split v4 (`split-stratified-greedy-v1.0.0`). Since then the density cap is applied per minute on
 > signal evidence (`candgen-v1.1.0`, below) — which changes which candidates exist, and the v1.0.0
 > cap had dropped about half the merged pool (12 927 candidates) almost entirely from the first and
-> last fifth of every episode — and the canonical split is v5, whose stratification measures each
-> content type against its own targets (below). Every candidate count, split count and hour figure
-> in those files describes the old pool and the old split. Re-run `dataset prepare-experiment` (or
-> `candidates generate`, `dataset split`, `dataset stats`) to get numbers that describe this code.
+> last fifth of every episode. Every candidate count in those files describes the old pool. The
+> split is unchanged — v4 is still canonical and regenerates byte for byte — but its candidate
+> counts move with the pool. Re-run `dataset prepare-experiment` (or `candidates generate`,
+> `dataset split`, `dataset stats`) to get numbers that describe this code.
 
 The corpus is built by one command from a committed plan:
 
@@ -291,27 +291,34 @@ training set, or a metric.
 Grouped by `series_id`, never by episode or candidate. Two episodes of one show share hosts, room,
 mic chain and vocabulary; training on one and testing on the other measures memorisation.
 
-- The canonical split is **v5** (`ml/configs/splits_v5.yaml`), algorithm
-  `split-stratified-greedy-v1.1.0`. Every command defaults to it — `dataset split` with no
-  `--config` included, which used to fall back to the unstratified v1 rules and restamp every
-  candidate with a split nothing else read; it now prints the config it used. Deterministic under a
-  configurable seed. The older `split-grouped-greedy-v1.0.0` is unchanged and still reads its own
-  manifests.
-- Target 70 / 15 / 15, balanced on **duration**, not episode count — **within each content type**.
-- **Stratified by content type.** Each content type is balanced across the partitions separately,
-  against its *own* duration targets, count targets and running totals, so a corpus whose podcasts
-  are a minority of its hours cannot put all of them in one partition and still report a balanced
-  split. A content type barred from the test partition splits 70:15 between train and validation.
-  Grouping is untouched — the unit of assignment is still the series.
-- **Why v5 and not v4.** v4 was produced by `split-stratified-greedy-v1.0.0`, which said the above
-  but measured every content type against *corpus-wide* targets: whichever type was assigned first
-  could fill a partition and leave the next none (20 narrated series and 14 podcasts gave validation
-  zero podcasts). On the committed registry v4 put 3.2 h of podcasts in test — 15 % of *all* the
-  hours — and, estimated from the registry's declared durations, v5 puts about 1.7 h there (15 % of
-  the podcast hours) and about 1.9 h of podcasts in validation instead of about 1.2 h. Regenerating v4 under the fixed algorithm would therefore produce
-  a different v4, which a split version must never do; v4 manifests stay readable, but this build
-  cannot reproduce them. `splits_v5.yaml` pins its algorithm, so the next algorithm change cannot
-  silently regenerate v5 either.
+- **The canonical split is v4** (`ml/configs/splits_v4.yaml`, algorithm
+  `split-stratified-greedy-v1.0.0`) — the split experiment v2 is frozen against. On the committed
+  corpus its test partition is **7 episodes / 3 series / 3.16 h**, all podcast-format
+  (`artifacts/dataset/split_statistics.json`). Every command defaults to it, from one constant
+  (`CANONICAL_SPLIT_CONFIG` / `CANONICAL_SPLIT_VERSION` in `slotify_rank.data.splits`) — `dataset
+  split` with no `--config` included, which used to fall back to the unstratified v1 rules and
+  restamp every candidate with a split nothing else read; it now prints the config and algorithm it
+  used. Deterministic under a configurable seed.
+- **A config keeps the algorithm it was written under.** One that pins `split.algorithm_version`
+  gets exactly that (an unimplemented pin is refused). One that does not — v1 to v4, which predate
+  pinning — gets `split-grouped-greedy-v1.0.0` if unstratified and `split-stratified-greedy-v1.0.0`
+  if stratified. So v1–v4 regenerate byte for byte (a test compares against the code that produced
+  them), and `--force` cannot quietly change what v4 means.
+- Target 70 / 15 / 15, balanced on **duration**, not episode count.
+- **Stratified by content type.** Each content type is balanced across the partitions separately, so
+  a corpus whose podcasts are a minority of its hours cannot put all of them in one partition and
+  still report a balanced split. Grouping is untouched — the unit of assignment is still the series.
+  In v4's algorithm each content type is measured against **corpus-wide** targets.
+- **v5 is the corrected per-content-type split, and it is opt-in** (`--config
+  ml/configs/splits_v5.yaml`, which pins `split-stratified-greedy-v1.1.0`). It measures each content
+  type against its *own* duration targets, count targets and running totals, and splits a type
+  barred from test 70:15 between train and validation. v4's corpus-wide targets let whichever type is
+  assigned first fill a partition and leave the next none — 20 narrated series and 14 podcasts gave
+  validation zero podcasts. On the committed corpus v5 would give test about **6 episodes / 3 series
+  / 1.74 h** (15 % of the podcast hours rather than of all hours; estimated from the registries'
+  declared durations), exactly at the three-series floor. **Recommended for a future pre-registered
+  experiment, and for any corpus whose content types are unbalanced.** It does not replace v4 for
+  experiment v2.
 - **The test partition holds podcast-format series only** (`test_content_types`). The product ranks
   ad breaks in podcasts; a test set padded with audiobook chapters measures something adjacent and
   reports it as the thing itself. This makes the test set smaller and the claim harder to support,
@@ -327,8 +334,8 @@ mic chain and vocabulary; training on one and testing on the other measures memo
   partition and marks the result degraded, so no one reports a "held-out" metric from a smoke
   dataset.
 - A split manifest is immutable for its version. Changing it requires a version bump or `--force`.
-  `splits_v3.json` is left as it was; v4 is a new version over a new corpus, and v5 a new version
-  under a corrected algorithm, not edits of either.
+  `splits_v3.json` is left as it was; v4 is a new version over a new corpus, and v5 a separate,
+  opt-in version under the corrected algorithm, not an edit of either.
 - **The same audio cannot sit in two partitions.** Series grouping cannot see a recording that
   exists under two series (or two titles — an episode id carries the title slug, so copies under
   different titles get different ids). `dataset validate` fails on any two episodes sharing an audio

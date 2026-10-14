@@ -1,32 +1,35 @@
 # Split configuration v5 -- the v4 rules, under the corrected stratified
-# algorithm.
+# algorithm. OPT-IN: the canonical split is v4 (splits_v4.yaml), which
+# experiment v2 is frozen against. Use this one with --config.
 #
-# WHY A NEW VERSION. A split manifest is IMMUTABLE for a given version: models
-# are trained against it and results are reported against it, so changing one in
-# place would invalidate every number already produced. Nothing in v4's rules
-# changed. What changed is the algorithm that applies them:
+# WHY A SEPARATE VERSION. A split manifest is IMMUTABLE for a given version:
+# models are trained against it and results are reported against it. Nothing in
+# v4's rules changes here. What changes is the algorithm that applies them:
 #
-#   v4  split-stratified-greedy-v1.0.0  (frozen; manifests still readable)
-#   v5  split-stratified-greedy-v1.1.0
+#   v4  split-stratified-greedy-v1.0.0  (canonical; regenerates byte for byte)
+#   v5  split-stratified-greedy-v1.1.0  (opt-in, pinned below)
 #
 # v1.0.0 promised to balance each content type against targets computed *within
 # that content type*, and did not: every content type was measured against the
 # corpus-wide duration target, count target and running total. Whichever type
 # was assigned first could then fill a partition's whole budget and leave the
 # next nothing. On a corpus of 20 narrated series (60 h) and 14 podcasts (14 h)
-# that put zero podcasts in validation; on the committed corpus it gave the
-# test partition ~3.2 h of podcasts (15 % of *all* hours, all of it podcast)
-# and validation ~1.2 h. v1.1.0 gives each content type its own 70/15/15 --
-# renormalized over the partitions it may enter, so the audiobooks barred from
-# test split 70:15 between train and validation -- and on the committed
-# registry moves the test partition to ~1.7 h (15 % of the podcast hours) and
-# validation's podcasts to ~1.9 h. Regenerating v4 with this build would
-# therefore produce a different v4, which is exactly what a split version must
-# never do; hence v5.
+# that put zero podcasts in validation. v1.1.0 gives each content type its own
+# 70/15/15 -- renormalized over the partitions it may enter, so the audiobooks
+# barred from test split 70:15 between train and validation.
 #
-# `algorithm_version` is pinned below. `load_split_config` refuses to load this
-# file under any other algorithm, so the next change to the algorithm cannot
-# quietly regenerate v5 either.
+# On the committed corpus v4 gives test 7 episodes / 3 series / 3.16 h of
+# podcasts (15 % of *all* the hours). v5 would give about 6 / 3 / 1.74 h (15 %
+# of the podcast hours; estimated from the registries' declared durations) --
+# exactly at the three-series floor below.
+#
+# RECOMMENDED for a future pre-registered experiment, and for any corpus whose
+# content types are unbalanced, where v4's corpus-wide targets can leave a
+# partition with none of a type. It does not replace v4 for experiment v2.
+#
+# `algorithm_version` is pinned below and used exactly. An unpinned stratified
+# config (v4) keeps split-stratified-greedy-v1.0.0, so neither can be quietly
+# regenerated under the other's algorithm, with or without --force.
 #
 # Every rule below is v4's, unchanged, with v4's reasoning (see
 # splits_v4.yaml for the full account of what each one prevents).

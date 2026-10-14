@@ -42,6 +42,7 @@ from slotify_rank.config.versions import (
     SUPPORTED_SPLIT_ALGORITHM_VERSIONS,
 )
 from slotify_rank.data.checksum import atomic_write_bytes, sha256_file, sha256_text
+from slotify_rank.data.splits import CANONICAL_SPLIT_VERSION
 
 __all__ = [
     "CANONICAL_SPLIT_VERSION",
@@ -57,13 +58,10 @@ __all__ = [
 
 EXPERIMENT_CONFIG_SCHEMA_VERSION = "experiment-config-v1.0.0"
 
-#: The split every command defaults to: the one ``ml/configs/experiment_v2.yaml``
-#: commits to (``split.version``). One constant, because `training`, `evaluation`
-#: and `experiment` once defaulted to v1, v2 and v4 respectively -- so a model
-#: trained with the defaults was evaluated against a different partition than
-#: the one it was selected on, and nothing said so. A test asserts this matches
-#: the committed experiment definition.
-CANONICAL_SPLIT_VERSION = "v4"
+# CANONICAL_SPLIT_VERSION -- the split every command defaults to, the one
+# ``ml/configs/experiment_v2.yaml`` commits to -- is defined once, in
+# :mod:`slotify_rank.data.splits`, and re-exported here. A test asserts it
+# matches the committed experiment definition.
 
 
 class ExperimentConfigError(ValueError):
