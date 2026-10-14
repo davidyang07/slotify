@@ -116,6 +116,11 @@
   animation: dotPop 1.1s ease-in-out infinite;
 }
 
+/* A hung request must never lock the screen, so the overlay can be dismissed. */
+.processing-cancel {
+  margin-top: 1.1rem;
+}
+
 .processing-dot:nth-child(2) { animation-delay: 0.18s; }
 .processing-dot:nth-child(3) { animation-delay: 0.36s; }
 
@@ -2496,6 +2501,12 @@ input[type="file"] {
   font-family: var(--font-body);
   font-size: 0.76rem;
   color: var(--text-dim);
+}
+
+/* What the ranker was trained on, when that limits what its order means. */
+.provenance-caveat {
+  flex-basis: 100%;
+  color: var(--text-muted);
 }
 
 .slot-source {

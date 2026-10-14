@@ -5,21 +5,46 @@ import LandingHero from "./components/LandingHero";
 import SlotifyLogo from "./components/SlotifyLogo";
 import SoundwaveIcon from "./components/SoundwaveIcon";
 import {
+  apiErrorMessage,
+  createApiFetch,
+  readApiError,
+  resolveApiConfig,
+} from "./lib/api";
+import {
+  BACKEND_UNREACHABLE_MESSAGE,
   UNKNOWN_CAPABILITIES,
   fetchCapabilities,
   generationBlockedReason,
+  unreadableCapabilities,
   type Capabilities,
 } from "./lib/capabilities";
 import {
-  clampSlotsToDuration,
+  combineSlots,
   describeScoreScale,
   describeSource,
+  describeTrainingLabels,
   emptyStateMessage,
   makeManualSlot,
   parsePlacementResponse,
+  selectionAfterPlacement,
+  slotLabel,
   type PlacementResult,
   type Slot,
 } from "./lib/recommendations";
+import { TaskScope, type ScopedTask } from "./lib/tasks";
+
+// Same-origin `/api/...` by default: `vite` and `vite preview` proxy /api to
+// the backend (vite.config.ts), and a deployment serves both from one origin.
+// VITE_API_BASE_URL overrides the base; VITE_API_TOKEN, when set, is sent as a
+// bearer token on every request.
+const API_CONFIG = resolveApiConfig({
+  VITE_API_BASE_URL: import.meta.env.VITE_API_BASE_URL,
+  VITE_API_TOKEN: import.meta.env.VITE_API_TOKEN,
+});
+const apiFetch = createApiFetch(API_CONFIG);
+
+/** Generous, but a hung analyser must not hold the UI until a reload. */
+const ANALYSIS_TIMEOUT_MS = 10 * 60 * 1000;
 
 const timelineSteps = [
   { id: "upload", label: "Upload" },
@@ -193,11 +218,13 @@ function FileInfoPanel({ file, duration, open, onToggle }: FileInfoPanelProps) {
 }
 
 function App() {
-  const apiBase =
-    import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const waveformRef = useRef<HTMLCanvasElement | null>(null);
-  const waveformPeaksRef = useRef<Float32Array | null>(null);
+  /** Per-file async work. Reset whenever the uploaded file changes. */
+  const fileTasksRef = useRef<TaskScope | null>(null);
+  const analysisTaskRef = useRef<ScopedTask | null>(null);
+  const generationTaskRef = useRef<ScopedTask | null>(null);
+  /** Monotonic, so a removed sponsor's id is never handed out again. */
+  const sponsorCounterRef = useRef(1);
 
   const [activePage, setActivePage] = useState<PageId>("landing");
   const [baseAudio, setBaseAudio] = useState<File | null>(null);
@@ -212,7 +239,12 @@ function App() {
     UNKNOWN_CAPABILITIES,
   );
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
-  const [slots, setSlots] = useState<Slot[]>([]);
+  /** Decoded once per file; drawing reads these and never re-decodes. */
+  const [waveformPeaks, setWaveformPeaks] = useState<Float32Array | null>(null);
+  /** State, not a ref, so a remounted canvas (back to Analyze) is redrawn. */
+  const [waveformCanvas, setWaveformCanvas] =
+    useState<HTMLCanvasElement | null>(null);
+  const [manualSlots, setManualSlots] = useState<Slot[]>([]);
   const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([]);
   const [focusedSlotId, setFocusedSlotId] = useState<string | null>(null);
   const [sponsors, setSponsors] = useState<Sponsor[]>([
@@ -246,6 +278,17 @@ function App() {
   const baseAudioName = useMemo(
     () => baseAudio?.name ?? "No file selected.",
     [baseAudio],
+  );
+
+  // Slots are exactly what the server returned, plus the ones the user added.
+  // If it returned none, none are shown -- the UI used to top the list up to
+  // three with slots at 22/48/72 % of the duration and hard-coded scores of
+  // 92/85/78, which made an analysis that found nothing indistinguishable from
+  // one that found three good breaks. Derived rather than copied into state by
+  // an effect, which used to wipe manual slots whenever the selection changed.
+  const slots = useMemo(
+    () => combineSlots(placement?.slots ?? [], manualSlots, audioDuration),
+    [placement, manualSlots, audioDuration],
   );
 
   const selectedSlots = useMemo(
@@ -292,7 +335,7 @@ function App() {
   }, [baseAudio]);
 
   const drawWaveform = useCallback(() => {
-    const canvas = waveformRef.current;
+    const canvas = waveformCanvas;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -309,7 +352,7 @@ function App() {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, height);
 
-    const peaks = waveformPeaksRef.current;
+    const peaks = waveformPeaks;
     if (!peaks || peaks.length === 0) {
       ctx.fillStyle = "rgba(10, 10, 10, 0.45)";
       ctx.font = "12px 'Source Serif 4', serif";
@@ -371,18 +414,25 @@ function App() {
         }
       }
     }
-  }, [audioDuration, insertAt, selectedSlotIds, slots]);
+  }, [
+    audioDuration,
+    insertAt,
+    selectedSlotIds,
+    slots,
+    waveformCanvas,
+    waveformPeaks,
+  ]);
 
+  // Decode once per file. This effect used to depend on drawWaveform, so every
+  // slot click re-read the file and re-decoded all of it (about 1.3 GB of
+  // Float32 for an hour of audio), and overlapping decodes could crash the tab.
+  // The per-file reset of peaks and duration happens in selectBaseAudio.
   useEffect(() => {
-    if (!baseAudio) {
-      waveformPeaksRef.current = null;
-      setAudioDuration(null);
-      drawWaveform();
-      return;
-    }
+    if (!baseAudio) return;
 
     let cancelled = false;
     const buildWaveform = async () => {
+      let context: AudioContext | null = null;
       try {
         const arrayBuffer = await baseAudio.arrayBuffer();
         if (cancelled) return;
@@ -391,15 +441,12 @@ function App() {
           (window as typeof window & {
             webkitAudioContext?: typeof AudioContext;
           }).webkitAudioContext;
-        if (!AudioContextCtor) {
-          waveformPeaksRef.current = null;
-          drawWaveform();
-          return;
-        }
-        const context = new AudioContextCtor();
-        const audioBuffer = await context.decodeAudioData(arrayBuffer.slice(0));
+        if (!AudioContextCtor) return;
+        context = new AudioContextCtor();
+        const audioBuffer = await context.decodeAudioData(arrayBuffer);
+        // A newer file may have been selected while this one decoded.
+        if (cancelled) return;
         const channel = audioBuffer.getChannelData(0);
-        setAudioDuration(audioBuffer.duration);
         const samples = 900;
         const blockSize = Math.max(1, Math.floor(channel.length / samples));
         const peaks = new Float32Array(samples);
@@ -413,23 +460,23 @@ function App() {
           }
           peaks[i] = max;
         }
-        waveformPeaksRef.current = peaks;
-        await context.close();
-        if (!cancelled) {
-          drawWaveform();
-        }
+        setAudioDuration(audioBuffer.duration);
+        setWaveformPeaks(peaks);
       } catch {
-        waveformPeaksRef.current = null;
+        if (cancelled) return;
         setAudioDuration(null);
-        drawWaveform();
+        setWaveformPeaks(null);
+      } finally {
+        // Also on a failed decode: an unclosed context holds audio resources.
+        context?.close().catch(() => undefined);
       }
     };
 
-    buildWaveform();
+    void buildWaveform();
     return () => {
       cancelled = true;
     };
-  }, [baseAudio, drawWaveform]);
+  }, [baseAudio]);
 
   useEffect(() => {
     const handleResize = () => drawWaveform();
@@ -439,22 +486,11 @@ function App() {
     };
   }, [drawWaveform]);
 
+  // Also runs when the canvas remounts (drawWaveform depends on it), so the
+  // waveform is back after Analyze -> Export -> Analyze.
   useEffect(() => {
     drawWaveform();
   }, [drawWaveform]);
-
-  // Slots are exactly what the server returned. If it returned none, none are
-  // shown -- the UI used to top the list up to three with slots at 22/48/72 %
-  // of the duration and hard-coded scores of 92/85/78, which made an analysis
-  // that found nothing indistinguishable from one that found three good breaks.
-  useEffect(() => {
-    const nextSlots = clampSlotsToDuration(placement?.slots ?? [], audioDuration);
-    setSlots(nextSlots);
-    if (!selectedSlotIds.length && nextSlots.length) {
-      setSelectedSlotIds([nextSlots[0].id]);
-      setFocusedSlotId(nextSlots[0].id);
-    }
-  }, [placement, audioDuration, selectedSlotIds.length]);
 
   useEffect(() => {
     if (!focusedSlot) return;
@@ -465,30 +501,59 @@ function App() {
   // generation is gated, and it says why it is gated.
   useEffect(() => {
     let cancelled = false;
-    fetchCapabilities(apiBase)
+    fetchCapabilities(apiFetch)
       .then((next) => {
         if (!cancelled) setCapabilities(next);
       })
       .catch(() => {
-        if (!cancelled) setCapabilities(UNKNOWN_CAPABILITIES);
+        if (!cancelled) {
+          setCapabilities(unreadableCapabilities(BACKEND_UNREACHABLE_MESSAGE));
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [apiBase]);
+  }, []);
 
   useEffect(() => {
     setRightsCertified(false);
   }, [baseAudio, sponsors]);
 
-  useEffect(() => {
+  const fileTasks = () => (fileTasksRef.current ??= new TaskScope());
+
+  /**
+   * A new upload starts from nothing. The previous file's in-flight requests
+   * are abandoned first, so a render, clone or analysis of the old file cannot
+   * land in the new file's state, and then everything derived from it --
+   * placement, slots, voice, rendered output, messages -- is cleared.
+   */
+  const selectBaseAudio = (file: File | null) => {
+    if (file === baseAudio) return;
+    fileTasks().reset();
+    setBaseAudio(file);
+    setShowFileInfo(true);
+    setAudioDuration(null);
+    setWaveformPeaks(null);
     setVoiceId("");
     setVoiceCloneError("");
+    setIsCloningVoice(false);
     setPlacement(null);
     setHasAnalyzed(false);
+    setAnalysisError("");
+    setIsAnalyzing(false);
+    setManualSlots([]);
     setSelectedSlotIds([]);
     setFocusedSlotId(null);
-  }, [baseAudio]);
+    setSlotAssignments({});
+    setInsertAt("0");
+    setAudioUrl("");
+    setStatus("");
+    setError("");
+    setIsPreviewing(false);
+    setIsRendering(false);
+    setPendingGeneration(null);
+    setShowRightsModal(false);
+  };
 
   useEffect(() => {
     setSlotAssignments((prev) => {
@@ -520,7 +585,7 @@ function App() {
   const selectedSlotSummary = selectedSlots.length
     ? [...selectedSlots]
         .sort((a, b) => a.time - b.time)
-        .map((slot) => `Slot ${slot.id.replace("slot-", "")}`)
+        .map(slotLabel)
         .join(", ")
     : "Not selected";
   const selectedPlacementScore =
@@ -528,6 +593,11 @@ function App() {
       ? `${selectedSlots[0].placementScore} / 100`
       : "--";
   const generationBlocked = generationBlockedReason(capabilities);
+  const authHint =
+    capabilities.authRequired && !API_CONFIG.token
+      ? "This server requires an API token. Set VITE_API_TOKEN for the frontend and restart it."
+      : null;
+  const trainingLabelNote = describeTrainingLabels(placement?.provenance ?? null);
 
   const updateSponsor = (id: string, patch: Partial<Sponsor>) => {
     setSponsors((prev) =>
@@ -538,14 +608,14 @@ function App() {
   };
 
   const addSponsor = () => {
-    setSponsors((prev) => {
-      if (prev.length >= 3) return prev;
-      const nextIndex = prev.length + 1;
-      return [
-        ...prev,
-        { id: `sponsor-${nextIndex}`, name: "", script: "" },
-      ];
-    });
+    if (sponsors.length >= 3) return;
+    // Built from a counter, not `prev.length + 1`: add, remove Sponsor 1, add
+    // used to produce two `sponsor-2` entries sharing a key and input ids.
+    sponsorCounterRef.current += 1;
+    const id = `sponsor-${sponsorCounterRef.current}`;
+    setSponsors((prev) =>
+      prev.length >= 3 ? prev : [...prev, { id, name: "", script: "" }],
+    );
   };
 
   const removeSponsor = (id: string) => {
@@ -562,6 +632,24 @@ function App() {
     setFocusedSlotId(slotId);
   };
 
+  /**
+   * Show a new placement. Manual slots survive it; selections of slots it no
+   * longer has are dropped rather than left to be silently skipped at render
+   * time, and with nothing left selected the top-ranked slot is selected.
+   */
+  const applyPlacement = (result: PlacementResult) => {
+    const nextSlots = combineSlots(result.slots, manualSlots, audioDuration);
+    const nextSelection = selectionAfterPlacement(selectedSlotIds, nextSlots);
+    setPlacement(result);
+    setHasAnalyzed(true);
+    setSelectedSlotIds(nextSelection);
+    setFocusedSlotId((prev) =>
+      prev && nextSlots.some((slot) => slot.id === prev)
+        ? prev
+        : (nextSelection[0] ?? null),
+    );
+  };
+
   const runPlacementAnalysis = async () => {
     setAnalysisError("");
     if (!baseAudio) {
@@ -569,34 +657,71 @@ function App() {
       return false;
     }
 
+    const task = fileTasks().begin(ANALYSIS_TIMEOUT_MS);
+    analysisTaskRef.current = task;
     setIsAnalyzing(true);
     try {
       const form = new FormData();
       form.append("audio", baseAudio);
       form.append("count", "3");
+      form.append("tone", selectedTone);
+      form.append("language", selectedLanguage);
 
-      const response = await fetch(`${apiBase}/api/insert-sections`, {
+      const response = await apiFetch("/api/insert-sections", {
         method: "POST",
         body: form,
+        signal: task.signal,
       });
 
       // A failed analysis still answers in the placement schema, so the honest
       // degraded state is rendered from the body rather than from a bare status.
-      const data = await response.json().catch(() => null);
+      // Anything else (a 401 or 429 `{error}`, a proxy error) is a request that
+      // never reached the analyser, and its message is shown as is.
+      const body = await response.text();
+      let data: unknown = null;
+      try {
+        data = JSON.parse(body);
+      } catch {
+        data = null;
+      }
+      const isPlacementBody =
+        typeof data === "object" && data !== null && "placementStatus" in data;
+      if (!response.ok && !isPlacementBody) {
+        throw new Error(
+          apiErrorMessage(
+            response.status,
+            body,
+            `Insert analysis failed (HTTP ${response.status}).`,
+          ),
+        );
+      }
       const result = parsePlacementResponse(data);
-      setPlacement(result);
-      setHasAnalyzed(true);
+      if (!task.isCurrent()) return false;
+      applyPlacement(result);
       if (result.status !== "ok") {
         setAnalysisError(emptyStateMessage(result));
         return true;
       }
       return true;
     } catch (analysisErr) {
+      if (!task.isCurrent()) return false;
+      const aborted = task.abortReason();
+      if (aborted === "cancelled" || aborted === "timeout") {
+        setAnalysisError(
+          aborted === "timeout"
+            ? `Analysis took longer than ${ANALYSIS_TIMEOUT_MS / 60000} minutes and was stopped. Try again, or try a shorter clip.`
+            : "Analysis cancelled.",
+        );
+        return false;
+      }
+      // fetch() rejects with a TypeError when the backend cannot be reached.
       const message =
-        analysisErr instanceof Error
-          ? analysisErr.message
-          : "Insert analysis failed.";
-      setPlacement({
+        analysisErr instanceof TypeError
+          ? BACKEND_UNREACHABLE_MESSAGE
+          : analysisErr instanceof Error
+            ? analysisErr.message
+            : "Insert analysis failed.";
+      applyPlacement({
         status: "unavailable",
         slots: [],
         duration: null,
@@ -604,11 +729,12 @@ function App() {
         provenance: null,
         message,
       });
-      setHasAnalyzed(true);
       setAnalysisError(message);
       return false;
     } finally {
-      setIsAnalyzing(false);
+      task.finish();
+      if (analysisTaskRef.current === task) analysisTaskRef.current = null;
+      if (task.isCurrent()) setIsAnalyzing(false);
     }
   };
 
@@ -630,7 +756,7 @@ function App() {
   };
 
   /** Clone the uploaded voice, once, on demand. Returns the voice id. */
-  const ensureVoiceClone = async (): Promise<string> => {
+  const ensureVoiceClone = async (task: ScopedTask): Promise<string> => {
     if (voiceId) return voiceId;
     if (!baseAudio) throw new Error("Upload a base audio file before generating audio.");
     setIsCloningVoice(true);
@@ -641,19 +767,22 @@ function App() {
         "name",
         baseAudio.name ? `${baseAudio.name} Clone` : "Podcast Voice Clone",
       );
-      const response = await fetch(`${apiBase}/api/clone`, {
+      const response = await apiFetch("/api/clone", {
         method: "POST",
         body: cloneForm,
+        signal: task.signal,
       });
       if (!response.ok) {
-        throw new Error((await response.text()) || "Voice clone failed.");
+        throw new Error(await readApiError(response, "Voice clone failed."));
       }
       const data = (await response.json()) as { voiceId?: string };
       if (!data.voiceId) throw new Error("Voice clone response missing voiceId.");
+      // A clone of the previous file must never become this file's voice.
+      task.signal.throwIfAborted();
       setVoiceId(data.voiceId);
       return data.voiceId;
     } finally {
-      setIsCloningVoice(false);
+      if (task.isCurrent()) setIsCloningVoice(false);
     }
   };
 
@@ -719,6 +848,11 @@ function App() {
       setError("Select at least one insertion slot before generating audio.");
       return;
     }
+    if (slotsToInsert.length !== slotIdsToUse.length) {
+      // Never render fewer slots than were selected without saying so.
+      setError("A selected slot no longer exists. Review your selection and try again.");
+      return;
+    }
 
     for (const slot of slotsToInsert) {
       const sponsorId = slotAssignments[slot.id];
@@ -726,7 +860,7 @@ function App() {
         sponsors.find((entry) => entry.id === sponsorId) ?? sponsors[0];
       const scriptText = sponsorEntry?.script ?? "";
       if (!scriptText.trim() && !sponsorEntry?.name?.trim()) {
-        setError(`Add a sponsor name for ${slot.id}.`);
+        setError(`Add a sponsor name for ${slotLabel(slot)}.`);
         return;
       }
     }
@@ -737,8 +871,10 @@ function App() {
       setIsRendering(true);
     }
 
+    const task = fileTasks().begin();
+    generationTaskRef.current = task;
     try {
-      const activeVoiceId = await ensureVoiceClone();
+      const activeVoiceId = await ensureVoiceClone(task);
       const slotsInOrder = [...slotsToInsert].sort((a, b) => b.time - a.time);
       let currentAudio: Blob | File = baseAudio;
 
@@ -749,10 +885,14 @@ function App() {
         const scriptText = sponsorEntry?.script ?? "";
         const sponsorName = sponsorEntry?.name ?? "";
 
+        // Tone and language shape copy the server writes; a typed script is
+        // spoken verbatim.
         const ttsPayload: Record<string, string | object> = {
           voiceId: activeVoiceId,
           modelId: "eleven_multilingual_v2",
           outputFormat: "mp3_44100_128",
+          tone: selectedTone,
+          language: selectedLanguage,
         };
         if (scriptText.trim()) {
           ttsPayload.text = scriptText;
@@ -760,15 +900,15 @@ function App() {
           ttsPayload.sponsor = { name: sponsorName };
         }
 
-        const response = await fetch(`${apiBase}/api/tts`, {
+        const response = await apiFetch("/api/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(ttsPayload),
+          signal: task.signal,
         });
 
         if (!response.ok) {
-          const message = await response.text();
-          throw new Error(message || "TTS request failed.");
+          throw new Error(await readApiError(response, "TTS request failed."));
         }
 
         const ttsBlob = await response.blob();
@@ -782,19 +922,23 @@ function App() {
           mergeForm.append("previewSeconds", "3");
         }
 
-        const mergeResponse = await fetch(`${apiBase}/api/merge`, {
+        const mergeResponse = await apiFetch("/api/merge", {
           method: "POST",
           body: mergeForm,
+          signal: task.signal,
         });
 
         if (!mergeResponse.ok) {
-          const message = await mergeResponse.text();
-          throw new Error(message || "Merge request failed.");
+          throw new Error(
+            await readApiError(mergeResponse, "Merge request failed."),
+          );
         }
 
         currentAudio = await mergeResponse.blob();
       }
 
+      // Cancelled, or a new file was uploaded, while the last request finished.
+      task.signal.throwIfAborted();
       const nextUrl = URL.createObjectURL(currentAudio);
       setAudioUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
@@ -806,13 +950,37 @@ function App() {
           : "Render complete. Ready to export.",
       );
     } catch (ttsError) {
-      const message = ttsError instanceof Error ? ttsError.message : "Merge failed.";
+      // The output of an earlier file is discarded, never shown as this one's.
+      if (!task.isCurrent()) return;
+      if (task.abortReason() === "cancelled") {
+        setError(mode === "preview" ? "Preview cancelled." : "Render cancelled.");
+        return;
+      }
+      const message =
+        ttsError instanceof TypeError
+          ? BACKEND_UNREACHABLE_MESSAGE
+          : ttsError instanceof Error
+            ? ttsError.message
+            : "Merge failed.";
       setError(message);
       if (message.toLowerCase().includes("clone")) setVoiceCloneError(message);
     } finally {
-      setIsPreviewing(false);
-      setIsRendering(false);
+      task.finish();
+      if (generationTaskRef.current === task) generationTaskRef.current = null;
+      if (task.isCurrent()) {
+        if (mode === "preview") {
+          setIsPreviewing(false);
+        } else {
+          setIsRendering(false);
+        }
+      }
     }
+  };
+
+  /** The processing overlay's Cancel: stop whatever it is waiting on. */
+  const cancelProcessing = () => {
+    if (isAnalyzing) analysisTaskRef.current?.cancel();
+    if (isCloningVoice) generationTaskRef.current?.cancel();
   };
 
   return (
@@ -916,10 +1084,7 @@ function App() {
                 helper={`or click to browse • ${baseAudioName}`}
                 accept="audio/*"
                 hasFile={Boolean(baseAudio)}
-                onFiles={(nextFiles) => {
-                  setBaseAudio(nextFiles?.[0] ?? null);
-                  setShowFileInfo(true);
-                }}
+                onFiles={(nextFiles) => selectBaseAudio(nextFiles?.[0] ?? null)}
               />
               {baseAudio && (
                 <FileInfoPanel
@@ -1017,6 +1182,9 @@ function App() {
                 {generationBlocked && (
                   <span className="helper">{generationBlocked}</span>
                 )}
+                {authHint && (
+                  <span className="helper helper-error">{authHint}</span>
+                )}
                 {analysisError && (
                   <span className="helper helper-error">{analysisError}</span>
                 )}
@@ -1071,6 +1239,11 @@ function App() {
                         {slots.length} shown
                       </span>
                     )}
+                    {trainingLabelNote && (
+                      <span className="provenance-note provenance-caveat">
+                        {trainingLabelNote}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -1080,7 +1253,7 @@ function App() {
               <div className="timeline-title">Timeline Visualization</div>
               <div className="timeline-waveform">
                 <div className="waveform timeline-canvas">
-                  <canvas ref={waveformRef} />
+                  <canvas ref={setWaveformCanvas} />
                 </div>
                 <div className="timeline-markers">
                   {slots.map((slot) => (
@@ -1099,7 +1272,7 @@ function App() {
                           : "50%",
                       }}
                       onClick={() => toggleSlotSelection(slot.id)}
-                      aria-label={`Select ${slot.id}`}
+                      aria-label={`Select ${slotLabel(slot)}`}
                     />
                   ))}
                 </div>
@@ -1174,11 +1347,10 @@ function App() {
                       // A manual slot carries no score, because nothing scored
                       // it. It is tagged `manual` so it cannot be read as a
                       // detection.
-                      setSlots((prev) =>
-                        [...prev, makeManualSlot(totalSeconds, prev)].sort(
-                          (a, b) => a.time - b.time,
-                        ),
-                      );
+                      setManualSlots((prev) => [
+                        ...prev,
+                        makeManualSlot(totalSeconds, prev),
+                      ]);
                       setNewSlotMinutes("0");
                       setNewSlotSeconds("0");
                       setShowAddSlot(false);
@@ -1262,11 +1434,11 @@ function App() {
                             }))
                           }
                         >
-                          {sponsors.map((entry) => (
+                          {sponsors.map((entry, index) => (
                             <option key={entry.id} value={entry.id}>
                               {entry.name.trim()
                                 ? entry.name
-                                : `Sponsor ${entry.id.replace("sponsor-", "")}`}
+                                : `Sponsor ${index + 1}`}
                             </option>
                           ))}
                         </select>
@@ -1356,7 +1528,8 @@ function App() {
                     <option value="enthusiastic">Enthusiastic</option>
                   </select>
                   <span className="helper">
-                    Choose the tone that best matches your podcast style
+                    Applies to scripts Slotify writes for you. A brand
+                    statement you typed is read exactly as written.
                   </span>
                 </div>
                 <div className="voice-setting-field">
@@ -1378,7 +1551,9 @@ function App() {
                     <option value="zh">Chinese</option>
                   </select>
                   <span className="helper">
-                    Select the language for voice generation
+                    Applies to scripts Slotify writes for you. A brand
+                    statement you typed is spoken verbatim, in the language
+                    you wrote it in.
                   </span>
                 </div>
               </div>
@@ -1546,6 +1721,13 @@ function App() {
               <div className="processing-dot" />
               <div className="processing-dot" />
             </div>
+            <button
+              type="button"
+              className="ghost small processing-cancel"
+              onClick={cancelProcessing}
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}

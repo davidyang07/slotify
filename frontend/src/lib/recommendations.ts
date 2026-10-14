@@ -46,6 +46,12 @@ export interface Provenance {
   modelRunId: string | null;
   scoreScale: string | null;
   isCalibratedProbability: boolean;
+  /**
+   * Where the learned ranker's training labels came from, or null when the
+   * server does not say. `"weak_heuristic"` means the model was distilled from
+   * the heuristic's own signals rather than trained on human labels.
+   */
+  trainingLabelSource: string | null;
 }
 
 export interface PlacementResult {
@@ -98,6 +104,19 @@ const toSlot = (raw: unknown, index: number): Slot | null => {
   };
 };
 
+/** Read the provenance block, defaulting fields an older server omits. */
+const toProvenance = (raw: unknown): Provenance | null => {
+  if (!raw || typeof raw !== "object") return null;
+  const entry = raw as Partial<Provenance>;
+  return {
+    ...(entry as Provenance),
+    trainingLabelSource:
+      typeof entry.trainingLabelSource === "string" && entry.trainingLabelSource
+        ? entry.trainingLabelSource
+        : null,
+  };
+};
+
 /**
  * Parse a `/api/insert-sections` response.
  *
@@ -124,7 +143,7 @@ export const parsePlacementResponse = (data: unknown): PlacementResult => {
     slots,
     duration: asFiniteNumber(payload.duration),
     candidateCount: asFiniteNumber(payload.candidateCount),
-    provenance: (payload.provenance as Provenance | undefined) ?? null,
+    provenance: toProvenance(payload.provenance),
     message,
   };
 };
@@ -161,6 +180,20 @@ export const describeScoreScale = (provenance: Provenance | null): string => {
   return "Ranking score on a fixed 0-100 scale. Not a probability.";
 };
 
+/**
+ * A caveat about the ranker's training labels, or null when there is nothing
+ * to admit. A model distilled from the heuristic has learned the heuristic,
+ * not what listeners prefer.
+ */
+export const describeTrainingLabels = (
+  provenance: Provenance | null,
+): string | null => {
+  if (provenance?.trainingLabelSource === "weak_heuristic") {
+    return "Ranked by a model distilled from the signal-based heuristic; no human labels yet.";
+  }
+  return null;
+};
+
 /** The honest empty state, differentiated by why there is nothing to show. */
 export const emptyStateMessage = (result: PlacementResult | null): string => {
   if (!result) return "Upload audio and run analysis to see insertion points.";
@@ -179,13 +212,18 @@ export const emptyStateMessage = (result: PlacementResult | null): string => {
   return "No insertion points were returned.";
 };
 
-/** A user-typed slot. Marked `manual` so it is never mistaken for a detection. */
+/**
+ * A user-typed slot. Marked `manual` so it is never mistaken for a detection.
+ *
+ * Its id is `manual-N`, a namespace the server's `slot-N` ids never enter, so
+ * a manual slot keeps its id (and its selection) when a new placement arrives.
+ */
 export const makeManualSlot = (timeSeconds: number, existing: Slot[]): Slot => {
   const used = new Set(existing.map((slot) => slot.id));
-  let index = existing.length + 1;
-  while (used.has(`slot-${index}`)) index += 1;
+  let index = existing.filter((slot) => slot.source === "manual").length + 1;
+  while (used.has(`manual-${index}`)) index += 1;
   return {
-    id: `slot-${index}`,
+    id: `manual-${index}`,
     candidateId: `manual:${Math.round(timeSeconds * 1000)}`,
     time: timeSeconds,
     placementScore: null,
@@ -195,3 +233,39 @@ export const makeManualSlot = (timeSeconds: number, existing: Slot[]): Slot => {
     rationale: "Added manually; not produced by analysis.",
   };
 };
+
+/**
+ * The slots the UI shows: the server's, in the server's order, followed by the
+ * user's manual slots in time order, all clamped to the decoded duration.
+ * Manual slots live apart from the placement, so neither a new placement nor
+ * the duration becoming known can erase them.
+ */
+export const combineSlots = (
+  placementSlots: Slot[],
+  manualSlots: Slot[],
+  audioDuration: number | null,
+): Slot[] =>
+  clampSlotsToDuration(
+    [...placementSlots, ...[...manualSlots].sort((a, b) => a.time - b.time)],
+    audioDuration,
+  );
+
+/**
+ * Which slots stay selected when a new placement arrives: those that still
+ * exist. When none do, the first slot is selected, as on a first analysis.
+ */
+export const selectionAfterPlacement = (
+  selectedIds: string[],
+  nextSlots: Slot[],
+): string[] => {
+  const ids = new Set(nextSlots.map((slot) => slot.id));
+  const kept = selectedIds.filter((id) => ids.has(id));
+  if (kept.length || !nextSlots.length) return kept;
+  return [nextSlots[0].id];
+};
+
+/** A short name for a slot, e.g. "Slot 2" or "Custom slot 1". */
+export const slotLabel = (slot: Slot): string =>
+  slot.source === "manual"
+    ? `Custom slot ${slot.id.replace("manual-", "")}`
+    : `Slot ${slot.id.replace("slot-", "")}`;

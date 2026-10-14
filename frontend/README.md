@@ -1,73 +1,60 @@
-# React + TypeScript + Vite
+# Slotify frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + TypeScript + Vite. Upload an episode, get ranked ad-insertion
+points from the backend, then (with ElevenLabs configured on the server)
+generate and merge sponsor reads in the host's cloned voice.
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The frontend talks to the Node API in `../backend` (default
+`http://localhost:3001`). Start that first, then:
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev        # http://localhost:5173 (or the next free port)
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The app calls same-origin `/api/...` URLs. The Vite dev server proxies `/api`
+to the backend, so it keeps working if Vite picks a different port and the
+backend's CORS list (`CORS_ORIGIN`) does not need to include it.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Checks
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run lint
+npm test           # node:test files in src/**/*.test.ts, run with tsx
+npm run build      # tsc -b, then vite build into dist/
+npm run verify     # all three
 ```
+
+## Production build
+
+```bash
+npm run build
+npm run preview    # serves dist/ and proxies /api like the dev server
+```
+
+`dist/` is static. Serve it from the same origin as the API (for example,
+behind a reverse proxy that routes `/api` to the backend), or build with
+`VITE_API_BASE_URL` pointing at the API and add the site's origin to the
+backend's `CORS_ORIGIN`.
+
+## Environment variables
+
+Set these in the shell or in `frontend/.env.local`. `VITE_*` values are
+compiled into the bundle, so changing them needs a dev-server restart or a
+rebuild.
+
+| Variable | Used by | Default | Purpose |
+| --- | --- | --- | --- |
+| `VITE_API_BASE_URL` | app | empty (same origin) | Absolute API origin, e.g. `https://api.example.com`. Leave unset to use `/api` on the page's own origin. |
+| `VITE_API_TOKEN` | app | unset | Sent as `Authorization: Bearer <token>` on every API request. Set it to the backend's `SLOTIFY_API_TOKEN` when that is set. It ships in the bundle, so anyone who can load the page can read it. |
+| `VITE_PROXY_TARGET` | `vite` / `vite preview` | `http://localhost:3001` | Where the dev and preview servers proxy `/api`. |
+
+## Layout
+
+- `src/App.tsx`: the upload, analyze and export flow.
+- `src/lib/api.ts`: the one fetch helper (base URL, bearer token, error messages).
+- `src/lib/capabilities.ts`: what the backend can do, and why generation is off when it is.
+- `src/lib/recommendations.ts`: parses `/api/insert-sections` without inventing slots or scores.
+- `src/lib/tasks.ts`: per-file cancellation, so a previous upload's requests never write into the current one.

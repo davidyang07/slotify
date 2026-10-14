@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -12,8 +15,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@elevenlabs/elevenlabs-js": "^2.31.0",
-    "ffmpeg": "^0.0.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
