@@ -145,13 +145,103 @@ def test_an_excessive_gap_is_treated_as_absent_not_as_adjacent():
     assert context.after_absent_reason == "gap_too_large"
 
 
-def test_a_candidate_mid_sentence_belongs_to_neither_side():
-    """The clearest possible evidence of a bad breakpoint."""
+def test_a_candidate_mid_sentence_splits_the_sentence_across_both_sides():
+    """The clearest possible evidence of a bad breakpoint -- and the annotator
+    must be able to see the sentence being cut, not an empty transcript."""
     segments = _segments([(0, 10_000, "One long unbroken sentence here.")])
     context = build_transcript_context(segments, 5_000, CONFIG)
-    assert context.has_before is False
+    assert context.mid_segment
+    assert context.before_text == "One long unbroken"
+    assert context.after_text == "sentence here."
+    assert context.before_segment_ids == context.after_segment_ids == (
+        segments[0].segment_id,
+    )
+    assert (context.gap_before_ms, context.gap_after_ms) == (0, 0)
+    assert context.before_absent_reason is None
+    assert context.after_absent_reason is None
+
+
+def _straddled():
+    """A finished sentence, then a candidate in the middle of the next one."""
+    return _segments(
+        [
+            (0, 2_000, "A complete thought."),
+            (3_000, 9_000, "and then we went to the store"),
+            (10_000, 12_000, "Later."),
+        ]
+    )
+
+
+def test_a_straddled_segment_is_not_hidden_behind_the_one_before_it():
+    """The defect: with an earlier segment present, the boundary signal came
+    from *that* segment, so a mid-sentence candidate looked like a clean end."""
+    segments = _straddled()
+    context = build_transcript_context(segments, 6_000, CONFIG)
+    values, missing = extract_text_features(context, transcript_available=True)
+
+    assert values["transcript_sentence_end"] == 0.0
+    assert missing["transcript_sentence_end"] is False
+    assert values["terminal_punctuation_ordinal"] == 0.0
+    assert values["transcript_gap_before_ms"] == 0
+    assert values["transcript_gap_after_ms"] == 0
+    assert values["transcript_inter_segment_pause_ms"] == 0
+    # The speech run on either side of the cut, not the neighbours' lengths.
+    assert values["prior_segment_duration_ms"] == 3_000
+    assert values["following_segment_duration_ms"] == 3_000
+
+
+def test_the_straddled_text_is_kept_on_both_sides_of_the_cut():
+    context = build_transcript_context(_straddled(), 6_000, CONFIG)
+    # Halfway through the time is halfway through the characters, on a word
+    # boundary; earlier and later segments still chain on.
+    assert context.before_text == "A complete thought. and then we went"
+    assert context.after_text == "to the store Later."
+
+
+def test_word_timings_place_the_cut_when_they_match_the_text():
+    from slotify_rank.transcription.schema import TranscriptWord
+    from slotify_rank.transcription.segments import build_segments
+
+    words = (
+        TranscriptWord("and", 3_000, 3_200),
+        TranscriptWord("then", 3_200, 3_500),
+        TranscriptWord("we", 3_500, 8_000),  # a long-held word
+        TranscriptWord("left", 8_000, 9_000),
+    )
+    segments = build_segments(
+        EPISODE, [(3_000, 9_000, "and then we left", words)], 120_000
+    )
+    context = build_transcript_context(segments, 4_000, CONFIG)
+    # Proportionally 4 s of 6 would cut after "and"; the words say "we" had
+    # already begun.
+    assert context.before_text == "and then we"
+    assert context.after_text == "left"
+
+
+def test_a_side_with_no_words_after_the_split_says_why():
+    segments = _segments([(0, 10_000, "Word")])
+    context = build_transcript_context(segments, 9_900, CONFIG)
+    assert context.before_text == "Word"
     assert context.has_after is False
-    assert context.before_absent_reason == "mid_segment"
+    assert context.after_absent_reason == "mid_segment"
+
+
+def test_a_candidate_on_a_segment_boundary_is_not_mid_segment():
+    segments = _straddled()
+    context = build_transcript_context(segments, 9_000, CONFIG)
+    assert not context.mid_segment
+    values, _ = extract_text_features(context, transcript_available=True)
+    assert values["transcript_sentence_end"] == 0.0  # "the store" has no stop
+    assert context.before_text.endswith("and then we went to the store")
+
+
+def test_after_context_truncation_keeps_the_words_nearest_the_candidate():
+    segments = _segments([(0, 1_000, "Before."), (2_000, 3_000, "N" * 50 + " " + "F" * 50)])
+    context = build_transcript_context(
+        segments, 1_500, TranscriptContextConfig(max_chars_after=60)
+    )
+    assert context.after_text.startswith("N" * 50)
+    assert len(context.after_text) <= 60
 
 
 # ---------------------------------------------------------------------------

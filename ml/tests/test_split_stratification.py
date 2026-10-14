@@ -13,19 +13,25 @@ exercise series-aware splitting.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
+from slotify_rank.config.settings import find_repo_root
 from slotify_rank.config.versions import (
+    LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION,
     SPLIT_ALGORITHM_VERSION,
     STRATIFIED_SPLIT_ALGORITHM_VERSION,
 )
 from slotify_rank.data.splits import (
+    CANONICAL_SPLIT_CONFIG,
+    CANONICAL_SPLIT_VERSION,
     InsufficientGroups,
     SplitConfig,
     compute_splits,
     load_split_config,
+    read_split_manifest,
 )
 
 from tests.dataset_fixtures import make_episode
@@ -162,6 +168,70 @@ def test_without_stratification_a_minority_format_can_pool_into_one_partition():
     )
 
 
+def _hours_by_split_and_type(manifest, content_type_of):
+    hours: dict[str, dict[str, float]] = {}
+    for assignment in manifest.assignments:
+        kind = content_type_of(assignment.group_id)
+        bucket = hours.setdefault(assignment.split, {})
+        bucket[kind] = bucket.get(kind, 0.0) + assignment.duration_ms / 3_600_000
+    return hours
+
+
+def _minority_podcast_corpus():
+    """Twenty narrated series (60 h) and fourteen podcast series (14 h).
+
+    The corpus on which corpus-wide targets put zero podcasts in validation:
+    narrated series, barred from test and so assigned first, met validation's
+    corpus-wide target on their own, and every podcast went to test or train.
+    """
+    episodes = []
+    for index in range(20):
+        episodes += _series(f"narrated-{index:02d}", "narrated", 90.0, offset=index)
+    for index in range(14):
+        episodes += _series(f"podcast-{index:02d}", "podcast", 30.0, offset=index)
+    return episodes
+
+
+def test_targets_are_computed_within_each_content_type():
+    manifest = compute_splits(
+        _minority_podcast_corpus(), _v4_config(min_series_per_partition=1)
+    )
+    hours = _hours_by_split_and_type(manifest, lambda group: group.split("-")[0])
+
+    # Every partition gets its share of the podcasts -- validation included.
+    for split in ("train", "validation", "test"):
+        assert hours[split].get("podcast", 0.0) > 0.0, (split, hours)
+    # Each partition's podcast hours are its ratio of the *podcast* hours (14 h),
+    # to within one one-hour series.
+    assert abs(hours["validation"]["podcast"] - 0.15 * 14) <= 1.0, hours
+    assert abs(hours["test"]["podcast"] - 0.15 * 14) <= 1.0, hours
+    assert abs(hours["train"]["podcast"] - 0.70 * 14) <= 1.0, hours
+    # Narrated series cannot enter test, so their 70/15 is renormalized over
+    # train and validation rather than measured against a share they can never
+    # place -- and they do not swallow validation's whole budget.
+    assert "narrated" not in hours["test"]
+    narrated_validation = hours["validation"]["narrated"] / 60.0
+    assert abs(narrated_validation - 0.15 / 0.85) <= 0.05, hours
+
+
+def test_one_content_type_cannot_exhaust_a_partition_owed_to_another():
+    """The order strata are walked in must not decide who gets validation."""
+    manifest = compute_splits(
+        _minority_podcast_corpus(), _v4_config(min_series_per_partition=1)
+    )
+    validation = [a.group_id for a in manifest.assignments if a.split == "validation"]
+    assert any(group.startswith("podcast-") for group in validation)
+    assert any(group.startswith("narrated-") for group in validation)
+
+
+def test_a_thin_podcast_share_still_fails_the_series_gate_honestly():
+    """Fifteen percent of fourteen one-hour podcasts is two series. Under v4's
+    three-series gate that is a corpus too thin for a podcast-only test set, and
+    the splitter says so instead of padding test with other formats' share."""
+    with pytest.raises(InsufficientGroups, match="test"):
+        compute_splits(_minority_podcast_corpus(), _v4_config())
+
+
 def test_stratification_spreads_the_target_format_across_partitions():
     manifest = compute_splits(_v4_shaped_corpus(), _v4_config())
     podcast_partitions = {
@@ -291,6 +361,60 @@ def test_the_committed_v4_config_parses_and_selects_the_stratified_algorithm():
     assert config.test_content_types == ("podcast",)
     assert config.min_series_per_partition >= 3
     assert config.algorithm_version == STRATIFIED_SPLIT_ALGORITHM_VERSION
+
+
+def test_the_committed_v5_config_pins_the_corrected_algorithm():
+    config = load_split_config(_config("splits_v5.yaml"))
+    assert config.version == "v5"
+    assert config.algorithm_version == STRATIFIED_SPLIT_ALGORITHM_VERSION
+    assert STRATIFIED_SPLIT_ALGORITHM_VERSION == "split-stratified-greedy-v1.1.0"
+    # v5 carries v4's rules unchanged; only the algorithm moved.
+    v4 = load_split_config(_config("splits_v4.yaml"))
+    for name in (
+        "seed",
+        "group_by",
+        "train",
+        "validation",
+        "test",
+        "stratify_by",
+        "require_target_domain_test",
+        "test_content_types",
+        "max_group_share_of_partition",
+        "min_series_per_partition",
+        "min_groups_for_split",
+    ):
+        assert getattr(config, name) == getattr(v4, name), name
+
+
+def test_a_config_pinned_to_another_algorithm_refuses_to_load(tmp_path: Path):
+    path = tmp_path / "splits_v4_pinned.yaml"
+    path.write_text(
+        "split:\n"
+        "  version: v4\n"
+        f"  algorithm_version: {LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION}\n"
+        "  stratify_by: content_type\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="frozen under the algorithm"):
+        load_split_config(path)
+
+
+def test_the_canonical_split_config_declares_the_canonical_version():
+    config = load_split_config(find_repo_root() / CANONICAL_SPLIT_CONFIG)
+    assert config.version == CANONICAL_SPLIT_VERSION
+    assert config.stratify_by == "content_type"
+
+
+def test_a_v4_manifest_from_the_legacy_algorithm_still_reads(tmp_path: Path):
+    """History stays inspectable even though this build cannot regenerate it."""
+    manifest = compute_splits(_v4_shaped_corpus(), _v4_config())
+    payload = manifest.to_dict()
+    payload["algorithm_version"] = LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION
+    path = tmp_path / "splits_v4.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    assert read_split_manifest(path).algorithm_version == (
+        LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION
+    )
 
 
 def test_the_committed_v3_config_still_selects_the_original_algorithm():

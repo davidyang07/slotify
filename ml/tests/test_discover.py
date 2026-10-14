@@ -321,6 +321,94 @@ shows:
     assert files == ["book_01_128kb.mp3", "book_02_128kb.mp3"]
 
 
+def test_the_same_file_reached_through_two_shows_is_selected_once(tmp_path: Path):
+    """Two shows over one item would give one recording two source ids, two
+    episode ids (different titles), and possibly two partitions."""
+    plan = _plan(
+        tmp_path,
+        _HEADER
+        + """
+shows:
+  - series_id: book-one
+    title: "A book"
+    content_type: conversational
+    licence: pd
+    selection:
+      kind: item_files
+      identifier: item-a
+      max_episodes: 1
+  - series_id: book-again
+    title: "The same book, listed again"
+    content_type: conversational
+    licence: pd
+    selection:
+      kind: item_files
+      identifier: item-a
+      max_episodes: 2
+""",
+    )
+    client = FakeClient(
+        {
+            "item-a": _librivox_item(
+                "item-a",
+                [_mp3("book_01.mp3", 600, md5="aa" * 16), _mp3("book_02.mp3", 700)],
+            )
+        }
+    )
+    report = discover(load_corpus_plan(plan), client)
+
+    selected = [
+        (e.series_id, e.provenance["internet_archive_file"]) for e in report.episodes
+    ]
+    assert selected == [("book-one", "book_01.mp3"), ("book-again", "book_02.mp3")]
+    duplicates = [r for r in report.rejections if r["reason"] == "duplicate_audio"]
+    assert len(duplicates) == 1
+    assert duplicates[0]["series_id"] == "book-again"
+    assert duplicates[0]["file"] == "book_01.mp3"
+    assert report.episodes[0].source_id in duplicates[0]["detail"]
+
+
+def test_the_same_bytes_in_another_item_are_selected_once(tmp_path: Path):
+    """A re-upload under another identifier and file name: only the MD5 says
+    it is the same recording."""
+    plan = _plan(
+        tmp_path,
+        _HEADER
+        + """
+shows:
+  - series_id: original
+    title: "Original"
+    content_type: conversational
+    licence: pd
+    selection:
+      kind: item_files
+      identifier: item-a
+      max_episodes: 1
+  - series_id: mirror
+    title: "Mirror"
+    content_type: conversational
+    licence: pd
+    selection:
+      kind: item_files
+      identifier: item-b
+      max_episodes: 1
+""",
+    )
+    client = FakeClient(
+        {
+            "item-a": _librivox_item("item-a", [_mp3("ep1.mp3", 600, md5="ABCD" * 8)]),
+            "item-b": _librivox_item(
+                "item-b", [_mp3("episode-one.mp3", 600, md5="abcd" * 8)]
+            ),
+        }
+    )
+    report = discover(load_corpus_plan(plan), client)
+
+    assert [e.series_id for e in report.episodes] == ["original"]
+    assert [r["reason"] for r in report.rejections] == ["duplicate_audio"]
+    assert report.rejections[0]["identifier"] == "item-b"
+
+
 def test_the_preferred_rendition_is_chosen_deterministically(tmp_path: Path):
     plan = _plan(
         tmp_path,

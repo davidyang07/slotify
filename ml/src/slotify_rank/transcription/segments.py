@@ -60,8 +60,9 @@ class RawSegment:
     """Model output before validation: seconds, and possibly nonsense.
 
     Timestamps are ``float`` seconds and may be ``None``: Whisper occasionally
-    omits the end timestamp of the final segment in a window. Repairing that is
-    :func:`build_segments`' job, not the caller's.
+    omits the end timestamp of the final segment in a window, and a chunk
+    decoded without timestamp offsets yields one segment with no end at all.
+    Repairing that is :func:`offset_segments`' job, not the caller's.
     """
 
     start_seconds: float | None
@@ -139,7 +140,9 @@ def normalize_text(text: str) -> str:
 
 
 def offset_segments(
-    segments: Iterable[RawSegment], offset_ms: int
+    segments: Iterable[RawSegment],
+    offset_ms: int,
+    chunk_end_ms: int | None = None,
 ) -> list[tuple[int, int, str, tuple[TranscriptWord, ...]]]:
     """Convert one chunk's output to absolute integer milliseconds.
 
@@ -147,23 +150,40 @@ def offset_segments(
     start timestamp are dropped -- an untimed segment cannot be placed on the
     episode timeline, and guessing its position would corrupt every candidate
     that joins against it.
+
+    A segment with a start but **no end** (or an end not after its start) is
+    real speech whose extent was not reported: Whisper's trailing segment in a
+    window, and the single segment of a chunk decoded without offsets. It is
+    given the span it must have occupied -- up to the next segment's start in
+    this chunk, or failing that ``chunk_end_ms`` (the absolute end of the chunk,
+    which the caller clips to the audio). Collapsing it to zero length instead
+    made the reconciliation step drop it as empty, and the episode's last words
+    vanished from every transcript. Only when neither bound exists does the
+    segment keep a zero-length span.
     """
+    items = list(segments)
+    starts: list[int | None] = [
+        None
+        if segment.start_seconds is None
+        else offset_ms + int(round(float(segment.start_seconds) * 1000.0))
+        for segment in items
+    ]
     resolved: list[tuple[int, int, str, tuple[TranscriptWord, ...]]] = []
-    for segment in segments:
-        if segment.start_seconds is None:
+    for position, segment in enumerate(items):
+        start = starts[position]
+        if start is None:
             continue
         text = str(segment.text or "").strip()
         if not text:
             continue
-        start_ms = offset_ms + int(round(float(segment.start_seconds) * 1000.0))
-        if segment.end_seconds is None:
-            # Whisper omits the closing timestamp of a trailing segment often
-            # enough that dropping those segments would lose real speech. Give it
-            # a nominal span instead and let the caller clip it to the audio.
-            end_ms = start_ms
-        else:
-            end_ms = offset_ms + int(round(float(segment.end_seconds) * 1000.0))
-        start_ms = max(0, start_ms)
+        start_ms = max(0, start)
+        end_ms = (
+            None
+            if segment.end_seconds is None
+            else offset_ms + int(round(float(segment.end_seconds) * 1000.0))
+        )
+        if end_ms is None or end_ms <= start_ms:
+            end_ms = _implied_end_ms(starts[position + 1 :], start_ms, chunk_end_ms)
         end_ms = max(start_ms, end_ms)
 
         words: list[TranscriptWord] = []
@@ -185,6 +205,22 @@ def offset_segments(
             )
         resolved.append((start_ms, end_ms, text, tuple(words)))
     return resolved
+
+
+def _implied_end_ms(
+    later_starts: Sequence[int | None], start_ms: int, chunk_end_ms: int | None
+) -> int:
+    """Where a segment with no reported end must have ended.
+
+    The next segment in the chunk that starts after it, else the chunk end,
+    else (no bound at all) its own start.
+    """
+    for later in later_starts:
+        if later is not None and later > start_ms:
+            return later
+    if chunk_end_ms is not None and chunk_end_ms > start_ms:
+        return int(chunk_end_ms)
+    return start_ms
 
 
 #: Character-similarity above which two overlap transcriptions are the same
@@ -268,11 +304,13 @@ def _enforce_ordering(
 ) -> list[tuple[int, int, str, tuple[TranscriptWord, ...]]]:
     """Sort by start and trim each span to begin where the previous one ended.
 
-    A span trimmed to nothing is dropped: it was wholly inside its predecessor,
-    so its text is already covered, and emitting a zero-length segment would
-    only move the failure downstream. Text is never edited -- only the span --
-    because a timestamp that is 200 ms generous is a smaller error than a
-    sentence that disappears.
+    Only a span that *trimming* empties is dropped: it lay wholly inside its
+    predecessor, so its text is already covered, and emitting a zero-length
+    segment would only move the failure downstream. A span that arrives with
+    zero length -- possible only when :func:`offset_segments` had no bound at
+    all to give a missing end -- is speech of unknown extent, not covered text,
+    and is kept. Text is never edited -- only the span -- because a timestamp
+    that is 200 ms generous is a smaller error than a sentence that disappears.
     """
     resolved: list[tuple[int, int, str, tuple[TranscriptWord, ...]]] = []
     previous_end = 0
@@ -281,7 +319,8 @@ def _enforce_ordering(
     ):
         start = max(int(start_ms), previous_end)
         end = max(int(end_ms), start)
-        if end <= start:
+        trimmed = start > int(start_ms)
+        if end <= start and (trimmed or not str(text).strip()):
             continue
         resolved.append((start, end, text, words))
         previous_end = end

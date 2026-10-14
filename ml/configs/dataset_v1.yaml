@@ -23,10 +23,14 @@ candidate_generation:
   # merge.min_gap_ms so a dataset candidate sits where a product candidate would.
   merge_tolerance_ms: 400
 
-  # Upper bound on post-merge density. When it bites, the lowest-scoring
-  # candidates are dropped and the count is reported -- never trimmed silently.
-  # Raise this to increase pool size; do not "fix" a low candidate count any
-  # other way.
+  # Upper bound on post-merge density, enforced in every one-minute window
+  # (the last, partial window gets its proportional share, never below one).
+  # When it bites, the candidates with the weakest signal evidence in that
+  # window are dropped -- shortest pause, then shallowest energy valley, then
+  # fewest agreeing generators -- and the count is reported, never trimmed
+  # silently. The heuristic score plays no part: a pool chosen by the baseline
+  # is biased toward the baseline (candgen-v1.1.0). Raise this to increase pool
+  # size; do not "fix" a low candidate count any other way.
   max_candidates_per_minute: 12.0
 
   # Window for local_energy_summary on each candidate.

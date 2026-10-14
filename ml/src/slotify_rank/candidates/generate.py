@@ -7,14 +7,24 @@ Pipeline, in order:
    transcript segment ends).
 3. Apply the edge guard.
 4. Merge near-duplicates, preserving every source flag.
-5. Apply the density cap, if configured.
+5. Apply the density cap, if configured -- per one-minute window, on signal
+   evidence alone (see :func:`_apply_density_cap`).
 6. Score each survivor with the **Phase 1 baseline scorer**, unchanged, and
    attach the component breakdown.
 7. Emit :class:`~slotify_rank.data.schema.DatasetCandidate` records.
 
 Step 6 is a straight call into ``heuristic_offline_v1``; nothing is
-reimplemented here. That is what makes ``heuristic_score`` on a dataset row and
-the score the product would compute the same number.
+reimplemented here, and the scorer is given exactly what the product's merge
+would have kept on the survivor -- its own pause length and its own snippet
+(:attr:`~slotify_rank.candidates.merge.MergedCandidate.product_silence_ms`,
+:attr:`~slotify_rank.candidates.merge.MergedCandidate.product_snippet`), never
+the group's longest pause or a borrowed snippet. That is what makes
+``heuristic_score`` on a dataset row and the score the product would compute
+the same number.
+
+Step 5 runs *before* step 6 on purpose. The cap decides which candidates exist
+at all, and a pool selected by the baseline's own score is a pool biased toward
+the baseline -- the thing every model trained on it is compared against.
 
 The product's *padding* fallbacks -- the ratio and spacing slots it invents when
 it cannot find three candidates -- are not produced by this module at all.
@@ -60,6 +70,7 @@ from slotify_rank.candidates.transcript_candidates import (
 )
 
 __all__ = [
+    "DENSITY_WINDOW_MS",
     "GenerationReport",
     "generate_for_episode",
     "product_padding_candidates",
@@ -153,32 +164,109 @@ def _collect_raw(
     return raw
 
 
+#: Width of one density-cap window. The cap is a *per-minute* density, so it is
+#: enforced per minute rather than as one budget for the whole episode.
+DENSITY_WINDOW_MS = 60_000
+
+
+def _window_quotas(duration_ms: int, limit: float) -> list[int]:
+    """How many candidates each one-minute window may keep.
+
+    ``ceil(duration / 60 s)`` windows. A full window keeps ``limit``; the last,
+    partial window keeps its proportional share. Both are floored to whole
+    candidates and never fall below one, so no stretch of the episode can be
+    emptied by the cap however low it is set -- which also means a fractional
+    ``limit`` below one keeps one per minute, not one every two.
+    """
+    window_count = max(1, -(-int(duration_ms) // DENSITY_WINDOW_MS))
+    quotas: list[int] = []
+    for index in range(window_count):
+        start = index * DENSITY_WINDOW_MS
+        length = min(DENSITY_WINDOW_MS, int(duration_ms) - start)
+        fraction = max(0.0, length / DENSITY_WINDOW_MS)
+        quotas.append(max(1, int(limit * fraction)))
+    return quotas
+
+
+def _evidence_key(
+    candidate: MergedCandidate, valley_floor_dbfs: float
+) -> tuple[float, float, int, int]:
+    """Sort key ranking candidates *within* a window, strongest evidence first.
+
+    Only what the audio and the generators observed takes part:
+
+    1. the longest silence or pause the merge group saw (a measured gap in the
+       speech is the most direct evidence a break fits here);
+    2. the depth of the energy valley -- the quietest 50 ms within the energy
+       summary window, the value recorded as ``local_energy_summary.min_dbfs``
+       (quieter first);
+    3. how many independent generators proposed the moment;
+    4. the timestamp, so the order is total and deterministic.
+
+    The heuristic score is deliberately absent. It is what the dataset exists to
+    be compared against, and almost every non-silence candidate scores 0.4 or
+    0.5 under it, so ranking on it reduced to "earlier wins" and emptied the
+    edges of every episode of everything but silences.
+    """
+    return (
+        -max(candidate.pause_ms, candidate.silence_ms),
+        valley_floor_dbfs,
+        -len(candidate.sources),
+        candidate.ms,
+    )
+
+
 def _apply_density_cap(
     merged: Sequence[MergedCandidate],
-    scored: Sequence[float],
+    valley_floors_dbfs: Sequence[float],
     duration_ms: int,
     config: GenerationConfig,
     report: GenerationReport,
 ) -> list[int]:
-    """Return the indices to keep, dropping the lowest-scoring over the cap."""
+    """Return the indices to keep, capping each one-minute window separately.
+
+    A single episode-wide budget lets one dense stretch spend the quota of a
+    sparse one; per-window quotas keep coverage across the whole timeline, so
+    the pool still holds candidates near the start and end of an episode, which
+    is where the baseline's position terms are most opinionated. Within a window
+    candidates compete only on signal evidence (:func:`_evidence_key`); the
+    heuristic score is not an input to this function at all.
+    """
     limit = config.max_candidates_per_minute
-    minutes = duration_ms / 60_000.0
-    if limit is None or minutes <= 0:
+    if limit is None or duration_ms <= 0:
         return list(range(len(merged)))
-    maximum = max(1, int(minutes * limit))
-    if len(merged) <= maximum:
-        return list(range(len(merged)))
-    # Keep the highest-scoring candidates; ties break by earlier timestamp so the
-    # cap is deterministic.
-    order = sorted(
-        range(len(merged)), key=lambda index: (-scored[index], merged[index].ms)
-    )
-    kept = sorted(order[:maximum])
+    quotas = _window_quotas(duration_ms, limit)
+    last_window = len(quotas) - 1
+
+    by_window: dict[int, list[int]] = {}
+    for index, candidate in enumerate(merged):
+        window = min(max(0, candidate.ms) // DENSITY_WINDOW_MS, last_window)
+        by_window.setdefault(window, []).append(index)
+
+    kept: list[int] = []
+    capped_windows = 0
+    for window, indices in by_window.items():
+        if len(indices) > quotas[window]:
+            capped_windows += 1
+            indices = sorted(
+                indices,
+                key=lambda index: _evidence_key(
+                    merged[index], valley_floors_dbfs[index]
+                ),
+            )[: quotas[window]]
+        kept.extend(indices)
+    kept.sort()
+
     report.dropped_density_cap = len(merged) - len(kept)
-    report.notes.append(
-        f"density cap of {limit}/min kept {len(kept)} of {len(merged)} merged "
-        f"candidates; raise candidate_generation.max_candidates_per_minute to keep more"
-    )
+    if report.dropped_density_cap:
+        report.notes.append(
+            f"density cap of {limit}/min, applied per one-minute window, kept "
+            f"{len(kept)} of {len(merged)} merged candidates ({capped_windows} of "
+            f"{len(quotas)} window(s) over quota). Within a window the longest "
+            "pause wins, then the deepest energy valley, then the most generators "
+            "agreeing, then the earliest; the heuristic score plays no part. Raise "
+            "candidate_generation.max_candidates_per_minute to keep more"
+        )
     return kept
 
 
@@ -211,32 +299,40 @@ def generate_for_episode(
     merged = merge_raw_candidates(guarded, config.merge_tolerance_ms)
     report.count_after_merge = len(merged)
 
-    scores = [
-        score_candidate(
+    # Rounded exactly as they are recorded, so the cap ranks on the same
+    # numbers a reader of the manifest sees.
+    energy = [
+        tuple(
+            round(value, 3)
+            for value in energy_summary_values(
+                envelope, candidate.ms, config.energy_summary_window_ms
+            )
+        )
+        for candidate in merged
+    ]
+    kept_indices = _apply_density_cap(
+        merged, [summary[1] for summary in energy], duration_ms, config, report
+    )
+    report.count_after_density_cap = len(kept_indices)
+    generation_digest = config.digest
+
+    records: list[DatasetCandidate] = []
+    for index in kept_indices:
+        candidate = merged[index]
+        # The survivor exactly as the product's merge keeps it: its own pause,
+        # its own snippet. See the module docstring.
+        scored = score_candidate(
             Candidate(
                 ms=candidate.ms,
-                silence_ms=candidate.silence_ms,
-                snippet=candidate.snippet,
+                silence_ms=candidate.product_silence_ms,
+                snippet=candidate.product_snippet,
                 sources=(),
             ),
             duration_seconds,
             "podcast",
             profile,
         )
-        for candidate in merged
-    ]
-    kept_indices = _apply_density_cap(
-        merged, [scored.score for scored in scores], duration_ms, config, report
-    )
-    report.count_after_density_cap = len(kept_indices)
-
-    records: list[DatasetCandidate] = []
-    for index in kept_indices:
-        candidate = merged[index]
-        scored = scores[index]
-        mean_dbfs, min_dbfs, max_dbfs = energy_summary_values(
-            envelope, candidate.ms, config.energy_summary_window_ms
-        )
+        mean_dbfs, min_dbfs, max_dbfs = energy[index]
         records.append(
             DatasetCandidate(
                 episode_id=episode.episode_id,
@@ -250,9 +346,9 @@ def generate_for_episode(
                 silence_duration_ms=candidate.silence_ms,
                 local_energy_summary=EnergySummary(
                     window_ms=config.energy_summary_window_ms,
-                    mean_dbfs=round(mean_dbfs, 3),
-                    min_dbfs=round(min_dbfs, 3),
-                    max_dbfs=round(max_dbfs, 3),
+                    mean_dbfs=mean_dbfs,
+                    min_dbfs=min_dbfs,
+                    max_dbfs=max_dbfs,
                 ),
                 sentence_end=candidate.sentence_end,
                 transcript_segment_id=candidate.transcript_segment_id,
@@ -266,6 +362,7 @@ def generate_for_episode(
                 baseline_version=heuristic.canonical_profile_name,
                 config_version=heuristic.config_version,
                 candidate_generation_version=CANDIDATE_GENERATION_VERSION,
+                generation_config_digest=generation_digest,
                 preprocessing_version=(
                     episode.preprocessing_version or PREPROCESSING_VERSION
                 ),

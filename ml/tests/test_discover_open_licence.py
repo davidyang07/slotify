@@ -12,6 +12,8 @@ No network: a fake client serves fixture metadata.
 
 from __future__ import annotations
 
+import hashlib
+
 from pathlib import Path
 
 import pytest
@@ -64,7 +66,9 @@ def _item(identifier, licenseurl, collections, *, length="600", restricted=False
                 "format": "128Kbps MP3",
                 "length": length,
                 "size": "9000000",
-                "md5": "0" * 32,
+                # Distinct per item, as real files are: discovery treats a
+                # repeated MD5 as the same recording selected twice.
+                "md5": hashlib.md5(identifier.encode("utf-8")).hexdigest(),
             }
         ],
     }

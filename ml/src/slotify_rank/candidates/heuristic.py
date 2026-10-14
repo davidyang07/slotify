@@ -19,8 +19,10 @@ purely so the difference stays visible.
 Two properties are load-bearing and are enforced by tests:
 
 1. **Bit-exact parity with TypeScript.** Arithmetic is written in the same order
-   as the original, and JavaScript rounding semantics are used via
-   :mod:`slotify_rank.jsnum`.
+   as the original, JavaScript rounding semantics are used via
+   :mod:`slotify_rank.jsnum`, and JavaScript's whitespace set (``trim()`` and
+   regex ``\\s``) via :func:`js_trim` / :data:`JS_WHITESPACE` -- never Python's
+   ``str.strip()``, which disagrees with it in both directions.
 2. **Deterministic tie-breaking**: higher total score, then earlier timestamp,
    then candidate ID ascending. The third key cannot be reached after merging
    (merge guarantees candidates are more than ``min_gap_ms`` apart, so two
@@ -49,6 +51,9 @@ from slotify_rank.candidates.schema import (
 )
 
 __all__ = [
+    "JS_WHITESPACE",
+    "SENTENCE_BOUNDARY_JS_PATTERN",
+    "js_trim",
     "ends_with_sentence_boundary",
     "merge_candidates",
     "score_candidate",
@@ -58,14 +63,60 @@ __all__ = [
     "SelectionEntry",
 ]
 
-# Port of backend/src/lib/text.ts:35. Applied to the *trimmed* string, exactly as
-# the TypeScript does (`String(text ?? "").trim()`).
-_SENTENCE_BOUNDARY_RE = re.compile(r"[.!?][\"')\]]?\s*$")
+#: Every code point ECMAScript treats as whitespace: the *WhiteSpace* production
+#: (TAB, VT, FF, SP, NBSP, ZWNBSP/BOM and every ``Zs`` space separator) plus the
+#: *LineTerminator* production (LF, CR, LS, PS). ``String.prototype.trim`` strips
+#: exactly this set and the regex escape ``\s`` matches exactly this set.
+#:
+#: Python's notion is different in both directions, which is why the port does
+#: not use ``str.strip()`` or ``re``'s ``\s``: Python does *not* strip U+FEFF
+#: (so ``"Done.\ufeff"`` would miss its sentence end) and *does* strip U+0085
+#: and U+001C-U+001F, which JavaScript keeps. Either way the two scorers would
+#: disagree about the same snippet.
+JS_WHITESPACE = (
+    "\t\n\v\f\r "
+    "\u00a0\u1680"
+    "\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a"
+    "\u2028\u2029\u202f\u205f\u3000\ufeff"
+)
+_JS_WHITESPACE_CLASS = "[" + re.escape(JS_WHITESPACE) + "]"
+
+
+def js_trim(text: str) -> str:
+    """``String.prototype.trim`` -- strip :data:`JS_WHITESPACE` from both ends."""
+    return text.strip(JS_WHITESPACE)
+
+
+#: The sentence-end pattern as JavaScript source -- the exact string the canonical
+#: config holds at ``sentence_boundary_pattern.regex`` and the TypeScript
+#: compiles (``backend/src/lib/text.ts``). A test fails if the two drift apart.
+SENTENCE_BOUNDARY_JS_PATTERN = "[.!?][\"')\\]]?\\s*$"
+
+
+def _js_pattern_to_python(pattern: str) -> str:
+    """Give a JavaScript regex source its JavaScript meaning under ``re``.
+
+    Two constructs differ: ``\\s`` (JavaScript's whitespace set, not Python's)
+    and a final ``$`` (end of input in JavaScript without the ``m`` flag; also
+    "before a trailing newline" in Python). Those are the only two the sentence
+    pattern uses, and the only two translated.
+    """
+    translated = pattern.replace(r"\s", _JS_WHITESPACE_CLASS)
+    if translated.endswith("$") and not translated.endswith(r"\$"):
+        translated = translated[:-1] + r"\Z"
+    return translated
+
+
+# Port of `endsWithSentenceBoundary`. Applied to the *trimmed* string, exactly as
+# the TypeScript does (`asText(text).trim()`), with JavaScript's `\s` and `$`.
+_SENTENCE_BOUNDARY_RE = re.compile(_js_pattern_to_python(SENTENCE_BOUNDARY_JS_PATTERN))
 
 
 def ends_with_sentence_boundary(text: str | None) -> bool:
     """True when ``text`` ends with terminal punctuation, optionally quoted."""
-    return bool(_SENTENCE_BOUNDARY_RE.search(str(text if text is not None else "").strip()))
+    return bool(
+        _SENTENCE_BOUNDARY_RE.search(js_trim(str(text if text is not None else "")))
+    )
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:
@@ -392,17 +443,27 @@ def rank_episode(
         if duration_seconds is not None
         else None
     )
+    # Each finalised entry keeps the timestamp it was *selected* at alongside the
+    # clamped one: the clamp moves where the slot is emitted, not which
+    # candidate was chosen, so selection is recorded against the original.
     normalized = [
-        entry if max_slot_ms is None else _with_ms(entry, min(entry.ms, max_slot_ms))
+        (
+            entry.ms,
+            entry
+            if max_slot_ms is None
+            else _with_ms(entry, min(entry.ms, max_slot_ms)),
+        )
         for entry in selected
     ]
     deduped: list[SelectionEntry] = []
+    selected_ms: list[int] = []
     seen_ms: set[int] = set()
-    for entry in normalized:
+    for original_ms, entry in normalized:
         if entry.ms in seen_ms:
             continue
         seen_ms.add(entry.ms)
         deduped.append(entry)
+        selected_ms.append(original_ms)
 
     # insert-sections.ts:200-224
     slots: list[SlotRecord] = []
@@ -443,6 +504,7 @@ def rank_episode(
         episode_id=episode.episode_id,
         scored=scored,
         selected=deduped,
+        selected_ms=selected_ms,
         baseline_version=config.canonical_profile_name,
         config_version=config.config_version,
     )
@@ -485,6 +547,7 @@ def _build_candidate_records(
     selected: Sequence[SelectionEntry],
     baseline_version: str,
     config_version: str,
+    selected_ms: Sequence[int] | None = None,
 ) -> list[CandidateRecord]:
     """Assign ranks and selection state, then emit one record per candidate.
 
@@ -492,7 +555,20 @@ def _build_candidate_records(
     evaluation consumes. ``selection_rank`` is the position in the product's
     spacing-constrained top-3, which is a different thing and is recorded
     separately.
+
+    ``selected`` holds the *finalised* slots, whose timestamps the end guard may
+    have clamped; ``selected_ms`` holds, position for position, the timestamp
+    each one was selected at. Selection is keyed on the latter. Keyed on the
+    clamped value, a candidate chosen inside the last ``end_guard_ms`` of the
+    episode -- whose slot is emitted a few hundred milliseconds earlier -- would
+    match no candidate and be recorded ``selected=False`` although the product
+    chose it. Synthetic padding keeps the finalised timestamp, which is the only
+    one it has ever had a meaning at.
     """
+    if selected_ms is None:
+        selected_ms = [entry.ms for entry in selected]
+    if len(selected_ms) != len(selected):
+        raise ValueError("selected_ms must align with selected, one per entry")
     ordered = sorted(
         scored,
         key=lambda item: (
@@ -503,8 +579,8 @@ def _build_candidate_records(
     )
     rank_by_ms = {item.candidate.ms: index + 1 for index, item in enumerate(ordered)}
     selection_rank_by_ms = {
-        entry.ms: index + 1
-        for index, entry in enumerate(selected)
+        original_ms: index + 1
+        for index, (entry, original_ms) in enumerate(zip(selected, selected_ms))
         if entry.origin == "candidate"
     }
 

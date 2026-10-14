@@ -168,7 +168,8 @@ class WhisperTranscriber:
                 )
             if not item.get("offsets"):
                 # No timestamp offsets: keep the text anchored to the chunk
-                # start rather than discarding real speech.
+                # start rather than discarding real speech. The missing end
+                # becomes the chunk end in `offset_segments`.
                 text = str(item.get("text", "")).strip()
                 if text:
                     raw.append(
@@ -208,8 +209,11 @@ class WhisperTranscriber:
             if window.size == 0:
                 continue
             raw_segments = self._decode_chunk(window)
+            # The chunk end bounds any segment whose end Whisper did not
+            # report -- its trailing segment, or the whole chunk when no
+            # offsets came back at all.
             for start_ms, end_ms, text, words in offset_segments(
-                raw_segments, chunk.start_ms
+                raw_segments, chunk.start_ms, chunk_end_ms=chunk.end_ms
             ):
                 collected.append(
                     (start_ms, end_ms, text, words, chunk.index, chunk.centre_ms)

@@ -88,6 +88,16 @@ have different checksums, everything downstream treats them as two independent
 episodes: two sets of candidates over identical audio, in the same split, both
 counted. :func:`_audio_files` therefore groups files by recording and keeps one
 rendition of each.
+
+The same failure has a cross-show form. Two shows in a plan can reach one
+Internet Archive file -- a search show and a collection show over the same
+uploads, or a re-upload of one recording into a second item -- and the copies
+would be selected under two source ids, become two episode ids (an episode id
+carries the title slug, so different titles mean different ids), and could then
+be split into different partitions. Discovery therefore keeps a run-wide record
+of every ``(identifier, file)`` and every file MD5 it has selected, and rejects
+a repeat of either -- with reason ``duplicate_audio`` naming what it duplicates
+-- whichever show it arrives through.
 """
 
 from __future__ import annotations
@@ -863,6 +873,31 @@ def _episode_title(
     return f"{show.title} - {stem}"
 
 
+@dataclass
+class _SelectedAudio:
+    """Every upstream file a discovery run has already selected, by identity.
+
+    Keyed two ways because either alone misses a case: ``(identifier, file)``
+    catches the same file reached through two shows, and the Archive's MD5
+    catches the same bytes uploaded into a second item under another name.
+    """
+
+    by_file: dict[tuple[str, str], str] = field(default_factory=dict)
+    by_md5: dict[str, str] = field(default_factory=dict)
+
+    def duplicate_of(self, identifier: str, name: str, md5: str | None) -> str | None:
+        """The source id this file duplicates, or ``None`` if it is new."""
+        earlier = self.by_file.get((identifier, name))
+        if earlier is None and md5:
+            earlier = self.by_md5.get(md5.lower())
+        return earlier
+
+    def add(self, identifier: str, name: str, md5: str | None, source_id: str) -> None:
+        self.by_file[(identifier, name)] = source_id
+        if md5:
+            self.by_md5.setdefault(md5.lower(), source_id)
+
+
 def _select_from_item(
     show: ShowSpec,
     identifier: str,
@@ -870,8 +905,17 @@ def _select_from_item(
     limit: int,
     taken: set[str],
     rejections: list[dict[str, Any]],
+    selected_audio: _SelectedAudio | None = None,
 ) -> list[DiscoveredEpisode]:
-    """Pick up to ``limit`` audio files from one item, deterministically."""
+    """Pick up to ``limit`` audio files from one item, deterministically.
+
+    A file already selected in this run -- the same ``(identifier, file)`` or
+    the same MD5, through any show -- is rejected as ``duplicate_audio`` and
+    does not count toward ``limit``, so the show can still fill its quota with
+    recordings that are actually new.
+    """
+    if selected_audio is None:
+        selected_audio = _SelectedAudio()
     if item_is_restricted(metadata):
         rejections.append(
             {
@@ -910,6 +954,23 @@ def _select_from_item(
         name = str(entry.get("name"))
         if show.file_name_contains and show.file_name_contains not in name:
             continue
+        md5 = _optional_text(entry.get("md5"))
+        earlier = selected_audio.duplicate_of(identifier, name, md5)
+        if earlier is not None:
+            rejections.append(
+                {
+                    "series_id": show.series_id,
+                    "identifier": identifier,
+                    "file": name,
+                    "reason": "duplicate_audio",
+                    "detail": (
+                        f"already selected as {earlier!r} (same Internet Archive "
+                        "file or MD5); one recording must be one episode, or it "
+                        "is counted twice and can land in two partitions"
+                    ),
+                }
+            )
+            continue
         duration = _duration_seconds(entry)
         if duration is None:
             rejections.append(
@@ -937,7 +998,7 @@ def _select_from_item(
         provenance = {
             "internet_archive_identifier": identifier,
             "internet_archive_file": name,
-            "internet_archive_md5": _optional_text(entry.get("md5")),
+            "internet_archive_md5": md5,
             "internet_archive_size_bytes": int(_float_or_none(entry.get("size")) or 0),
             "internet_archive_length_seconds": round(duration, 3),
             "internet_archive_uploader": _item_field(metadata, "uploader"),
@@ -949,9 +1010,11 @@ def _select_from_item(
             "producing_agency": show.licence.agency,
             "official_programme_url": show.licence.official_url or show.homepage,
         }
+        source_id = _source_id(show.series_id, identifier, name, taken)
+        selected_audio.add(identifier, name, md5, source_id)
         selected.append(
             DiscoveredEpisode(
-                source_id=_source_id(show.series_id, identifier, name, taken),
+                source_id=source_id,
                 series_id=show.series_id,
                 title=_episode_title(show, metadata, entry),
                 url=_download_url(identifier, name),
@@ -996,6 +1059,9 @@ def discover(plan: CorpusPlan, client: InternetArchiveClient) -> DiscoveryReport
         plan_digest=plan.digest(),
     )
     taken: set[str] = set()
+    # Run-wide, not per show: the duplicate that matters is the one reached
+    # through two different shows.
+    selected_audio = _SelectedAudio()
 
     for show in plan.shows:
         if show.content_type not in TARGET_DOMAIN_CONTENT_TYPES:
@@ -1044,6 +1110,7 @@ def discover(plan: CorpusPlan, client: InternetArchiveClient) -> DiscoveryReport
                         min(show.files_per_item, remaining),
                         taken,
                         report.rejections,
+                        selected_audio,
                     )
                 )
         elif show.kind == "item_files":
@@ -1057,6 +1124,7 @@ def discover(plan: CorpusPlan, client: InternetArchiveClient) -> DiscoveryReport
                     min(show.files_per_item, show.max_episodes),
                     taken,
                     report.rejections,
+                    selected_audio,
                 )
             )
         else:
@@ -1093,7 +1161,13 @@ def discover(plan: CorpusPlan, client: InternetArchiveClient) -> DiscoveryReport
                 # duplicate the same show segment.
                 report.episodes.extend(
                     _select_from_item(
-                        show, identifier, metadata, 1, taken, report.rejections
+                        show,
+                        identifier,
+                        metadata,
+                        1,
+                        taken,
+                        report.rejections,
+                        selected_audio,
                     )
                 )
 

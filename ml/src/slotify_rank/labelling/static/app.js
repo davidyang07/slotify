@@ -33,8 +33,14 @@ const state = {
   queue: [],
   current: null,
   shownAt: 0,
-  loading: false,
+  /* The refill in flight, if any. Shared rather than a boolean so a caller that
+   * needs the queue (advance on an empty queue) can wait for the batch that is
+   * already on its way instead of concluding there is nothing left. */
+  refilling: null,
   inflight: 0,
+  /* Set when advance found nothing to show while saves were still in flight;
+   * the last save to land retries the advance. */
+  awaitingSaves: false,
   /* Presentations this session has acted on but whose POST has not landed yet.
    * Advancing does not wait for the save, so a refill fired in that window asks
    * a server that still believes the item is unjudged -- and would hand it back
@@ -142,44 +148,70 @@ const showEmpty = () => {
   $("empty").hidden = false;
 };
 
-const refill = async () => {
-  if (state.loading) return;
-  state.loading = true;
-  try {
-    const payload = await request(
-      `/api/batch?annotator_id=${encodeURIComponent(state.annotator)}&count=${BATCH_SIZE}`,
-    );
-    renderProgress(payload.progress);
-    /* The server excludes what is already judged or skipped, so a refill is
-     * authoritative: anything held locally that it did not return is stale. */
-    const seen = new Set();
-    state.queue = payload.items.filter((item) => {
-      if (seen.has(item.presentation_id)) return false;
-      if (state.settled.has(item.presentation_id)) return false;
-      seen.add(item.presentation_id);
-      return item.presentation_id !== state.current?.presentation_id;
-    });
-    prefetch();
-  } finally {
-    state.loading = false;
-  }
+/* At most one batch request at a time. A call made while one is in flight
+ * returns that same promise, so `await refill()` always means "the queue is as
+ * fresh as the server can make it" -- never "someone else is refilling, carry
+ * on with the empty queue". */
+const refill = () => {
+  if (state.refilling) return state.refilling;
+  state.refilling = (async () => {
+    try {
+      const payload = await request(
+        `/api/batch?annotator_id=${encodeURIComponent(state.annotator)}&count=${BATCH_SIZE}`,
+      );
+      renderProgress(payload.progress);
+      /* The server excludes what is already judged or skipped, so a refill is
+       * authoritative: anything held locally that it did not return is stale. */
+      const seen = new Set();
+      state.queue = payload.items.filter((item) => {
+        if (seen.has(item.presentation_id)) return false;
+        if (state.settled.has(item.presentation_id)) return false;
+        seen.add(item.presentation_id);
+        return item.presentation_id !== state.current?.presentation_id;
+      });
+      prefetch();
+    } finally {
+      state.refilling = null;
+    }
+  })();
+  return state.refilling;
 };
 
 const advance = async () => {
+  /* An empty queue waits for the batch -- including a background refill that
+   * is already under way, which `refill()` hands back rather than ignoring.
+   * Deciding "nothing left" before it lands is what stranded the annotator on
+   * the empty screen with items still to judge. A non-empty queue never waits:
+   * advancing stays a repaint. */
+  if (state.queue.length === 0) await refill();
+  /* That batch may have been requested before the latest judgements reached
+   * the server, so everything it returned can already be settled here. One
+   * fresh request settles it before the queue is declared empty. */
   if (state.queue.length === 0) await refill();
   const next = state.queue.shift();
   if (!next) {
     if (state.inflight > 0) {
-      /* Saves still in flight; the queue may refill once they land. */
+      /* Saves still in flight; the last one to land advances again. */
+      state.awaitingSaves = true;
       setStatus("Saving…");
       return;
     }
     showEmpty();
     return;
   }
+  state.awaitingSaves = false;
   renderCandidate(next);
   prefetch();
   if (state.queue.length <= 2) refill().catch(() => {});
+};
+
+/* Called when a save settles. If advancing earlier found nothing because the
+ * server had not yet recorded the saves, try again now that it has. */
+const resumeAfterSaves = () => {
+  if (state.inflight === 0 && state.awaitingSaves) {
+    state.awaitingSaves = false;
+    advance().catch((error) => setStatus(error.message, true));
+  }
 };
 
 const submit = async (score) => {
@@ -217,14 +249,20 @@ const submit = async (score) => {
     );
   } finally {
     state.inflight -= 1;
+    resumeAfterSaves();
   }
 };
 
 const skip = async () => {
   const item = state.current;
   if (!item) return;
+  /* Read the notes box BEFORE advancing: advancing renders the next item, which
+   * overwrites the box with that item's notes -- and the skip would then record
+   * the next item's text as this one's reason. */
+  const reason = $("notes").value.trim() || null;
   state.settled.add(item.presentation_id);
   await advance();
+  state.inflight += 1;
   try {
     const payload = await request("/api/skip", {
       method: "POST",
@@ -232,7 +270,7 @@ const skip = async () => {
       body: JSON.stringify({
         presentation_id: item.presentation_id,
         annotator_id: state.annotator,
-        reason: $("notes").value.trim() || null,
+        reason,
       }),
     });
     renderProgress(payload.progress);
@@ -240,6 +278,9 @@ const skip = async () => {
   } catch (error) {
     state.settled.delete(item.presentation_id);
     setStatus(`Could not skip: ${error.message}`, true);
+  } finally {
+    state.inflight -= 1;
+    resumeAfterSaves();
   }
 };
 

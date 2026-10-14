@@ -380,3 +380,130 @@ def test_normalize_reports_a_missing_original(paths):
     episode = make_episode(status="probed", normalized_path=None)
     with pytest.raises(FileNotFoundError, match="original audio missing"):
         normalize_episode(episode, paths)
+
+
+# --------------------------------------------------------------------------
+# A data root outside the repository (SLOTIFY_DATA_ROOT / --data-root)
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def external(tmp_path: Path) -> DataPaths:
+    """A repository and a data root that are siblings, not nested."""
+    repo = tmp_path / "checkout"
+    repo.mkdir()
+    instance = DataPaths(repo_root=repo, data_root=tmp_path / "corpus")
+    instance.mkdirs()
+    return instance
+
+
+def test_an_external_data_root_stores_data_root_relative_paths(external):
+    from slotify_rank.data.paths import DATA_ROOT_PREFIX
+
+    raw = external.raw_dir / "clip.mp3"
+    stored = external.relative(raw)
+    assert stored == f"{DATA_ROOT_PREFIX}raw/clip.mp3"
+    assert external.absolute(stored) == raw.resolve()
+    # A file inside the repository is still stored repository-relative.
+    fixture = external.repo_root / "ml" / "tests" / "fixtures" / "a.wav"
+    assert external.relative(fixture) == "ml/tests/fixtures/a.wav"
+
+
+def test_a_data_root_inside_the_repository_is_stored_exactly_as_before(paths):
+    raw = paths.raw_dir / "clip.mp3"
+    assert paths.relative(raw) == "data/raw/clip.mp3"
+    assert paths.absolute("data/raw/clip.mp3") == raw.resolve()
+
+
+def test_a_path_outside_both_roots_is_still_refused(external, tmp_path: Path):
+    with pytest.raises(ValueError, match="outside the repository root"):
+        external.relative(tmp_path / "elsewhere" / "clip.mp3")
+
+
+def test_data_root_relative_paths_reject_traversal(external):
+    with pytest.raises(ValueError, match="traverse upward"):
+        external.absolute("@data-root/../secrets")
+
+
+def test_data_root_relative_paths_follow_a_moved_corpus(external, tmp_path: Path):
+    """The point of storing them relatively: the drive can be mounted elsewhere."""
+    stored = external.relative(external.normalized_dir / "ep.wav")
+    moved = DataPaths(repo_root=external.repo_root, data_root=tmp_path / "mounted")
+    assert moved.absolute(stored) == (tmp_path / "mounted" / "normalized" / "ep.wav")
+
+
+def test_the_environment_variable_resolves_data_root_paths(
+    external, tmp_path: Path, monkeypatch
+):
+    from slotify_rank.data.paths import resolve
+
+    monkeypatch.setenv("SLOTIFY_DATA_ROOT", str(tmp_path / "corpus"))
+    assert resolve("@data-root/raw/x.mp3", external.repo_root) == (
+        tmp_path / "corpus" / "raw" / "x.mp3"
+    ).resolve()
+
+
+def test_import_into_an_external_data_root(external, tmp_path: Path):
+    origin = tmp_path / "outside" / "clip.mp3"
+    origin.parent.mkdir()
+    origin.write_bytes(b"pretend mp3 bytes")
+
+    episode = import_source(_local_entry(origin), external).episode
+
+    assert episode.original_path.startswith("@data-root/raw/")
+    assert external.absolute(episode.original_path).read_bytes() == b"pretend mp3 bytes"
+
+
+def test_fetch_into_an_external_data_root(external, stub_download):
+    from slotify_rank.data.sources import SourceEntry as Entry
+
+    stub_download(b"remote audio bytes")
+    entry = Entry(
+        id="remote-one",
+        source_type="direct_download",
+        url="https://example.org/remote-one.mp3",
+        title="Remote one",
+        series_id="remote-series",
+        source_name="Example",
+        content_type="podcast",
+        license_name="CC0",
+        license_url="https://creativecommons.org/publicdomain/zero/1.0/",
+    )
+    episode = fetch_module.fetch_source(entry, external).episode
+    assert episode.original_path == "@data-root/raw/remote-one.mp3"
+    assert external.absolute(episode.original_path).is_file()
+
+
+def test_validation_accepts_an_external_data_root(external, tmp_path: Path):
+    from slotify_rank.data.validate import validate_dataset
+
+    origin = tmp_path / "outside" / "clip.mp3"
+    origin.parent.mkdir()
+    origin.write_bytes(b"pretend mp3 bytes")
+    episode = import_source(_local_entry(origin), external).episode
+
+    report = validate_dataset([episode], [], external, deep=True)
+    path_errors = [
+        finding
+        for finding in report.errors
+        if finding.check
+        in ("episode_paths_within_data_roots", "episode_absolute_paths", "episode_checksums")
+    ]
+    assert path_errors == []
+
+
+@needs_ffmpeg
+def test_normalize_into_an_external_data_root(external, tmp_path: Path):
+    """Used to render the WAV and *then* raise, leaving an orphaned render."""
+    origin = tmp_path / "outside" / "clip.wav"
+    write_speech_like_wav(origin, [(1500, True), (800, False), (1500, True)])
+    episode = import_source(_local_entry(origin), external).episode
+    episode = episode.replace(
+        status="probed", duration_ms=probe_audio(origin).duration_ms
+    )
+
+    result = normalize_episode(episode, external)
+
+    assert result.episode.normalized_path.startswith("@data-root/normalized/")
+    assert external.absolute(result.episode.normalized_path).is_file()
+    assert needs_normalization(result.episode, external) is False

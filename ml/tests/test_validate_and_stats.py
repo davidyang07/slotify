@@ -441,3 +441,82 @@ def test_series_are_counted_per_content_type_as_shows_not_episodes(paths):
     }
     assert bundle.dataset["series_count"] == 3
     assert bundle.dataset["processed_episode_count"] == 4
+
+
+# --------------------------------------------------------------------------
+# Duplicate audio
+# --------------------------------------------------------------------------
+
+
+def _split_manifest(*placements):
+    return SplitManifest(
+        version="v1",
+        algorithm_version="split-grouped-greedy-v1.0.0",
+        seed=42,
+        group_by="series",
+        ratios={"train": 0.7, "validation": 0.15, "test": 0.15},
+        degraded=False,
+        reason=None,
+        assignments=tuple(
+            SplitAssignment(f"g{index}", split, (episode.episode_id,), 1000, True)
+            for index, (episode, split) in enumerate(placements)
+        ),
+    )
+
+
+def test_the_same_audio_under_two_titles_fails_and_names_both(paths):
+    """Two ids, one recording: the title slug makes the ids differ, so only the
+    checksum can tell they are copies."""
+    first = _episode_with_file(paths, title="Pilot", sha_seed="c", series_id="show-a")
+    second = _episode_with_file(
+        paths, title="Pilot (re-upload)", sha_seed="c", series_id="show-b"
+    )
+    assert first.episode_id != second.episode_id
+
+    report = validate_dataset([first, second], [], paths)
+
+    duplicates = [f for f in report.errors if f.check == "duplicate_audio"]
+    assert duplicates, [f.to_dict() for f in report.errors]
+    assert first.episode_id in duplicates[0].message
+    assert second.episode_id in duplicates[0].message
+
+
+def test_duplicate_audio_across_partitions_is_split_leakage(paths):
+    first = _episode_with_file(paths, title="Pilot", sha_seed="d", series_id="show-a")
+    second = _episode_with_file(paths, title="Pilot again", sha_seed="d", series_id="show-b")
+
+    report = validate_dataset(
+        [first, second],
+        [],
+        paths,
+        split_manifest=_split_manifest((first, "train"), (second, "test")),
+    )
+
+    leaks = [f for f in report.errors if f.check == "split_leakage_by_audio"]
+    assert leaks
+    assert "train" in leaks[0].message and "test" in leaks[0].message
+    assert first.episode_id in leaks[0].message and second.episode_id in leaks[0].message
+
+
+def test_a_shared_normalized_render_is_duplicate_audio_too(paths):
+    """Two containers of one recording differ in bytes but decode identically."""
+    first = _episode_with_file(paths, title="One", sha_seed="e", series_id="s1")
+    second = _episode_with_file(
+        paths, title="Two", sha_seed="f", series_id="s2", normalized_sha256="e" * 64
+    )
+    report = validate_dataset([first, second], [], paths)
+    assert "duplicate_audio" in _checks(report)
+
+
+def test_distinct_audio_is_not_flagged(paths):
+    first = _episode_with_file(paths, title="One", sha_seed="1", series_id="s1")
+    second = _episode_with_file(paths, title="Two", sha_seed="2", series_id="s2")
+    report = validate_dataset(
+        [first, second],
+        [],
+        paths,
+        split_manifest=_split_manifest((first, "train"), (second, "test")),
+    )
+    assert "duplicate_audio" not in _checks(report)
+    assert "split_leakage_by_audio" not in _checks(report)
+    assert "duplicate_audio" in report.checks_run

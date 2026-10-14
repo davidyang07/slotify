@@ -1,0 +1,69 @@
+# Split configuration v5 -- the v4 rules, under the corrected stratified
+# algorithm.
+#
+# WHY A NEW VERSION. A split manifest is IMMUTABLE for a given version: models
+# are trained against it and results are reported against it, so changing one in
+# place would invalidate every number already produced. Nothing in v4's rules
+# changed. What changed is the algorithm that applies them:
+#
+#   v4  split-stratified-greedy-v1.0.0  (frozen; manifests still readable)
+#   v5  split-stratified-greedy-v1.1.0
+#
+# v1.0.0 promised to balance each content type against targets computed *within
+# that content type*, and did not: every content type was measured against the
+# corpus-wide duration target, count target and running total. Whichever type
+# was assigned first could then fill a partition's whole budget and leave the
+# next nothing. On a corpus of 20 narrated series (60 h) and 14 podcasts (14 h)
+# that put zero podcasts in validation; on the committed corpus it gave the
+# test partition ~3.2 h of podcasts (15 % of *all* hours, all of it podcast)
+# and validation ~1.2 h. v1.1.0 gives each content type its own 70/15/15 --
+# renormalized over the partitions it may enter, so the audiobooks barred from
+# test split 70:15 between train and validation -- and on the committed
+# registry moves the test partition to ~1.7 h (15 % of the podcast hours) and
+# validation's podcasts to ~1.9 h. Regenerating v4 with this build would
+# therefore produce a different v4, which is exactly what a split version must
+# never do; hence v5.
+#
+# `algorithm_version` is pinned below. `load_split_config` refuses to load this
+# file under any other algorithm, so the next change to the algorithm cannot
+# quietly regenerate v5 either.
+#
+# Every rule below is v4's, unchanged, with v4's reasoning (see
+# splits_v4.yaml for the full account of what each one prevents).
+
+split:
+  version: v5
+  algorithm_version: split-stratified-greedy-v1.1.0
+  seed: 42
+  group_by: series
+
+  ratios:
+    train: 0.70
+    validation: 0.15
+    test: 0.15
+
+  # Balance each content type across the partitions separately -- now against
+  # each content type's own targets.
+  stratify_by: content_type
+
+  # Music and any supplemental out-of-domain material stay out of the test
+  # partition entirely; `test_content_types` below is strictly stronger.
+  require_target_domain_test: true
+
+  # The test partition is the product's actual task or it is not the test
+  # partition. Under per-content-type targets it holds 15 % of the podcast
+  # hours, not 15 % of the corpus.
+  test_content_types: [podcast]
+
+  # No series may take more than half a partition's duration budget (the
+  # budget being what every content type owes that partition).
+  max_group_share_of_partition: 0.5
+
+  # Three independent shows is the floor for reporting a macro-averaged metric
+  # over a partition. A hard failure, not a warning: widen the corpus rather
+  # than lowering it.
+  min_series_per_partition: 3
+
+  # Below this many independent series the splitter degrades to a single
+  # 'development' partition rather than producing a "test set" of one show.
+  min_groups_for_split: 6

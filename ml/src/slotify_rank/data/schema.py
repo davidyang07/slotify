@@ -3,11 +3,12 @@
 Two rules govern everything here.
 
 **Determinism.** An episode's identity is derived from the SHA-256 of its
-original audio, so importing the same file twice -- from a different directory,
-on a different machine, in a different order -- produces the same
-``episode_id`` and therefore the same candidate IDs, labels and split
+original audio (and its title), so importing the same file twice -- from a
+different directory, on a different machine, in a different order -- produces
+the same ``episode_id`` and therefore the same candidate IDs, labels and split
 assignment. Nothing about identity depends on wall-clock time, insertion order
-or absolute paths.
+or absolute paths. (The same audio under a *different* title is a different id;
+see :func:`make_episode_id` for where that duplicate is caught.)
 
 **Separation of label provenance.** ``label_status`` distinguishes ``human``,
 ``weak_heuristic`` and ``unlabelled``. These are never summed into one
@@ -109,9 +110,17 @@ def make_episode_id(title: str, sha256: str) -> str:
     """Deterministic episode identity: ``<title-slug>_<first 12 of sha256>``.
 
     Keying on the *content* hash rather than the path means a re-import is
-    idempotent and two copies of the same recording collapse to one episode,
-    which is what stops the same audio being counted twice in the corpus totals.
-    The slug is for humans; the hash carries the identity.
+    idempotent: the same file under the same title, from any directory or
+    machine, is the same episode.
+
+    The title slug is part of the id, though, so it does **not** collapse two
+    copies of one recording that arrive under different titles (or a file whose
+    title changed between imports) -- those get two ids. Duplicate audio is
+    caught elsewhere, on the checksum itself: ``dataset validate`` fails on two
+    episodes sharing an audio SHA-256 (and on such a pair split across
+    partitions), and discovery never selects the same Internet Archive file, or
+    the same MD5, twice. The format is kept as it is because every manifest,
+    label and split refers to ids in it.
     """
     digest = str(sha256).strip().lower()
     if len(digest) != 64:
@@ -129,11 +138,12 @@ def _require_relative(value: str | None, field_name: str) -> str | None:
     if "\\" in text:
         raise ValueError(
             f"{field_name} must use forward slashes (got {text!r}); use "
-            "slotify_rank.data.paths.to_repo_relative to build it"
+            "slotify_rank.data.paths.DataPaths.relative to build it"
         )
     if text.startswith("/") or re.match(r"^[A-Za-z]:", text):
         raise ValueError(
-            f"{field_name} must be repository-relative, not absolute (got {text!r})"
+            f"{field_name} must be repository- or data-root-relative, not "
+            f"absolute (got {text!r})"
         )
     if ".." in text.split("/"):
         raise ValueError(f"{field_name} must not traverse upward (got {text!r})")
@@ -345,6 +355,10 @@ class DatasetCandidate:
     baseline_version: str = ""
     config_version: str = ""
     candidate_generation_version: str = CANDIDATE_GENERATION_VERSION
+    #: :attr:`~slotify_rank.candidates.config.GenerationConfig.digest` of the
+    #: settings that generated this candidate. Empty on records written before
+    #: schema v1.1.0, which did not record it.
+    generation_config_digest: str = ""
     preprocessing_version: str = PREPROCESSING_VERSION
     label_status: LabelStatus = "unlabelled"
     dataset_split: DatasetSplit = "unassigned"

@@ -376,6 +376,80 @@ def test_a_changed_configuration_invalidates_the_cache(corpus, tmp_path, capsys)
     assert "acoustic         processed=1" in capsys.readouterr().out
 
 
+def test_a_changed_candidate_set_invalidates_the_feature_caches(corpus, capsys):
+    """Regenerating candidates (say under a different max_candidates_per_minute)
+    used to leave every per-candidate artifact a false cache hit."""
+    repo, paths, _, candidates = corpus
+    _pipeline(repo)
+
+    extra = candidates[0].replace(
+        candidate_id=f"{EPISODE}:000008000", timestamp_ms=8_000
+    )
+    manifests.write_candidates(paths.candidates_manifest, [*candidates, extra])
+    capsys.readouterr()
+    assert _pipeline(repo) == 0
+    output = capsys.readouterr().out
+    assert "acoustic         processed=1" in output
+    assert "audio_embedding  processed=1" in output
+    assert "text_embedding   processed=1" in output
+    # Transcription does not depend on candidates and must stay cached.
+    assert "transcribe       processed=0 skipped=1" in output
+
+
+def test_candidate_content_and_settings_invalidate_the_handcrafted_cache(corpus, capsys):
+    """Same timestamps, different generation settings or heuristic scores: the
+    structural features read those, so the handcrafted cache must notice --
+    while the audio embedding, pooled only at the timestamps, must not."""
+    repo, paths, _, candidates = corpus
+    _pipeline(repo)
+
+    manifests.write_candidates(
+        paths.candidates_manifest,
+        [
+            candidate.replace(
+                heuristic_score=0.9,
+                generation_config_digest="f" * 64,
+                config_version="heuristic-config-v9.9.9",
+            )
+            for candidate in candidates
+        ],
+    )
+    capsys.readouterr()
+    assert _pipeline(repo) == 0
+    output = capsys.readouterr().out
+    assert "acoustic         processed=1" in output
+    # The audio identity names the generation settings and heuristic version
+    # too (they are part of how the pool was produced), so it recomputes.
+    assert "audio_embedding  processed=1" in output
+
+
+def test_restamping_splits_does_not_invalidate_the_feature_caches(corpus, capsys):
+    """`dataset split` rewrites every candidate's dataset_split; no feature
+    depends on it, so it must not cost a re-run of the corpus."""
+    repo, paths, _, candidates = corpus
+    _pipeline(repo)
+    manifests.write_candidates(
+        paths.candidates_manifest,
+        [candidate.replace(dataset_split="train") for candidate in candidates],
+    )
+    capsys.readouterr()
+    assert _pipeline(repo) == 0
+    output = capsys.readouterr().out
+    assert "acoustic         processed=0" in output
+    assert "audio_embedding  processed=0 skipped=1" in output
+
+
+def test_the_candidate_identity_inputs_are_explained_when_they_change(corpus):
+    from slotify_rank.pipeline.identity import CacheIdentity
+    from slotify_rank.pipeline.stages import candidate_set_inputs
+
+    _, _, _, candidates = corpus
+    before = CacheIdentity("audio_embedding", candidate_set_inputs(candidates))
+    after = CacheIdentity("audio_embedding", candidate_set_inputs(candidates[:2]))
+    reasons = after.explain_mismatch(before.to_dict())
+    assert any(reason.startswith("candidate_set_sha256") for reason in reasons)
+
+
 def test_force_recomputes_a_valid_cache(corpus, capsys):
     repo, _, _, _ = corpus
     _pipeline(repo)

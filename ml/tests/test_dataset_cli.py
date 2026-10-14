@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from slotify_rank.cli import main
-from slotify_rank.config.settings import canonical_config_path
+from slotify_rank.config.settings import canonical_config_path, find_repo_root
 from slotify_rank.data.ffmpeg import FFmpegNotFound, require_ffmpeg
 
 
@@ -283,9 +283,104 @@ def test_split_is_immutable_without_force(tmp_path: Path, capsys):
         for index, seed in enumerate("abcdefgh")
     ]
     manifests.write_episodes(data_root / "manifests" / "episodes.jsonl", episodes)
+    # Eight one-episode series is too thin for the canonical split's
+    # three-series gate, and immutability is not about which rules are used.
+    config = ["--config", str(find_repo_root() / "ml" / "configs" / "splits_v1.yaml")]
 
-    assert _run(["dataset", "split", "--seed", "1"], data_root) == 0
-    assert _run(["dataset", "split", "--seed", "1"], data_root) == 0  # identical: no-op
-    assert _run(["dataset", "split", "--seed", "77"], data_root) == 1
+    assert _run(["dataset", "split", "--seed", "1", *config], data_root) == 0
+    assert _run(["dataset", "split", "--seed", "1", *config], data_root) == 0  # no-op
+    assert _run(["dataset", "split", "--seed", "77", *config], data_root) == 1
     assert "immutable" in capsys.readouterr().err
-    assert _run(["dataset", "split", "--seed", "77", "--force"], data_root) == 0
+    assert (
+        _run(["dataset", "split", "--seed", "77", "--force", *config], data_root) == 0
+    )
+
+
+def _canonical_splittable_corpus(data_root: Path):
+    """Enough podcast and narrated series for the canonical split's gates."""
+    from slotify_rank.data import manifests
+    from tests.dataset_fixtures import make_candidate, make_episode
+
+    (data_root / "manifests").mkdir(parents=True)
+    episodes = []
+    for index in range(24):
+        episodes.append(
+            make_episode(
+                title=f"Podcast {index}",
+                sha_seed=f"{index % 16:x}",
+                series_id=f"podcast-{index:02d}",
+                episode_id=f"podcast-{index:02d}",
+                duration_ms=600_000,
+            )
+        )
+    for index in range(6):
+        episodes.append(
+            make_episode(
+                title=f"Narrated {index}",
+                sha_seed=f"{index:x}",
+                series_id=f"narrated-{index}",
+                episode_id=f"narrated-{index}",
+                content_type="narrated",
+                duration_ms=600_000,
+            )
+        )
+    manifests.write_episodes(data_root / "manifests" / "episodes.jsonl", episodes)
+    manifests.write_candidates(
+        data_root / "manifests" / "candidates.jsonl",
+        [make_candidate(episode_id=e.episode_id, timestamp_ms=60_000) for e in episodes],
+    )
+    return episodes
+
+
+def test_split_without_config_uses_the_canonical_split_and_says_so(
+    tmp_path: Path, capsys
+):
+    """No --config used to mean `SplitConfig()` -- the unstratified v1 rules --
+    and every candidate was restamped with a split no other command read."""
+    from slotify_rank.config.versions import STRATIFIED_SPLIT_ALGORITHM_VERSION
+    from slotify_rank.data import manifests
+    from slotify_rank.data.splits import (
+        CANONICAL_SPLIT_CONFIG,
+        CANONICAL_SPLIT_VERSION,
+        read_split_manifest,
+    )
+
+    data_root = tmp_path / "data"
+    _canonical_splittable_corpus(data_root)
+
+    assert _run(["dataset", "split"], data_root) == 0
+    output = capsys.readouterr().out
+    assert Path(CANONICAL_SPLIT_CONFIG).name in output
+    assert "canonical default" in output
+    assert STRATIFIED_SPLIT_ALGORITHM_VERSION in output
+
+    manifest_path = data_root / "manifests" / f"splits_{CANONICAL_SPLIT_VERSION}.json"
+    manifest = read_split_manifest(manifest_path)
+    assert manifest.algorithm_version == STRATIFIED_SPLIT_ALGORITHM_VERSION
+    assert not (data_root / "manifests" / "splits_v1.json").exists()
+    by_episode = manifest.by_episode
+    for candidate in manifests.read_candidates(data_root / "manifests" / "candidates.jsonl"):
+        assert candidate.dataset_split == by_episode[candidate.episode_id]
+
+    # And the readers default to the very same split. (The fabricated episodes
+    # have no audio on disk, so validation itself fails; only which split it
+    # looked for is under test.)
+    _run(["dataset", "validate"], data_root)
+    report = json.loads(
+        (data_root.parent / "artifacts" / "dataset" / "validation_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert not any("no split manifest" in f["message"] for f in report["findings"])
+
+
+def test_an_explicit_split_config_is_named_without_the_default_note(
+    tmp_path: Path, capsys
+):
+    data_root = tmp_path / "data"
+    _canonical_splittable_corpus(data_root)
+    config = find_repo_root() / "ml" / "configs" / "splits_v3.yaml"
+    assert _run(["dataset", "split", "--config", str(config)], data_root) == 0
+    output = capsys.readouterr().out
+    assert "splits_v3.yaml" in output
+    assert "canonical default" not in output

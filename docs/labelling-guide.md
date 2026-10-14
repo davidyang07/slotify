@@ -85,7 +85,14 @@ The session needs no mouse.
 `U` and `S` are different things and the difference matters. A broken clip is
 information about the audio and is exported as a label with `is_unusable` set. A
 skip is you deferring, and never reaches the export, the readiness gate or a
-model.
+model. Whatever is in the note field when you press `S` is stored as *that*
+item's skip reason (only for your own reference when you come back to it).
+
+When a transcript is shown and the break falls **inside** a spoken sentence, the
+sentence is split at the break: the words before it end the "before" text and the
+rest begin the "after" text. A "before" text that stops mid-phrase is therefore
+not a display glitch — it is the break interrupting the speaker, which is exactly
+what the rubric's low scores are for.
 
 ---
 

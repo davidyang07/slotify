@@ -90,3 +90,27 @@ def test_scanning_never_removes_anything(tmp_path: Path):
 
     assert sorted(p.name for p in paths.normalized_dir.iterdir()) == before
     assert stray.is_file()
+
+
+def test_an_external_data_root_is_scanned_through_its_own_paths(tmp_path: Path):
+    """With SLOTIFY_DATA_ROOT outside the repository, manifest paths are
+    `@data-root/...`; resolving them against the repository would report every
+    file in the corpus as an orphan."""
+    repo = tmp_path / "checkout"
+    repo.mkdir()
+    paths = DataPaths(repo_root=repo, data_root=tmp_path / "corpus")
+    paths.mkdirs()
+    episode = make_episode(title="External", sha_seed="e")
+    raw = paths.raw_dir / f"{episode.episode_id}.mp3"
+    render = paths.normalized_dir / f"{episode.episode_id}.wav"
+    raw.write_bytes(b"raw")
+    render.write_bytes(b"wav")
+    episode = episode.replace(
+        original_path=paths.relative(raw), normalized_path=paths.relative(render)
+    )
+    write_episodes(paths.episodes_manifest, [episode])
+    stray = paths.normalized_dir / "dropped_deadbeef.wav"
+    stray.write_bytes(b"wav")
+
+    report = scan_orphans(paths)
+    assert report.orphans == {"normalized": ["@data-root/normalized/dropped_deadbeef.wav"]}

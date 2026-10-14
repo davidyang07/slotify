@@ -27,7 +27,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from slotify_rank.candidates.audio_candidates import RawCandidate
 from slotify_rank.candidates.config import TranscriptConfig
-from slotify_rank.candidates.heuristic import ends_with_sentence_boundary
+from slotify_rank.candidates.heuristic import ends_with_sentence_boundary, js_trim
 
 __all__ = ["TranscriptSegment", "load_transcript", "transcript_candidates"]
 
@@ -103,7 +103,10 @@ def load_transcript(path: Path | str) -> list[TranscriptSegment]:
                 segment_id=str(entry.get("id", index)),
                 start_ms=start_ms,
                 end_ms=end_ms,
-                text=str(entry.get("text", "") or "").strip(),
+                # The product trims segment text with JavaScript's `trim()`
+                # (insert-sections.ts), so the snippet the scorer sees must be
+                # trimmed with the same whitespace set.
+                text=js_trim(str(entry.get("text", "") or "")),
             )
         )
     segments.sort(key=lambda segment: (segment.start_ms, segment.end_ms))

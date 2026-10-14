@@ -31,6 +31,8 @@ rules are:
 ``CANDIDATE_GENERATION_VERSION``
     Generator set and their parameters' *semantics* (not their tuned values,
     which live in ``ml/configs/dataset_v1.yaml`` and are recorded per run).
+    That includes which merged candidates survive the density cap, since a
+    change there changes the pool every label and feature is attached to.
 
 ``SPLIT_ALGORITHM_VERSION``
     Grouping and assignment algorithm in :mod:`slotify_rank.data.splits`. A
@@ -87,10 +89,24 @@ CANDIDATE_SCHEMA_VERSION = "candidate-schema-v1.0.0"
 # from upstream and how its licence was established. Additive and optional, so
 # v1.0.0 records still read (they simply carry no provenance).
 EPISODE_SCHEMA_VERSION = "episode-schema-v1.1.0"
-DATASET_CANDIDATE_SCHEMA_VERSION = "dataset-candidate-schema-v1.0.0"
+# v1.1.0 added the optional `generation_config_digest`: which candidate
+# generation settings produced the record, so a feature cache can tell a pool
+# regenerated under different settings from the one it was built for. Additive
+# and optional, so v1.0.0 records still read (with an empty digest).
+DATASET_CANDIDATE_SCHEMA_VERSION = "dataset-candidate-schema-v1.1.0"
 SOURCE_MANIFEST_VERSION = "source-manifest-v1.0.0"
 PREPROCESSING_VERSION = "preprocess-v1.0.0"
-CANDIDATE_GENERATION_VERSION = "candgen-v1.0.0"
+# v1.1.0: the density cap is applied per one-minute window and ranks
+# candidates within a window by signal evidence (pause length, valley depth,
+# source agreement). v1.0.0 kept the global top-N by heuristic score, which tied
+# almost everything at 0.4/0.5 and so emptied the first and last fifth of every
+# episode of everything but silences -- a pool biased toward the baseline it is
+# meant to be compared against.
+# v1.1.0 also scores a merged survivor with its *own* pause and snippet, as the
+# product's ``mergeCandidates`` does, instead of the group's longest pause and
+# a borrowed snippet; ``heuristic_score`` on a v1.0.0 row can differ from the
+# product's for the same timestamp.
+CANDIDATE_GENERATION_VERSION = "candgen-v1.1.0"
 SPLIT_ALGORITHM_VERSION = "split-grouped-greedy-v1.0.0"
 #: The stratified variant. It groups on series exactly as the greedy algorithm
 #: does -- the leakage guarantee is identical -- and differs only in *ordering*:
@@ -98,11 +114,24 @@ SPLIT_ALGORITHM_VERSION = "split-grouped-greedy-v1.0.0"
 #: whose podcasts are a minority of its hours cannot end up with all of them in
 #: one partition. Recorded per manifest rather than replacing the constant
 #: above, so manifests produced by either algorithm stay readable.
-STRATIFIED_SPLIT_ALGORITHM_VERSION = "split-stratified-greedy-v1.0.0"
+#:
+#: v1.1.0 computes each content type's duration targets, count targets and
+#: running totals *within that content type*, which is what the algorithm always
+#: claimed to do. v1.0.0 measured every stratum against corpus-wide targets, so
+#: whichever stratum was assigned first could fill a partition's whole budget
+#: and leave the next one nothing: 20 narrated series and 14 podcasts put zero
+#: podcasts in validation. Split v4 was produced by v1.0.0; v5 is the first
+#: split produced by v1.1.0.
+STRATIFIED_SPLIT_ALGORITHM_VERSION = "split-stratified-greedy-v1.1.0"
+#: The algorithm that produced split v4. No longer implemented -- this build
+#: cannot regenerate a v1.0.0 manifest -- but still *readable*, so the v4
+#: manifest and every result reported against it stay inspectable.
+LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION = "split-stratified-greedy-v1.0.0"
 #: Every algorithm version this build can read a manifest from.
 SUPPORTED_SPLIT_ALGORITHM_VERSIONS = (
     SPLIT_ALGORITHM_VERSION,
     STRATIFIED_SPLIT_ALGORITHM_VERSION,
+    LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION,
 )
 LABEL_RUBRIC_VERSION = "rubric-v1.0.0"
 #: Shape of one stored judgement (:mod:`slotify_rank.labelling.database`) and
@@ -113,13 +142,24 @@ LABEL_RUBRIC_VERSION = "rubric-v1.0.0"
 LABEL_SCHEMA_VERSION = "label-schema-v1.1.0"
 
 # Phase 3 (multimodal features and embeddings).
-TRANSCRIPTION_VERSION = "transcript-v1.0.0"
+# v1.1.0: a segment whose end timestamp is missing (Whisper's trailing segment,
+# or a chunk decoded without offsets) now ends at the next segment's start or
+# the chunk end instead of collapsing to zero length and being dropped. The
+# stored shape is unchanged, so v1.0.0 transcripts still read; they are simply
+# re-derived because the version is part of every transcript's cache identity.
+TRANSCRIPTION_VERSION = "transcript-v1.1.0"
 # v1.1.0: the heuristic component names were corrected to the scorer's actual
 # additive terms (base/pause/mode/sentence/position/edge), and raw_total and
 # clamped were added. The previous names were guesses that matched nothing, so
 # every one of those columns was silently 100% missing.
 FEATURE_SPEC_VERSION = "featurespec-v1.1.0"
-FEATURE_PIPELINE_VERSION = "featurepipeline-v1.0.0"
+# v1.1.0: a candidate inside a transcript segment is treated as mid-sentence
+# (``transcript_sentence_end`` 0, no pause, the straddled text split at the
+# candidate into the before/after context). v1.0.0 read the boundary signal off
+# the segment *before* the straddled one, so a mid-sentence candidate looked
+# like a clean sentence end and the sentence it interrupted vanished from both
+# sides. The feature vocabulary is unchanged, so FEATURE_SPEC_VERSION is not.
+FEATURE_PIPELINE_VERSION = "featurepipeline-v1.1.0"
 FEATURE_MANIFEST_SCHEMA_VERSION = "feature-record-schema-v1.0.0"
 EMBEDDING_STORE_VERSION = "embedding-store-v1.0.0"
 
@@ -169,10 +209,12 @@ SUPPORTED_EPISODE_SCHEMA_VERSIONS = frozenset(
     {EPISODE_SCHEMA_VERSION, "episode-schema-v1.0.0"}
 )
 SUPPORTED_DATASET_CANDIDATE_SCHEMA_VERSIONS = frozenset(
-    {DATASET_CANDIDATE_SCHEMA_VERSION}
+    {DATASET_CANDIDATE_SCHEMA_VERSION, "dataset-candidate-schema-v1.0.0"}
 )
 SUPPORTED_SOURCE_MANIFEST_VERSIONS = frozenset({SOURCE_MANIFEST_VERSION})
-SUPPORTED_TRANSCRIPTION_VERSIONS = frozenset({TRANSCRIPTION_VERSION})
+SUPPORTED_TRANSCRIPTION_VERSIONS = frozenset(
+    {TRANSCRIPTION_VERSION, "transcript-v1.0.0"}
+)
 SUPPORTED_FEATURE_MANIFEST_SCHEMA_VERSIONS = frozenset(
     {FEATURE_MANIFEST_SCHEMA_VERSION}
 )
@@ -189,6 +231,7 @@ __all__ = [
     "CANDIDATE_GENERATION_VERSION",
     "SPLIT_ALGORITHM_VERSION",
     "STRATIFIED_SPLIT_ALGORITHM_VERSION",
+    "LEGACY_STRATIFIED_SPLIT_ALGORITHM_VERSION",
     "SUPPORTED_SPLIT_ALGORITHM_VERSIONS",
     "LABEL_RUBRIC_VERSION",
     "LABEL_SCHEMA_VERSION",

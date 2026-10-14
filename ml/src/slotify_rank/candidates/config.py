@@ -113,9 +113,13 @@ class GenerationConfig:
     edge_guard_ms: int = 5_000
     #: Candidates closer together than this collapse into one.
     merge_tolerance_ms: int = 400
-    #: Upper bound on post-merge density. ``None`` disables the cap. When it
-    #: bites, the lowest-heuristic-score candidates are dropped and the fact is
-    #: reported -- density is never trimmed silently.
+    #: Upper bound on post-merge density, enforced in every one-minute window
+    #: separately (the last, partial window gets its proportional share, and
+    #: no window is cut below one). ``None`` disables the cap. When it bites,
+    #: the candidates with the weakest *signal evidence* in that window are
+    #: dropped -- shortest pause, shallowest energy valley, fewest agreeing
+    #: generators -- never by heuristic score, and the fact is reported:
+    #: density is never trimmed silently.
     max_candidates_per_minute: float | None = 12.0
     #: Window used for ``local_energy_summary``.
     energy_summary_window_ms: int = 1_000
@@ -170,6 +174,21 @@ class GenerationConfig:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    @property
+    def digest(self) -> str:
+        """SHA-256 over every setting that decides which candidates exist.
+
+        Stamped on each generated candidate, so anything derived from a
+        candidate pool (feature caches, most of all) can tell which settings
+        produced it. ``dataset_version`` is a name, not a setting, and is left
+        out: renaming a config must not look like changing it.
+        """
+        from slotify_rank.pipeline.identity import config_digest
+
+        payload = self.to_dict()
+        payload.pop("dataset_version", None)
+        return config_digest(payload)
 
 
 def _section(raw: Mapping[str, Any], key: str) -> dict[str, Any]:

@@ -17,7 +17,10 @@ from pathlib import Path
 import pytest
 
 from slotify_rank.candidates.heuristic import (
+    JS_WHITESPACE,
+    SENTENCE_BOUNDARY_JS_PATTERN,
     ends_with_sentence_boundary,
+    js_trim,
     merge_candidates,
     rank_episode,
     rank_episodes,
@@ -322,6 +325,98 @@ def test_ends_with_sentence_boundary_handles_none():
     assert ends_with_sentence_boundary(None) is False
 
 
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        # U+FEFF is whitespace to JavaScript's trim() and \s, not to Python's.
+        ("Done.\ufeff", True),
+        ("\ufeffDone.", True),
+        ("Done.\u2028", True),
+        ("Done.\u3000", True),
+        # U+0085 and U+001C-U+001F are whitespace to Python, not to JavaScript.
+        ("Done.\x85", False),
+        ("Done.\x1c", False),
+        ("Done.\x1f", False),
+        # Python's `$` also matches before a final newline; JavaScript's does not.
+        ('He said "go."\n', True),
+    ],
+)
+def test_sentence_boundary_uses_javascript_whitespace(text, expected):
+    assert ends_with_sentence_boundary(text) is expected
+
+
+def test_the_port_implements_the_sentence_pattern_the_canonical_config_holds():
+    """The config is the single source of the regex the TypeScript compiles; the
+    port compiles the same source with JavaScript semantics."""
+    raw = json.loads(load_heuristic_config().path.read_text(encoding="utf-8"))
+    profile = raw["profiles"][raw["canonical_profile"]]
+    declared = profile.get("sentence_boundary_pattern", {}).get("regex")
+    if declared is None:
+        pytest.skip("this config predates the shared sentence pattern")
+    assert declared == SENTENCE_BOUNDARY_JS_PATTERN
+
+
+def test_js_trim_matches_string_prototype_trim():
+    assert js_trim("\ufeff\u00a0 Done.\u2029\t") == "Done."
+    assert js_trim("\x85Done.\x1c") == "\x85Done.\x1c"
+    assert set(JS_WHITESPACE) == {
+        *"\t\n\v\f\r \u00a0\u1680\u2028\u2029\u202f\u205f\u3000\ufeff",
+        *(chr(code) for code in range(0x2000, 0x200B)),
+    }
+
+
+def test_a_bom_after_the_full_stop_scores_the_sentence_reward(profile):
+    """`"Done.\ufeff"` is +0.3 in TypeScript; Python's strip() made it -0.2."""
+    scored = score_candidate(
+        Candidate(ms=60000, silence_ms=0, snippet="Done.\ufeff"), 120.0, "podcast", profile
+    )
+    assert scored.components.sentence == 0.3
+
+
+def test_whitespace_parity_with_node_over_every_space_like_character():
+    """Ground truth from the JavaScript engine itself, when one is installed."""
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    candidates = sorted(
+        {
+            *JS_WHITESPACE,
+            *(chr(code) for code in range(0x00, 0x21)),
+            "\x85",
+            "\u180e",
+            "\u200b",
+            "\u2060",
+        }
+    )
+    texts = [f"Done.{char}" for char in candidates] + [
+        f"{char}Done." for char in candidates
+    ]
+    script = (
+        "const texts = JSON.parse(require('fs').readFileSync(0, 'utf8'));"
+        "process.stdout.write(JSON.stringify(texts.map((t) =>"
+        " [/[.!?][\"')\\]]?\\s*$/.test(String(t ?? '').trim()), t.trim()])));"
+    )
+    result = subprocess.run(
+        [node, "-e", script],
+        input=json.dumps(texts),
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    )
+    expected = json.loads(result.stdout)
+    produced = [[ends_with_sentence_boundary(t), js_trim(t)] for t in texts]
+    mismatches = [
+        (hex(ord(t[-1] if t.startswith("Done.") else t[0])), want, got)
+        for t, want, got in zip(texts, expected, produced)
+        if want != got
+    ]
+    assert not mismatches, mismatches
+
+
 # --------------------------------------------------------------------------
 # Merging
 # --------------------------------------------------------------------------
@@ -527,6 +622,33 @@ def test_ranked_ids_are_ordered_by_descending_score():
     by_id = {c.candidate_id: c.total_score for c in ranking.candidates}
     scores = [by_id[cid] for cid in ranking.ranked_candidate_ids]
     assert scores == sorted(scores, reverse=True)
+
+
+def test_a_candidate_selected_inside_the_end_guard_is_recorded_as_selected(profile):
+    """The end guard moves the emitted slot 100 ms earlier; it does not un-select
+    the candidate the product chose."""
+    end_guard_ms = int(profile.slot_finalisation["end_guard_ms"])
+    duration_seconds = 60.0
+    late_ms = int(duration_seconds * 1000) - end_guard_ms // 2
+    episode = EpisodeInput(
+        episode_id="ep-late",
+        duration_seconds=duration_seconds,
+        silence_candidates=(
+            Candidate(ms=15_000, silence_ms=0, snippet="and"),
+            Candidate(ms=30_000, silence_ms=2000, snippet="Done."),
+            Candidate(ms=late_ms, silence_ms=2000, snippet="Done."),
+        ),
+    )
+    ranking = rank_episode(episode)
+    clamped = int(duration_seconds * 1000) - end_guard_ms
+    assert clamped in [slot.insertion_ms for slot in ranking.slots]
+
+    late = next(c for c in ranking.candidates if c.timestamp_ms == late_ms)
+    assert late.selected is True
+    assert late.selection_rank is not None
+    real_selected = [c for c in ranking.candidates if c.selected and not c.is_synthetic]
+    assert len(real_selected) == 3
+    assert not any(c.is_synthetic for c in ranking.candidates)
 
 
 def test_records_carry_baseline_and_config_versions():

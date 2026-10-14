@@ -81,12 +81,21 @@ done, so re-running after an interruption costs only what was lost.
 # Phase 3 features (downloads whisper-tiny.en + MiniLM once; CPU).
 .\.venv\Scripts\python.exe -m slotify_rank.cli pipeline features
 
-# Freeze the series-aware split (v3 is the current corpus; v1 was the smoke
-# split and v2 the first six real series -- a manifest is immutable per version).
-.\.venv\Scripts\python.exe -m slotify_rank.cli dataset split --config configs\splits_v4.yaml
-.\.venv\Scripts\python.exe -m slotify_rank.cli dataset validate --split-version v4
-.\.venv\Scripts\python.exe -m slotify_rank.cli dataset stats    --split-version v4
+# Freeze the series-aware split. With no --config, `dataset split` uses the
+# canonical split (configs\splits_v5.yaml) and prints which config it used;
+# validate and stats read the same version by default. v1 was the smoke split,
+# v2 the first six real series, v3 the one-podcast corpus, and v4 the current
+# corpus under split-stratified-greedy-v1.0.0, whose content-type stratification
+# used corpus-wide targets -- v5 is the same rules under the corrected
+# algorithm. A manifest is immutable per version.
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset split
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset validate
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset stats
 ```
+
+`dataset validate` also fails on two episodes that share one recording (the same
+audio SHA-256 under two episode ids), and on such a pair landing in different
+partitions.
 
 The measured size of the processed corpus is written to
 `artifacts/dataset/dataset_statistics.json` and
@@ -104,9 +113,16 @@ and a per-episode cap; every other dimension is reported as coverage.
 
 ```powershell
 .\.venv\Scripts\python.exe -m slotify_rank.cli label queue `
-    --config configs\labelling_queue_full_v2.yaml --split-version v4 `
+    --config configs\labelling_queue_full_v2.yaml --split-version v5 `
     --output data\labels\queue_full-v2.json
 ```
+
+> The queue and experiment versions named in this section and below
+> (`full-v2`, `experiment-v2`) were frozen against split v4 and the
+> `candgen-v1.0.0` candidate pool. Both have since changed (see
+> `docs/dataset-card.md`), so labelling against this code calls for a new queue
+> version and a new experiment version pinning split v5; until those exist, the
+> commands below that name `--split-version v4` describe the frozen experiment.
 
 The artifact records the score-tertile boundaries, the candidate- and
 split-manifest hashes it was built from, and a coverage breakdown across split,
@@ -234,7 +250,7 @@ When the gate passes, freeze an immutable snapshot before training:
 | Corpus plan | `ml/configs/corpus_v2.yaml` | yes |
 | Source registries | `ml/configs/sources_real_v1.yaml`, `sources_v2.yaml` (generated) | yes |
 | Queue config | `ml/configs/labelling_queue_full_v2.yaml` | yes |
-| Split config | `ml/configs/splits_v4.yaml` | yes |
+| Split config | `ml/configs/splits_v5.yaml` (canonical); `splits_v4.yaml` is the split experiment-v2 froze | yes |
 | Experiment definition | `ml/configs/experiment_v2.yaml` | yes |
 | Fetched audio, normalized WAV | `data/raw/`, `data/normalized/` | no (git-ignored) |
 | Candidate / feature manifests | `data/manifests/` | no |

@@ -116,6 +116,108 @@ def test_a_missing_end_timestamp_does_not_lose_the_segment():
     assert resolved == [(1_000, 1_000, "tail", ())]
 
 
+def test_a_trailing_segment_without_an_end_runs_to_the_chunk_end():
+    """Whisper's last segment in a window often has no end timestamp. It used
+    to collapse to zero length and then be dropped as empty."""
+    resolved = offset_segments(
+        [
+            RawSegment(start_seconds=0.0, end_seconds=1.0, text="first"),
+            RawSegment(start_seconds=1.5, end_seconds=None, text="tail"),
+        ],
+        offset_ms=30_000,
+        chunk_end_ms=60_000,
+    )
+    assert resolved == [(30_000, 31_000, "first", ()), (31_500, 60_000, "tail", ())]
+
+
+def test_a_missing_end_stops_at_the_next_segments_start():
+    resolved = offset_segments(
+        [
+            RawSegment(start_seconds=1.0, end_seconds=None, text="unbounded"),
+            RawSegment(start_seconds=4.0, end_seconds=5.0, text="next"),
+        ],
+        offset_ms=0,
+        chunk_end_ms=30_000,
+    )
+    assert resolved[0] == (1_000, 4_000, "unbounded", ())
+
+
+def test_an_end_that_does_not_follow_the_start_is_treated_as_missing():
+    resolved = offset_segments(
+        [RawSegment(start_seconds=2.0, end_seconds=2.0, text="instant")],
+        offset_ms=0,
+        chunk_end_ms=10_000,
+    )
+    assert resolved == [(2_000, 10_000, "instant", ())]
+
+
+def test_a_chunk_without_offsets_keeps_its_text_across_the_chunk():
+    """The no-offsets fallback anchors the text at the chunk start with no end;
+    it must survive reconciliation and segment building."""
+    from slotify_rank.transcription.segments import reconcile_overlapping_segments
+
+    resolved = offset_segments(
+        [RawSegment(start_seconds=0.0, end_seconds=None, text="No offsets here.")],
+        offset_ms=30_000,
+        chunk_end_ms=45_000,
+    )
+    reconciled = reconcile_overlapping_segments(
+        [(*span, 1, 37_500.0) for span in resolved]
+    )
+    segments = build_segments(EPISODE, reconciled, 45_000)
+    assert [(s.start_ms, s.end_ms, s.text) for s in segments] == [
+        (30_000, 45_000, "No offsets here.")
+    ]
+
+
+def test_an_unbounded_zero_length_span_is_kept_not_dropped():
+    """Only a span emptied by trimming is covered text; one that arrives with
+    no extent is speech whose length was never reported."""
+    from slotify_rank.transcription.segments import reconcile_overlapping_segments
+
+    reconciled = reconcile_overlapping_segments([(5_000, 5_000, "tail", (), 0, 0.0)])
+    assert reconciled == [(5_000, 5_000, "tail", ())]
+
+
+def test_the_transcriber_keeps_trailing_and_offsetless_speech(monkeypatch):
+    """End to end through `WhisperTranscriber.transcribe` with a fake decoder:
+    every chunk's last segment has no end, and one chunk has no offsets."""
+    import numpy as np
+
+    from slotify_rank.config.feature_settings import TranscriptionConfig
+    from slotify_rank.transcription.local_whisper import WhisperTranscriber
+
+    transcriber = WhisperTranscriber(config=TranscriptionConfig())
+    transcriber._model = object()
+    transcriber._processor = object()
+    calls = {"count": 0}
+
+    def fake_decode(window):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            return [RawSegment(start_seconds=0.0, end_seconds=None, text="Offsetless.")]
+        return [
+            RawSegment(start_seconds=0.5, end_seconds=2.0, text=f"Chunk {calls['count']}."),
+            RawSegment(start_seconds=3.0, end_seconds=None, text="Trailing words."),
+        ]
+
+    monkeypatch.setattr(transcriber, "_decode_chunk", fake_decode)
+    sample_rate = 16_000
+    duration_s = 70
+    transcript = transcriber.transcribe(
+        episode_id=EPISODE,
+        audio=np.zeros(sample_rate * duration_s, dtype=np.float32),
+        audio_sha256="a" * 64,
+        identity_digest="d" * 64,
+        sample_rate=sample_rate,
+    )
+    texts = [segment.text for segment in transcript.segments]
+    assert "Offsetless." in texts
+    assert texts.count("Trailing words.") >= 1
+    assert transcript.segments[-1].end_ms == duration_s * 1000
+    assert all(segment.end_ms > segment.start_ms for segment in transcript.segments)
+
+
 def test_empty_text_is_dropped():
     assert offset_segments([RawSegment(0.0, 1.0, "   ")], 0) == []
 

@@ -48,7 +48,7 @@ from slotify_rank.embeddings.store import (
     load_embeddings,
     write_embeddings,
 )
-from slotify_rank.pipeline.identity import CacheIdentity, library_versions
+from slotify_rank.pipeline.identity import CacheIdentity, config_digest, library_versions
 from slotify_rank.pipeline.state import StageLedger
 from slotify_rank.transcription.cache import (
     load_transcript,
@@ -60,6 +60,7 @@ from slotify_rank.transcription.cache import (
 __all__ = [
     "StageContext",
     "StageOutcome",
+    "candidate_set_inputs",
     "run_transcribe",
     "run_acoustic",
     "run_audio_embeddings",
@@ -185,6 +186,67 @@ def eligible_candidates(
         ),
         key=lambda candidate: (candidate.timestamp_ms, candidate.candidate_id),
     )
+
+
+#: Candidate-record fields that cannot change a derived feature: split and label
+#: bookkeeping, restamped by `dataset split` and the labelling workflow. Every
+#: *other* field is hashed, so a field a future feature starts reading is
+#: covered by default -- the conservative direction.
+_NON_FEATURE_CANDIDATE_FIELDS = frozenset(
+    {
+        "dataset_split",
+        "label_status",
+        "eligible_for_labelling",
+        "eligible_for_evaluation",
+    }
+)
+
+
+def candidate_set_inputs(
+    candidates: Sequence[DatasetCandidate], include_records: bool = False
+) -> dict[str, Any]:
+    """The cache-identity inputs describing an episode's candidate pool.
+
+    Feature artifacts hold one row per candidate, so they are only reusable for
+    the *same* candidates. Without this, regenerating candidates under a new
+    ``max_candidates_per_minute`` (or any generator setting) left every
+    episode's acoustic features and audio embeddings a false cache hit: the
+    identity named only the constant ``CANDIDATE_GENERATION_VERSION``.
+
+    * ``candidate_set_sha256`` -- the ids and timestamps, which is everything a
+      per-timestamp artifact (an audio embedding) depends on;
+    * ``candidate_generation_config_sha256`` -- the generation settings the
+      candidates record (:attr:`GenerationConfig.digest`);
+    * ``heuristic_config_version`` -- the baseline configuration that scored
+      them;
+    * with ``include_records``, ``candidate_records_sha256`` over every field a
+      feature could read (the structural family reads pause lengths, energy
+      summaries and the heuristic's components, not just timestamps).
+    """
+    ordered = sorted(candidates, key=lambda c: (c.timestamp_ms, c.candidate_id))
+    inputs: dict[str, Any] = {
+        "candidate_set_sha256": config_digest(
+            {"candidates": [[c.candidate_id, c.timestamp_ms] for c in ordered]}
+        ),
+        "candidate_generation_config_sha256": sorted(
+            {c.generation_config_digest for c in ordered}
+        ),
+        "heuristic_config_version": sorted({c.config_version for c in ordered}),
+    }
+    if include_records:
+        inputs["candidate_records_sha256"] = config_digest(
+            {
+                "candidates": [
+                    {
+                        key: value
+                        for key, value in candidate.to_dict().items()
+                        if key not in _NON_FEATURE_CANDIDATE_FIELDS
+                    }
+                    for candidate in ordered
+                ]
+            }
+        )
+    return inputs
 
 
 def _normalized_audio(paths: DataPaths, episode: EpisodeRecord) -> Path:
@@ -314,7 +376,10 @@ def handcrafted_path(paths: DataPaths, episode_id: str) -> Path:
 
 
 def _acoustic_identity(
-    context: StageContext, episode: EpisodeRecord, transcript_digest: str
+    context: StageContext,
+    episode: EpisodeRecord,
+    transcript_digest: str,
+    candidates: Sequence[DatasetCandidate] = (),
 ) -> CacheIdentity:
     return CacheIdentity(
         kind="handcrafted_features",
@@ -322,6 +387,7 @@ def _acoustic_identity(
             "episode_id": episode.episode_id,
             "normalized_audio_sha256": _audio_checksum(episode),
             "candidate_generation_version": CANDIDATE_GENERATION_VERSION,
+            **candidate_set_inputs(candidates, include_records=True),
             "feature_config_sha256": context.features.digest,
             "feature_spec_version": FEATURE_SPEC_VERSION,
             "feature_pipeline_version": FEATURE_PIPELINE_VERSION,
@@ -363,7 +429,10 @@ def run_acoustic(
             transcript_path(context.paths, episode.episode_id)
         )
         transcript_digest = transcript.identity_digest if transcript else "absent"
-        identity = _acoustic_identity(context, episode, transcript_digest)
+        candidates = eligible_candidates(
+            candidates_by_episode.get(episode.episode_id, ()), episode.episode_id
+        )
+        identity = _acoustic_identity(context, episode, transcript_digest, candidates)
 
         if not context.force and not ledger.needs_work(
             episode.episode_id, identity.digest, context.retry_failed
@@ -376,9 +445,6 @@ def run_acoustic(
         ledger.mark_partial(episode.episode_id)
         ledger.write(context.paths.stage_ledger("acoustic"))
         try:
-            candidates = eligible_candidates(
-                candidates_by_episode.get(episode.episode_id, ()), episode.episode_id
-            )
             if not candidates:
                 ledger.mark_complete(episode.episode_id, identity.digest, candidates=0)
                 outcome.processed += 1
@@ -483,7 +549,11 @@ def audio_row_id(candidate_id: str, kind: str) -> str:
     return f"{candidate_id}#{kind}"
 
 
-def _audio_identity(context: StageContext, episode: EpisodeRecord) -> CacheIdentity:
+def _audio_identity(
+    context: StageContext,
+    episode: EpisodeRecord,
+    candidates: Sequence[DatasetCandidate] = (),
+) -> CacheIdentity:
     audio = context.embeddings.audio
     return CacheIdentity(
         kind="audio_embedding",
@@ -491,6 +561,9 @@ def _audio_identity(context: StageContext, episode: EpisodeRecord) -> CacheIdent
             "episode_id": episode.episode_id,
             "normalized_audio_sha256": _audio_checksum(episode),
             "candidate_generation_version": CANDIDATE_GENERATION_VERSION,
+            # Rows are pooled at each candidate's timestamp, so the rows are
+            # the candidate set's: a different set is a different artifact.
+            **candidate_set_inputs(candidates),
             "model_id": audio.model_id,
             "model_revision": audio.model_revision,
             "model_config_sha256": audio.digest,
@@ -529,16 +602,19 @@ def run_audio_embeddings(
     scales = context.features.windows.as_pairs()
     audio_config = context.embeddings.audio
 
-    pending: list[tuple[EpisodeRecord, CacheIdentity]] = []
+    pending: list[tuple[EpisodeRecord, CacheIdentity, list[DatasetCandidate]]] = []
     for episode in episodes:
-        identity = _audio_identity(context, episode)
+        candidates = eligible_candidates(
+            candidates_by_episode.get(episode.episode_id, ()), episode.episode_id
+        )
+        identity = _audio_identity(context, episode, candidates)
         if not context.force and not ledger.needs_work(
             episode.episode_id, identity.digest, context.retry_failed
         ):
             outcome.skipped += 1
             outcome.cache_hits += 1
             continue
-        pending.append((episode, identity))
+        pending.append((episode, identity, candidates))
 
     if not pending:
         outcome.seconds = time.perf_counter() - started
@@ -552,15 +628,11 @@ def run_audio_embeddings(
     outcome.details["dimension"] = encoder.dimension
     outcome.details["device"] = encoder.device
     try:
-        for episode, identity in pending:
+        for episode, identity, candidates in pending:
             outcome.cache_misses += 1
             ledger.mark_partial(episode.episode_id)
             ledger.write(context.paths.stage_ledger("audio_embedding"))
             try:
-                candidates = eligible_candidates(
-                    candidates_by_episode.get(episode.episode_id, ()),
-                    episode.episode_id,
-                )
                 if not candidates:
                     ledger.mark_complete(
                         episode.episode_id, identity.digest, rows=0
@@ -674,6 +746,8 @@ def _text_identity(
             ),
             # The context strings come from the handcrafted stage, so its
             # identity is an input here: re-deriving context must re-embed it.
+            # That identity covers the candidate set, so a regenerated pool
+            # re-embeds through it.
             "handcrafted_identity": handcrafted_digest,
             "feature_pipeline_version": FEATURE_PIPELINE_VERSION,
             "library_versions": library_versions(*_TEXT_LIBRARIES),

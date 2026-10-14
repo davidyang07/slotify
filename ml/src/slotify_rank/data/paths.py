@@ -1,11 +1,28 @@
-"""Repository-relative path handling.
+"""Machine-independent path handling for manifests.
 
-Every path that reaches a manifest is stored **relative to the repository root,
-with forward slashes**. That is the whole reason this module exists: a manifest
-containing ``C:\\Users\\danda\\...`` is unusable on any other machine and cannot
-be reviewed in a diff, so :func:`to_repo_relative` is the only sanctioned way to
-put a path into a record and :func:`resolve` is the only sanctioned way to get
+Every path that reaches a manifest is stored **relative, with forward slashes**.
+That is the whole reason this module exists: a manifest containing
+``C:\\Users\\danda\\...`` is unusable on any other machine and cannot be
+reviewed in a diff, so :meth:`DataPaths.relative` (or :func:`to_manifest_path`)
+is the only sanctioned way to put a path into a record and
+:meth:`DataPaths.absolute` (or :func:`resolve`) the only sanctioned way to get
 one back out.
+
+Relative to *what* depends on where the file lives:
+
+* **Inside the repository** -- the default layout, with the data root at
+  ``<repo>/data`` -- paths are repository-relative (``data/raw/x.mp3``),
+  exactly as they always have been.
+* **Inside a data root that is outside the repository** (``SLOTIFY_DATA_ROOT``
+  or ``--data-root`` pointing at another drive) -- paths are stored relative to
+  the data root behind the :data:`DATA_ROOT_PREFIX` marker
+  (``@data-root/raw/x.mp3``) and resolved against whichever data root is
+  configured when they are read. Such a path cannot be expressed relative to the
+  repository at all, and an absolute one would tie the manifest to one machine;
+  the marker keeps it relative and says unambiguously what it is relative to.
+
+Anything outside both roots is refused: it could not be reconstructed from the
+manifest on another machine.
 
 Layout under the (git-ignored) data root::
 
@@ -36,14 +53,29 @@ from pathlib import Path, PurePosixPath
 from slotify_rank.config.settings import find_repo_root
 
 __all__ = [
+    "DATA_ROOT_PREFIX",
     "DataPaths",
     "default_paths",
+    "to_manifest_path",
     "to_repo_relative",
     "resolve",
     "is_within",
 ]
 
 _DATA_ROOT_ENV_VAR = "SLOTIFY_DATA_ROOT"
+
+#: Leading component of a manifest path stored relative to the *data root*
+#: rather than the repository. Only ever written when the data root lies
+#: outside the repository; no repository directory starts with ``@``, so a
+#: repository-relative path can never be mistaken for one.
+DATA_ROOT_PREFIX = "@data-root/"
+
+
+def _default_data_root(repo_root: Path) -> Path:
+    override = os.environ.get(_DATA_ROOT_ENV_VAR)
+    return (
+        Path(override).expanduser().resolve() if override else repo_root / "data"
+    )
 
 
 def to_repo_relative(path: Path | str, repo_root: Path | None = None) -> str:
@@ -66,18 +98,75 @@ def to_repo_relative(path: Path | str, repo_root: Path | None = None) -> str:
     return PurePosixPath(relative.as_posix()).as_posix()
 
 
-def resolve(relative: str, repo_root: Path | None = None) -> Path:
-    """Inverse of :func:`to_repo_relative`."""
-    if not relative:
-        raise ValueError("Cannot resolve an empty path")
+def to_manifest_path(
+    path: Path | str, repo_root: Path | None = None, data_root: Path | None = None
+) -> str:
+    """Render ``path`` in the form a manifest stores.
+
+    Repository-relative whenever the file is inside the repository -- which is
+    every file when the data root is ``<repo>/data``, so that layout is stored
+    exactly as before. Otherwise, when it is inside a data root that lies
+    outside the repository, ``@data-root/<relative to the data root>``.
+    Anything else raises, for the reason :func:`to_repo_relative` gives.
+    """
+    root = (repo_root or find_repo_root()).resolve()
+    resolved = Path(path).resolve()
+    try:
+        return PurePosixPath(resolved.relative_to(root).as_posix()).as_posix()
+    except ValueError:
+        pass
+    data = Path(data_root).resolve() if data_root is not None else None
+    if data is not None and not is_within(data, root):
+        try:
+            relative = resolved.relative_to(data)
+        except ValueError:
+            pass
+        else:
+            return DATA_ROOT_PREFIX + PurePosixPath(relative.as_posix()).as_posix()
+    raise ValueError(
+        f"{resolved} is outside the repository root {root}"
+        + (
+            f" and the data root {data}"
+            if data is not None and not is_within(data, root)
+            else ""
+        )
+        + "; manifests may only reference paths under one of them. Import the "
+        "file first so it is copied under the data root."
+    )
+
+
+def _checked_parts(relative: str, what: str) -> tuple[str, ...]:
     candidate = PurePosixPath(relative)
-    if candidate.is_absolute() or ".." in candidate.parts:
+    if not relative or candidate.is_absolute() or ".." in candidate.parts:
         raise ValueError(
-            f"Manifest paths must be repository-relative and must not traverse "
+            f"Manifest paths must be {what}-relative and must not traverse "
             f"upward; got {relative!r}"
         )
+    return candidate.parts
+
+
+def resolve(
+    relative: str, repo_root: Path | None = None, data_root: Path | None = None
+) -> Path:
+    """Inverse of :func:`to_manifest_path` (and so of :func:`to_repo_relative`).
+
+    A ``@data-root/`` path resolves against ``data_root`` -- by default the one
+    ``SLOTIFY_DATA_ROOT`` names, else ``<repo>/data`` -- so a corpus kept off
+    the repository keeps working when the drive it is on is mounted somewhere
+    else. Every other path resolves against the repository root.
+    """
+    if not relative:
+        raise ValueError("Cannot resolve an empty path")
     root = (repo_root or find_repo_root()).resolve()
-    return root.joinpath(*candidate.parts)
+    if relative.startswith(DATA_ROOT_PREFIX):
+        parts = _checked_parts(relative[len(DATA_ROOT_PREFIX) :], "data-root")
+        base = (
+            Path(data_root).resolve()
+            if data_root is not None
+            else _default_data_root(root)
+        )
+        return base.joinpath(*parts)
+    return root.joinpath(*_checked_parts(relative, "repository"))
 
 
 def is_within(path: Path, root: Path) -> bool:
@@ -94,7 +183,8 @@ class DataPaths:
 
     ``SLOTIFY_DATA_ROOT`` moves the data root off the repository (useful when
     the checkout is on a synced drive and the corpus is large). The default is
-    ``<repo>/data``, which ``.gitignore`` excludes.
+    ``<repo>/data``, which ``.gitignore`` excludes. Manifests written against an
+    external data root store ``@data-root/`` paths; see the module docstring.
     """
 
     def __init__(self, repo_root: Path | None = None, data_root: Path | None = None):
@@ -102,12 +192,7 @@ class DataPaths:
         if data_root is not None:
             self.data_root = Path(data_root).resolve()
         else:
-            override = os.environ.get(_DATA_ROOT_ENV_VAR)
-            self.data_root = (
-                Path(override).expanduser().resolve()
-                if override
-                else self.repo_root / "data"
-            )
+            self.data_root = _default_data_root(self.repo_root)
 
     # -- directories -------------------------------------------------------
     @property
@@ -214,10 +299,12 @@ class DataPaths:
             directory.mkdir(parents=True, exist_ok=True)
 
     def relative(self, path: Path | str) -> str:
-        return to_repo_relative(path, self.repo_root)
+        """The manifest form of ``path``: see :func:`to_manifest_path`."""
+        return to_manifest_path(path, self.repo_root, self.data_root)
 
     def absolute(self, relative_path: str) -> Path:
-        return resolve(relative_path, self.repo_root)
+        """Inverse of :meth:`relative`, against *this* data root."""
+        return resolve(relative_path, self.repo_root, self.data_root)
 
 
 def default_paths() -> DataPaths:

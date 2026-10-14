@@ -107,6 +107,21 @@ Rows resolve **by id** (`<candidate_id>#<kind>`), never by position. Implied
 ordering is the classic way these files go wrong: the array and the manifest
 drift by one row and every candidate is described by its neighbour's audio.
 
+With the data root **outside** the repository, the manifests store
+`@data-root/…` paths (relative to the data root) instead of repository-relative
+ones, and resolve them against whichever data root is configured when read; see
+`slotify_rank.data.paths`. Inside the repository nothing changes.
+
+**The committed reports predate the current versions.** `artifacts/features/*`
+(like `artifacts/dataset/*`) were produced under `candgen-v1.0.0`,
+`transcript-v1.0.0` and `featurepipeline-v1.0.0`. Since then the candidate pool
+is capped per minute on signal evidence (`candgen-v1.1.0`, see
+`docs/dataset-card.md`), trailing transcript segments are kept
+(`transcript-v1.1.0`), and mid-sentence candidates are featurised as such
+(`featurepipeline-v1.1.0`). Every one of those is part of the cache identities,
+so a local run recomputes everything; the committed numbers describe the old
+pool and must be regenerated locally before they are quoted against this code.
+
 ---
 
 ## 3. Transcription
@@ -137,6 +152,15 @@ Timestamps are integer milliseconds throughout. Segments are clipped to the
 audio (Whisper pads to 30 s and will emit timestamps inside the padding), and a
 segment ending past the episode is a hard error — it is the signature of a chunk
 offset applied twice, which otherwise reads perfectly.
+
+**A missing end timestamp is not an empty segment.** Whisper often omits the end
+of the last segment in a window, and a chunk decoded without timestamp offsets
+yields one segment with no end at all. Such a segment ends at the next segment's
+start, or failing that at the chunk end (then clipped to the audio). Until
+`transcript-v1.1.0` it collapsed to zero length and reconciliation dropped it as
+empty, so the trailing words of every window — and the whole of an offset-less
+chunk — vanished. Only a span that *trimming* empties (wholly inside its
+predecessor, so its text is already covered) is dropped.
 
 **An empty transcript is a failure, not an empty success.** Storing one would
 mark every candidate on that episode "no text" and quietly shrink the dataset.
@@ -217,9 +241,31 @@ Position (`normalized_episode_position`, `ms_from_episode_start`,
 Phase 1 heuristic's own opinion (`heuristic_component_{base,pause,mode,sentence,position,edge}`,
 `heuristic_raw_total`, `heuristic_clamped`, `heuristic_total_score`).
 
-The component scores are **not leakage**: they are computed from audio by
-`heuristic_offline_v1` with no access to a label. What *is* excluded, and tested
-for, is anything label-derived — no rating, no acceptability flag, no rank.
+Whether the component scores are leakage **depends on where the labels come
+from**:
+
+* **Under human labels they are not leakage.** They are computed from audio by
+  `heuristic_offline_v1` with no access to a label — the baseline's opinion as
+  an input, which a model may learn to trust or to override.
+* **Under weak labels they are the label's source.** `labelling/weak.py` grades
+  each candidate by binning `heuristic_offline_v1`'s own score within its
+  episode, so `heuristic_total_score`, `heuristic_raw_total`, `heuristic_clamped`
+  and the six `heuristic_component_*` columns are the target in another form. A
+  model given them learns to read the answer back, not to rank breaks. That is
+  why weak-label training now drops these columns from the handcrafted block
+  (implemented on the model side, in training preparation and the datasets
+  layer).
+
+The shipped checkpoint, `artifacts/training/gated-d8ed976101aa4c3b`, predates
+that rule: it was trained on **weak labels with these columns present** (its
+`training_summary.md` records `label source: weak_heuristic`, and its
+`dataset_summary.json` lists every `heuristic_component_*` feature). It is a
+distillation of the heuristic onto multimodal features — evidence that the
+pipeline, checkpoint, normalizer and inference adapter agree with one another,
+and no evidence at all that a learned ranker beats the baseline.
+
+What is excluded under every label source, and tested for, is anything
+label-derived — no rating, no acceptability flag, no rank.
 
 ### Text family
 
@@ -229,6 +275,15 @@ for, is anything label-derived — no rating, no acceptability flag, no rank.
 `terminal_punctuation_ordinal`, plus `context_cosine_similarity` and
 `semantic_change_score` (`1 - cosine`), which are computed at assembly because
 they need the MiniLM vectors.
+
+For a candidate **inside** a transcript segment (mid-sentence) these describe
+the interruption, since `featurepipeline-v1.1.0`: `transcript_sentence_end` 0,
+`terminal_punctuation_ordinal` 0 (`none`), both gaps and
+`transcript_inter_segment_pause_ms` 0, and the two segment durations are the
+speech run before and after the cut (candidate − segment start, segment end −
+candidate). Before that version the boundary features were read off the
+segment *before* the straddled one, so a mid-sentence candidate scored as a
+clean sentence end whenever an earlier segment existed.
 
 Availability indicators (`transcript_available`, `text_before_available`,
 `text_after_available`) are **never masked** — a masked availability flag would
@@ -328,8 +383,9 @@ For each candidate:
    at or after it.
 2. Take the nearest ones, bounded by `max_chars_*` (600), `max_segments_*` (4)
    and `max_gap_ms` (15 s).
-3. Reassemble chronologically so the text reads correctly; truncate from the
-   left so the words nearest the candidate survive.
+3. Reassemble chronologically so the text reads correctly; truncate the end
+   furthest from the candidate (the start of the "before" text, the end of the
+   "after" text) so the words nearest it survive.
 
 Three rules matter:
 
@@ -337,15 +393,23 @@ Three rules matter:
   "sentence before"; the nearest segment is a minute away and about something
   else. Beyond `max_gap_ms` the context is masked as absent rather than pulled in
   and labelled adjacent.
-* **A candidate landing mid-segment belongs to neither side.** That is the
-  clearest possible evidence of a bad breakpoint; splitting the sentence across
-  both sides would disguise it as a clean boundary.
+* **A candidate landing mid-segment splits that segment at the cut.** That is
+  the clearest possible evidence of a bad breakpoint, so it must be *visible*:
+  the words before the candidate close the "before" text and the rest open the
+  "after" text — placed by word timings when the segment has them, otherwise in
+  proportion to the time elapsed, snapped to a word boundary — and the context
+  is flagged mid-segment, which is what sets the sentence-boundary features to
+  "interrupted" (above). The labelling UI uses the same function, so an
+  annotator reads the sentence being cut. (Through `featurepipeline-v1.0.0` the
+  straddled text belonged to neither side, and when an earlier segment existed
+  the context showed that segment's clean ending instead.)
 * **A missing side yields no constructed vector at all.** Zero-filling would make
   the product block all-zero and the difference block equal the present side,
   which a model reads as a strong signal rather than as absence.
 
 Absence reasons are recorded explicitly: `no_transcript`, `episode_start`,
-`episode_end`, `mid_segment`, `gap_too_large`, `empty_segments`.
+`episode_end`, `mid_segment` (the candidate is inside a segment and that side of
+the cut holds no words), `gap_too_large`, `empty_segments`.
 
 ---
 
@@ -360,9 +424,23 @@ A `CacheIdentity` is a sorted mapping reduced to one SHA-256. Per stage:
 | Stage | Identity inputs |
 |---|---|
 | transcript | episode id, normalized audio SHA-256, model id + revision, transcription config digest, transcription version, pipeline version, library versions |
-| handcrafted | + candidate generation version, feature config digest, **feature spec version**, transcript identity |
-| audio embedding | episode id, audio SHA-256, model id + revision + config digest, window config, pooling config, pipeline version, library versions |
+| handcrafted | + candidate generation version, **candidate set** (ids + timestamps), **candidate records** (every feature-relevant field), candidate generation config digest, heuristic config version, feature config digest, **feature spec version**, transcript identity |
+| audio embedding | episode id, audio SHA-256, candidate generation version, **candidate set**, candidate generation config digest, heuristic config version, model id + revision + config digest, window config, pooling config, pipeline version, library versions |
 | text embedding | + transcript-context config, **handcrafted identity** |
+
+**The candidate pool is an input.** Both per-candidate artifacts hold one row
+per candidate, so they are reusable only for the same candidates. Until this
+was added the identities named only the constant candidate generation version:
+regenerating candidates under a different `max_candidates_per_minute` (or any
+generator setting) left every episode a false cache hit, with features for
+candidates that no longer existed and none for the ones that did. The
+generation config digest is the one each candidate records
+(`generation_config_digest`, dataset-candidate schema v1.1.0); the heuristic
+config version is the one each candidate was scored under. The handcrafted
+identity additionally hashes the candidate records themselves, minus split and
+label bookkeeping, because the structural family reads pause lengths, energy
+summaries and the heuristic's components — so restamping splits never
+invalidates a cache, and changing what a feature can read always does.
 
 `normalized_audio_sha256` rather than the source checksum: the models read the
 16 kHz render, so re-normalizing must invalidate the artifacts even when the

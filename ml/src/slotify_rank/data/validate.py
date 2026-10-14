@@ -3,10 +3,10 @@
 Two severities, and the distinction is the whole design:
 
 **ERROR** — an integrity violation. The dataset is describing something that is
-not true: a duplicate ID, a checksum that no longer matches, a candidate outside
-its episode, a label pointing at nothing, an episode in two splits, synthetic
-padding marked eligible. Any error means the command exits non-zero and no
-downstream number should be trusted.
+not true: a duplicate ID, the same audio under two episode ids, a checksum that
+no longer matches, a candidate outside its episode, a label pointing at nothing,
+an episode in two splits, synthetic padding marked eligible. Any error means the
+command exits non-zero and no downstream number should be trusted.
 
 **WARNING** — a state that is incomplete but legitimate during development: a
 smoke dataset too small to split meaningfully, episodes not yet normalized, no
@@ -132,6 +132,48 @@ def _check_duplicates(
         report.error(check, f"Duplicate {label}: {value}", value)
 
 
+def _duplicate_audio_groups(
+    episodes: Sequence[EpisodeRecord],
+) -> list[tuple[str, str, list[str]]]:
+    """``(field, digest, episode ids)`` for every audio checksum held by more
+    than one distinct episode id, on either the original or the render."""
+    groups: list[tuple[str, str, list[str]]] = []
+    for field_name in ("sha256", "normalized_sha256"):
+        by_digest: dict[str, set[str]] = {}
+        for episode in episodes:
+            digest = getattr(episode, field_name)
+            if digest:
+                by_digest.setdefault(str(digest).lower(), set()).add(episode.episode_id)
+        groups.extend(
+            (field_name, digest, sorted(ids))
+            for digest, ids in sorted(by_digest.items())
+            if len(ids) > 1
+        )
+    return groups
+
+
+def _check_duplicate_audio(
+    report: ValidationReport, episodes: Sequence[EpisodeRecord]
+) -> None:
+    """The same audio under two episode ids is two copies of one recording.
+
+    ``episode_id`` carries a title slug as well as the hash, so the same file
+    imported or discovered under two titles gets two ids, and the duplicate-id
+    check cannot see it. Counted twice, it inflates every corpus total; split
+    by series, the copies can land in different partitions and the model is
+    tested on audio it trained on. Both ids are named so either can be dropped.
+    """
+    report.ran("duplicate_audio")
+    for field_name, digest, ids in _duplicate_audio_groups(episodes):
+        what = "original audio" if field_name == "sha256" else "normalized render"
+        report.error(
+            "duplicate_audio",
+            f"{len(ids)} episodes share one {what} ({field_name} {digest[:12]}...): "
+            f"{', '.join(ids)}. They are copies of one recording; keep one.",
+            ids[0],
+        )
+
+
 def _validate_episodes(
     report: ValidationReport,
     episodes: Sequence[EpisodeRecord],
@@ -141,6 +183,7 @@ def _validate_episodes(
     _check_duplicates(
         report, (e.episode_id for e in episodes), "duplicate_episode_ids", "episode_id"
     )
+    _check_duplicate_audio(report, episodes)
 
     report.ran("episode_schema_version")
     report.ran("episode_source_metadata")
@@ -195,7 +238,15 @@ def _validate_episodes(
                     subject,
                 )
                 continue
-            resolved = paths.repo_root / value
+            try:
+                resolved = paths.absolute(value)
+            except ValueError as error:
+                report.error(
+                    "episode_paths_within_data_roots",
+                    f"{field_name} is not a valid manifest path: {error}",
+                    subject,
+                )
+                continue
             allowed = (
                 paths.data_root,
                 paths.repo_root / "backend",
@@ -247,7 +298,7 @@ def _validate_episodes(
             )
 
         if deep:
-            original = paths.repo_root / episode.original_path
+            original = paths.absolute(episode.original_path)
             if original.is_file():
                 actual = sha256_file(original)
                 if actual != episode.sha256:
@@ -416,6 +467,7 @@ def _validate_splits(
     for check in (
         "split_leakage_by_episode",
         "split_leakage_by_series",
+        "split_leakage_by_audio",
         "split_candidate_consistency",
         "test_partition_target_domain",
     ):
@@ -469,6 +521,21 @@ def _validate_splits(
             )
 
     by_episode = manifest.by_episode
+    # Series grouping cannot catch a recording that exists under two series (a
+    # show re-uploaded into another collection, say): the copies are grouped
+    # separately and can be split apart. Checked on the audio itself.
+    for field_name, digest, ids in _duplicate_audio_groups(episodes):
+        partitions = sorted({by_episode[i] for i in ids if i in by_episode})
+        if len(partitions) > 1:
+            placed = ", ".join(f"{i} ({by_episode.get(i, 'unassigned')})" for i in ids)
+            report.error(
+                "split_leakage_by_audio",
+                f"the same audio ({field_name} {digest[:12]}...) is in partitions "
+                f"{partitions}: {placed}. A model would be tested on audio it "
+                "trained on.",
+                ids[0],
+            )
+
     for candidate in candidates:
         if candidate.dataset_split == "unassigned":
             continue

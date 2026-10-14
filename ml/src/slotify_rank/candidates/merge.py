@@ -15,6 +15,17 @@ What differs from the product rule -- deliberately -- is that merging here is
 *lossless in provenance*: the survivor absorbs every source flag, the longest
 pause and silence seen in the group, any transcript context, and the timestamps
 it replaced. Nothing about where a candidate came from is lost.
+
+That provenance is **never scored**. The product's ``mergeCandidates`` keeps the
+survivor object exactly as it was -- its own ``silenceMs``, its own ``snippet``
+-- and ``scoreCandidate`` sees nothing else. So a :class:`MergedCandidate`
+carries the survivor's own values separately (``product_silence_ms``,
+``product_snippet``), and those are the only inputs the baseline scorer is given.
+Scoring the group's longest silence with a borrowed snippet instead hands a
+transcript-end survivor with no pause of its own the pause reward of a silence
+it beat, and the dataset's ``heuristic_score`` stops being the number the
+product computes for that timestamp (1.0 clamped against the product's 0.8, in
+the case :func:`assert_agrees_with_product_merge` now also checks).
 """
 
 from __future__ import annotations
@@ -43,14 +54,26 @@ _SOURCE_PRIORITY = {
 
 
 class MergedCandidate:
-    """A survivor plus everything absorbed from the candidates it replaced."""
+    """A survivor plus everything absorbed from the candidates it replaced.
+
+    Two kinds of field, kept apart on purpose:
+
+    * **Provenance** -- ``sources``, ``silence_ms`` / ``pause_ms`` (the longest
+      seen anywhere in the group), ``sentence_end`` and the transcript context
+      (borrowed from whichever member had them), ``merged_from_ms``. What the
+      dataset records about the moment.
+    * **Product-equivalent** -- ``product_silence_ms`` and ``product_snippet``,
+      the survivor's *own* values, which is all the product's merge keeps. The
+      baseline scorer is fed these and nothing else.
+    """
 
     __slots__ = (
         "ms",
         "sources",
         "silence_ms",
         "pause_ms",
-        "snippet",
+        "product_silence_ms",
+        "product_snippet",
         "sentence_end",
         "transcript_segment_id",
         "transcript_before",
@@ -64,7 +87,8 @@ class MergedCandidate:
         sources: tuple[str, ...],
         silence_ms: int,
         pause_ms: int,
-        snippet: str,
+        product_silence_ms: int,
+        product_snippet: str,
         sentence_end: bool | None,
         transcript_segment_id: str | None,
         transcript_before: str | None,
@@ -75,7 +99,8 @@ class MergedCandidate:
         self.sources = sources
         self.silence_ms = silence_ms
         self.pause_ms = pause_ms
-        self.snippet = snippet
+        self.product_silence_ms = product_silence_ms
+        self.product_snippet = product_snippet
         self.sentence_end = sentence_end
         self.transcript_segment_id = transcript_segment_id
         self.transcript_before = transcript_before
@@ -145,9 +170,6 @@ def merge_raw_candidates(
             (member for member in group if member.transcript_segment_id is not None),
             None,
         )
-        snippet = survivor.snippet or next(
-            (member.snippet for member in group if member.snippet), ""
-        )
         sentence_end = survivor.sentence_end
         if sentence_end is None:
             sentence_end = next(
@@ -165,7 +187,10 @@ def merge_raw_candidates(
                 sources=tuple(sources),
                 silence_ms=max(member.silence_ms for member in group),
                 pause_ms=max(member.pause_ms for member in group),
-                snippet=snippet,
+                # Exactly what `mergeCandidates` keeps: the survivor object,
+                # unmodified. No borrowing, no group maximum.
+                product_silence_ms=survivor.silence_ms,
+                product_snippet=survivor.snippet,
                 sentence_end=sentence_end,
                 transcript_segment_id=(
                     None
@@ -191,12 +216,16 @@ def merge_raw_candidates(
 def assert_agrees_with_product_merge(
     candidates: Sequence[RawCandidate], tolerance_ms: int
 ) -> None:
-    """Fail if dataset merging picks different timestamps than the product's.
+    """Fail if dataset merging disagrees with the product's merge.
 
     The two implementations exist for different reasons -- one preserves
     provenance, one matches a TypeScript function byte-for-byte -- so this is
     the guard that stops them drifting apart. It is exercised by the test suite
     on generated smoke candidates, not called during normal generation.
+
+    It compares the surviving timestamps *and* what each survivor would be
+    scored with: the product keeps the survivor's own ``silence_ms`` and
+    ``snippet``, so ``product_silence_ms`` / ``product_snippet`` must equal them.
 
     The check is skipped for inputs containing exact timestamp ties, where the
     two are legitimately allowed to differ: the product's chained pairwise merge
@@ -220,11 +249,16 @@ def assert_agrees_with_product_merge(
         tolerance_ms,
     )
     ours = merge_raw_candidates(candidates, tolerance_ms)
-    product_ms = [candidate.ms for candidate in product]
-    our_ms = [candidate.ms for candidate in ours]
-    if product_ms != our_ms:
+    product_view = [
+        (candidate.ms, candidate.silence_ms, candidate.snippet) for candidate in product
+    ]
+    our_view = [
+        (candidate.ms, candidate.product_silence_ms, candidate.product_snippet)
+        for candidate in ours
+    ]
+    if product_view != our_view:
         raise AssertionError(
             "Dataset merging has drifted from the product's mergeCandidates.\n"
-            f"  product: {product_ms}\n"
-            f"  dataset: {our_ms}"
+            f"  product (ms, silence_ms, snippet): {product_view}\n"
+            f"  dataset (ms, silence_ms, snippet): {our_view}"
         )

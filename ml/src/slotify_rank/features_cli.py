@@ -28,7 +28,7 @@ from slotify_rank.config.feature_settings import (
 from slotify_rank.data import manifests
 from slotify_rank.data.paths import DataPaths
 from slotify_rank.data.schema import DatasetCandidate, EpisodeRecord
-from slotify_rank.data.splits import read_split_manifest
+from slotify_rank.data.splits import CANONICAL_SPLIT_VERSION, read_split_manifest
 from slotify_rank.features.assemble import read_feature_manifest
 from slotify_rank.features.stats import (
     compute_feature_statistics,
@@ -77,7 +77,9 @@ def _load_corpus(
 ) -> tuple[list[EpisodeRecord], list[DatasetCandidate], dict[str, str]]:
     episodes = list(manifests.read_episodes(paths.episodes_manifest))
     candidates = list(manifests.read_candidates(paths.candidates_manifest))
-    split_lookup = _split_lookup(paths, getattr(args, "split_version", "v4"))
+    split_lookup = _split_lookup(
+        paths, getattr(args, "split_version", CANONICAL_SPLIT_VERSION)
+    )
     selected = select_episodes(
         episodes,
         episode_ids=getattr(args, "episode_id", None),
@@ -358,11 +360,11 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--split", action="append", help="Filter by dataset split (repeatable)."
     )
-    # v4 is the split the committed experiment pins. This defaulted to v1,
-    # so a bare `features stats` would recompute the by-split feature counts
-    # against a superseded split and write them into the same
+    # The canonical split, shared with every dataset command. This defaulted to
+    # v1, so a bare `features stats` would recompute the by-split feature
+    # counts against a superseded split and write them into the same
     # feature_statistics.json the evidence report reads.
-    parser.add_argument("--split-version", default="v4")
+    parser.add_argument("--split-version", default=CANONICAL_SPLIT_VERSION)
     parser.add_argument(
         "--limit", type=int, default=None, help="Process at most N episodes."
     )

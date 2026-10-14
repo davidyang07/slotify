@@ -91,15 +91,19 @@ class OrphanReport:
             )
 
 
-def _referenced_paths(episodes: Iterable[Any], repo_root: Path) -> set[Path]:
-    """Every existing file the manifest episodes point at, resolved absolutely."""
+def _referenced_paths(episodes: Iterable[Any], paths: Any) -> set[Path]:
+    """Every existing file the manifest episodes point at, resolved absolutely.
+
+    Resolved through :meth:`DataPaths.absolute`, so ``@data-root/`` paths (a
+    data root outside the repository) are found where they actually are.
+    """
     referenced: set[Path] = set()
     for episode in episodes:
         for attribute in _REFERENCE_FIELDS:
             value = getattr(episode, attribute, None)
             if not value or str(value) == "None":
                 continue
-            referenced.add((repo_root / str(value)).resolve())
+            referenced.add(paths.absolute(str(value)).resolve())
     return referenced
 
 
@@ -108,7 +112,7 @@ def scan_orphans(paths: Any) -> OrphanReport:
     from slotify_rank.transcription.cache import transcript_path
 
     episodes = manifests.read_episodes(paths.episodes_manifest)
-    referenced = _referenced_paths(episodes, paths.repo_root)
+    referenced = _referenced_paths(episodes, paths)
     # Transcripts are addressed by episode id, not by a manifest field.
     referenced.update(
         transcript_path(paths, episode.episode_id).resolve() for episode in episodes
@@ -128,7 +132,7 @@ def scan_orphans(paths: Any) -> OrphanReport:
         found = sorted(path for path in directory.iterdir() if path.is_file())
         report.scanned[name] = len(found)
         unreferenced = [
-            str(path.relative_to(paths.repo_root).as_posix())
+            paths.relative(path)
             for path in found
             if path.resolve() not in referenced
         ]

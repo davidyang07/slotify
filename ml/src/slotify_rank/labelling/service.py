@@ -36,7 +36,10 @@ every request, so closing the tab loses at most the item on screen.
 
 Audio is served as a context window cut with FFmpeg: ~10 s before and ~10 s
 after the candidate, with the boundary at a known offset the client marks. Clips
-are cached under ``data/cache/clips/``.
+are cached under ``data/cache/clips/``. The client requests a clip twice (a
+prefetch, then the player) and handlers run on a thread pool, so extraction is
+locked per clip, written to a private temporary file, validated and atomically
+moved into place (:func:`extract_clip`).
 
 Transcript context is resolved the same way the feature pipeline does it -- the
 text either side of the candidate is selected by :func:`build_transcript_context`
@@ -49,6 +52,10 @@ always claim "no transcript" even for a fully transcribed episode.
 from __future__ import annotations
 
 import hashlib
+import os
+import tempfile
+import threading
+import wave
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -76,6 +83,7 @@ __all__ = [
     "create_app",
     "annotator_order_key",
     "extract_clip",
+    "clip_is_valid",
     "clip_path_for",
     "prerender_clips",
     "build_plan",
@@ -138,44 +146,129 @@ def clip_path_for(
     return paths.clips_dir / f"{candidate_id.replace(':', '_')}_{start_ms}_{duration_ms}.wav"
 
 
+#: The format every clip is cut to, and so the format a cached clip must have.
+_CLIP_SAMPLE_RATE = 16_000
+_CLIP_CHANNELS = 1
+_CLIP_SAMPLE_WIDTH = 2
+
+#: One lock per destination clip. The service's handlers are synchronous, so
+#: FastAPI runs them on a thread pool, and the client asks for the same clip
+#: twice in quick succession by design (a prefetch, then the player itself).
+#: Two extractions of one clip are serialized; different clips still cut in
+#: parallel.
+_CLIP_LOCKS: dict[str, threading.Lock] = {}
+_CLIP_LOCKS_GUARD = threading.Lock()
+
+
+def _clip_lock(destination: Path) -> threading.Lock:
+    key = str(Path(destination).resolve())
+    with _CLIP_LOCKS_GUARD:
+        lock = _CLIP_LOCKS.get(key)
+        if lock is None:
+            lock = _CLIP_LOCKS[key] = threading.Lock()
+        return lock
+
+
+def clip_is_valid(path: Path, expected_duration_ms: int | None = None) -> bool:
+    """True when ``path`` is a complete clip in the format :func:`extract_clip` cuts.
+
+    A readable 16 kHz mono 16-bit PCM WAV whose header and data agree and which
+    holds at least one frame -- and, when ``expected_duration_ms`` is given, is
+    no longer than that (to within 20 ms). It may be *shorter*: the window is
+    clamped to the probed duration of the original, and the render can end a
+    few hundred milliseconds earlier. A non-empty file is not enough: an
+    interrupted or concurrent write leaves a file with a header and part of its
+    data (or a header claiming data that is not there), and a cache that trusts
+    ``st_size > 0`` serves that broken clip forever.
+    """
+    try:
+        if not path.is_file() or path.stat().st_size == 0:
+            return False
+        with wave.open(str(path), "rb") as handle:
+            if (
+                handle.getnchannels() != _CLIP_CHANNELS
+                or handle.getframerate() != _CLIP_SAMPLE_RATE
+                or handle.getsampwidth() != _CLIP_SAMPLE_WIDTH
+            ):
+                return False
+            frames = handle.getnframes()
+            data = handle.readframes(frames)
+    except (OSError, EOFError, wave.Error):
+        return False
+    if frames <= 0 or len(data) != frames * _CLIP_CHANNELS * _CLIP_SAMPLE_WIDTH:
+        return False
+    if expected_duration_ms is not None and expected_duration_ms > 0:
+        if frames * 1000 / _CLIP_SAMPLE_RATE > expected_duration_ms + 20:
+            return False
+    return True
+
+
 def extract_clip(
     normalized_audio: Path,
     destination: Path,
     start_ms: int,
     duration_ms: int,
 ) -> Path:
-    """Cut a context window with FFmpeg, caching the result."""
-    if destination.is_file() and destination.stat().st_size > 0:
+    """Cut a context window with FFmpeg, caching the result.
+
+    Safe to call concurrently for the same clip. Each extraction holds that
+    clip's lock, writes to a temporary file of its own in the cache directory,
+    validates it (:func:`clip_is_valid`), and only then atomically replaces the
+    destination -- so a reader sees either no clip or a complete one, never a
+    file another FFmpeg is still writing. A cached clip that fails validation
+    (truncated by a crash, or written by a version that had this race) is cut
+    again rather than served.
+    """
+    destination = Path(destination)
+    if clip_is_valid(destination, duration_ms):
         return destination
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = destination.with_suffix(".part.wav")
-    run_tool(
-        ffmpeg_path(),
-        [
-            "-nostdin",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-y",
-            "-ss",
-            f"{start_ms / 1000:.3f}",
-            "-t",
-            f"{duration_ms / 1000:.3f}",
-            "-i",
-            str(normalized_audio),
-            "-ac",
-            "1",
-            "-ar",
-            "16000",
-            "-acodec",
-            "pcm_s16le",
-            "-f",
-            "wav",
-            str(temp_path),
-        ],
-        timeout=120.0,
-    )
-    temp_path.replace(destination)
+    with _clip_lock(destination):
+        # Whoever held the lock may have just produced it.
+        if clip_is_valid(destination, duration_ms):
+            return destination
+        handle, temp_name = tempfile.mkstemp(
+            dir=str(destination.parent),
+            prefix=f".{destination.stem}.",
+            suffix=".part.wav",
+        )
+        os.close(handle)
+        temp_path = Path(temp_name)
+        try:
+            run_tool(
+                ffmpeg_path(),
+                [
+                    "-nostdin",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-ss",
+                    f"{start_ms / 1000:.3f}",
+                    "-t",
+                    f"{duration_ms / 1000:.3f}",
+                    "-i",
+                    str(normalized_audio),
+                    "-ac",
+                    str(_CLIP_CHANNELS),
+                    "-ar",
+                    str(_CLIP_SAMPLE_RATE),
+                    "-acodec",
+                    "pcm_s16le",
+                    "-f",
+                    "wav",
+                    str(temp_path),
+                ],
+                timeout=120.0,
+            )
+            if not clip_is_valid(temp_path, duration_ms):
+                raise RuntimeError(
+                    f"FFmpeg produced an invalid clip for {destination.name} "
+                    f"({start_ms} ms + {duration_ms} ms from {normalized_audio})"
+                )
+            os.replace(temp_path, destination)
+        finally:
+            temp_path.unlink(missing_ok=True)
     return destination
 
 
@@ -212,7 +305,7 @@ def prerender_clips(
         destination = clip_path_for(
             paths, candidate.candidate_id, start_ms, duration_ms
         )
-        if destination.is_file() and destination.stat().st_size > 0:
+        if clip_is_valid(destination, duration_ms):
             counts["cached"] += 1
         else:
             try:
@@ -586,7 +679,12 @@ def create_app(
         destination = clip_path_for(
             paths, candidate.candidate_id, start_ms, duration_ms
         )
-        extract_clip(source, destination, start_ms, duration_ms)
+        try:
+            extract_clip(source, destination, start_ms, duration_ms)
+        except (OSError, RuntimeError) as error:
+            raise HTTPException(
+                status_code=500, detail=f"Could not cut the clip: {error}"
+            ) from error
         return FileResponse(
             str(destination), media_type="audio/wav", filename=destination.name
         )

@@ -7,8 +7,18 @@ from the same files.
 
 ```powershell
 cd ml
-.\.venv\Scripts\python.exe -m slotify_rank.cli dataset stats --split-version v4
+.\.venv\Scripts\python.exe -m slotify_rank.cli dataset stats
 ```
+
+> **The committed statistics predate the current code and must be regenerated locally before they
+> are quoted.** `artifacts/dataset/*` was produced under candidate generation `candgen-v1.0.0` and
+> split v4 (`split-stratified-greedy-v1.0.0`). Since then the density cap is applied per minute on
+> signal evidence (`candgen-v1.1.0`, below) — which changes which candidates exist, and the v1.0.0
+> cap had dropped about half the merged pool (12 927 candidates) almost entirely from the first and
+> last fifth of every episode — and the canonical split is v5, whose stratification measures each
+> content type against its own targets (below). Every candidate count, split count and hour figure
+> in those files describes the old pool and the old split. Re-run `dataset prepare-experiment` (or
+> `candidates generate`, `dataset split`, `dataset stats`) to get numbers that describe this code.
 
 The corpus is built by one command from a committed plan:
 
@@ -231,7 +241,32 @@ Five generators, then deterministic merging:
 
 Merging collapses candidates within `merge_tolerance_ms` (400 ms) using the *product's* survivor
 rule, so a dataset candidate sits where a product candidate would. Source flags are unioned onto the
-survivor, so nothing about provenance is lost.
+survivor, so nothing about provenance is lost — the record keeps the longest silence and pause seen
+anywhere in the merged group. The **heuristic score**, though, is computed exactly as the product's
+`mergeCandidates` + `scoreCandidate` compute it: from the survivor's *own* pause and snippet. (Until
+`candgen-v1.1.0` it was scored with the group's longest silence and a borrowed snippet, so a
+transcript-end survivor with no pause of its own scored 1.0 against the product's 0.8.)
+
+### The density cap
+
+`max_candidates_per_minute` (12 by default) bounds the post-merge pool, and since `candgen-v1.1.0`
+it is enforced **per one-minute window**: `ceil(duration / 60 s)` windows, each keeping at most 12,
+the last partial window a proportional share (never fewer than one). Within a window, candidates
+compete on **signal evidence only** — the longest silence or pause in the merge group, then the
+depth of the energy valley (`local_energy_summary.min_dbfs`, quieter first), then how many
+generators agreed, then the earlier timestamp. **The heuristic score plays no part in which
+candidates survive.**
+
+That is a deliberate reversal. `candgen-v1.0.0` kept the episode-wide top-N *by heuristic score*.
+Almost every non-silence candidate scores 0.4 or 0.5 under the baseline (0.5 only in the 20–80 %
+mid-episode band), so the ranking collapsed to "higher band, then earlier", and the first and last
+fifth of every episode kept nothing but silences. A pool chosen by the baseline is a pool biased
+toward the baseline — exactly the thing every model trained on it is compared against. The
+committed `candidate_statistics.json` records that old cap dropping about half the merged pool
+(12 927 candidates); see the note at the top about regenerating it.
+
+Each candidate also records `generation_config_digest` — a digest of every generation setting —
+so a feature cache built for one pool is never reused for another.
 
 ### Product padding is not a candidate
 
@@ -256,13 +291,27 @@ training set, or a metric.
 Grouped by `series_id`, never by episode or candidate. Two episodes of one show share hosts, room,
 mic chain and vocabulary; training on one and testing on the other measures memorisation.
 
-- Algorithm `split-stratified-greedy-v1.0.0` (v4). Deterministic under a configurable seed. The
-  older `split-grouped-greedy-v1.0.0` is unchanged and still reads its own manifests; v4 selects the
-  stratified variant, it does not replace the other.
-- Target 70 / 15 / 15, balanced on **duration**, not episode count.
-- **Stratified by content type.** Each content type is balanced across the partitions separately, so
-  a corpus whose podcasts are a minority of its hours cannot put all of them in one partition and
-  still report a balanced split. Grouping is untouched — the unit of assignment is still the series.
+- The canonical split is **v5** (`ml/configs/splits_v5.yaml`), algorithm
+  `split-stratified-greedy-v1.1.0`. Every command defaults to it — `dataset split` with no
+  `--config` included, which used to fall back to the unstratified v1 rules and restamp every
+  candidate with a split nothing else read; it now prints the config it used. Deterministic under a
+  configurable seed. The older `split-grouped-greedy-v1.0.0` is unchanged and still reads its own
+  manifests.
+- Target 70 / 15 / 15, balanced on **duration**, not episode count — **within each content type**.
+- **Stratified by content type.** Each content type is balanced across the partitions separately,
+  against its *own* duration targets, count targets and running totals, so a corpus whose podcasts
+  are a minority of its hours cannot put all of them in one partition and still report a balanced
+  split. A content type barred from the test partition splits 70:15 between train and validation.
+  Grouping is untouched — the unit of assignment is still the series.
+- **Why v5 and not v4.** v4 was produced by `split-stratified-greedy-v1.0.0`, which said the above
+  but measured every content type against *corpus-wide* targets: whichever type was assigned first
+  could fill a partition and leave the next none (20 narrated series and 14 podcasts gave validation
+  zero podcasts). On the committed registry v4 put 3.2 h of podcasts in test — 15 % of *all* the
+  hours — and, estimated from the registry's declared durations, v5 puts about 1.7 h there (15 % of
+  the podcast hours) and about 1.9 h of podcasts in validation instead of about 1.2 h. Regenerating v4 under the fixed algorithm would therefore produce
+  a different v4, which a split version must never do; v4 manifests stay readable, but this build
+  cannot reproduce them. `splits_v5.yaml` pins its algorithm, so the next algorithm change cannot
+  silently regenerate v5 either.
 - **The test partition holds podcast-format series only** (`test_content_types`). The product ranks
   ad breaks in podcasts; a test set padded with audiobook chapters measures something adjacent and
   reports it as the thing itself. This makes the test set smaller and the claim harder to support,
@@ -278,7 +327,14 @@ mic chain and vocabulary; training on one and testing on the other measures memo
   partition and marks the result degraded, so no one reports a "held-out" metric from a smoke
   dataset.
 - A split manifest is immutable for its version. Changing it requires a version bump or `--force`.
-  `splits_v3.json` is left as it was; v4 is a new version over a new corpus, not an edit of it.
+  `splits_v3.json` is left as it was; v4 is a new version over a new corpus, and v5 a new version
+  under a corrected algorithm, not edits of either.
+- **The same audio cannot sit in two partitions.** Series grouping cannot see a recording that
+  exists under two series (or two titles — an episode id carries the title slug, so copies under
+  different titles get different ids). `dataset validate` fails on any two episodes sharing an audio
+  SHA-256 (original or normalized render), naming both, and fails again as split leakage if they
+  are in different partitions. Discovery refuses to select the same Internet Archive file, or the
+  same MD5, twice in one run, whichever show it arrives through.
 
 ---
 
@@ -297,3 +353,9 @@ window and shows the transcript context either side of the break when one exists
 | `ml/configs/*.yaml` (corpus plan, generated source registries, generation, split and queue settings) | `data/` — all audio, manifests, databases, exports |
 | `artifacts/dataset/*.json` and `dataset_summary.md` | normalized renders, clip cache |
 | the code and tests | `.venv`, coverage, caches |
+
+Manifests never hold an absolute path. With the default data root (`<repo>/data`) every path is
+repository-relative, as it always was. `SLOTIFY_DATA_ROOT` (or `--data-root`) may point outside the
+repository — a larger drive, say — and then the manifests store `@data-root/…` paths, relative to the
+data root and resolved against whichever data root is configured when they are read, so the corpus
+can be moved or mounted elsewhere without rewriting a manifest.

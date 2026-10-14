@@ -31,10 +31,13 @@ from slotify_rank.data.probe import probe_audio
 from slotify_rank.data.schema import DatasetCandidate, EpisodeRecord
 from slotify_rank.data.sources import load_sources
 from slotify_rank.data.splits import (
+    CANONICAL_SPLIT_CONFIG,
+    CANONICAL_SPLIT_VERSION,
     InsufficientGroups,
     compute_splits,
     load_split_config,
     read_split_manifest,
+    resolve_split_config,
     write_split_manifest,
 )
 from slotify_rank.data.stats import compute_statistics, write_statistics
@@ -365,7 +368,7 @@ def _cmd_probe(args: argparse.Namespace) -> int:
         if episode.duration_ms is not None and not args.force:
             print(f"  cached     {episode.episode_id} ({episode.duration_ms} ms)")
             continue
-        metadata = probe_audio(paths.repo_root / episode.original_path)
+        metadata = probe_audio(paths.absolute(episode.original_path))
         updated.append(
             episode.replace(
                 duration_ms=metadata.duration_ms,
@@ -428,9 +431,18 @@ def _cmd_split(args: argparse.Namespace) -> int:
         )
         return 1
 
-    config = load_split_config(args.config)
+    # No --config means the canonical split every other command reads -- never
+    # the bare `SplitConfig()` defaults, which are the unstratified v1 rules and
+    # would restamp every candidate with a split nothing else looks at.
+    config_path = resolve_split_config(args.config, paths.repo_root)
+    config = load_split_config(config_path)
     if args.seed is not None:
         config = dataclasses.replace(config, seed=args.seed)
+    print(
+        f"Split config: {config_path} (split {config.version}, "
+        f"{config.algorithm_version}, seed {config.seed})"
+        + ("" if args.config else " -- the canonical default; pass --config to override")
+    )
     manifest = compute_splits(processed, config)
     destination = paths.split_manifest(manifest.version)
     write_split_manifest(destination, manifest, force=args.force)
@@ -874,7 +886,8 @@ def _cmd_label_run_experiment(args: argparse.Namespace) -> int:
             "    slotify-rank dataset prepare-experiment\n"
             "or, if it is already prepared, just the queue:\n"
             "    slotify-rank label queue "
-            "--config ml/configs/labelling_queue_full_v2.yaml --split-version v4",
+            "--config ml/configs/labelling_queue_full_v2.yaml "
+            f"--split-version {CANONICAL_SPLIT_VERSION}",
             file=sys.stderr,
         )
         return 1
@@ -1151,8 +1164,8 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     prepare_parser.add_argument(
         "--dataset-config", default="ml/configs/dataset_v1.yaml"
     )
-    prepare_parser.add_argument("--split-config", default="ml/configs/splits_v4.yaml")
-    prepare_parser.add_argument("--split-version", default="v4")
+    prepare_parser.add_argument("--split-config", default=CANONICAL_SPLIT_CONFIG)
+    prepare_parser.add_argument("--split-version", default=CANONICAL_SPLIT_VERSION)
     prepare_parser.add_argument(
         "--queue-config", default="ml/configs/labelling_queue_full_v2.yaml"
     )
@@ -1313,7 +1326,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "split", help="Create deterministic, leakage-safe splits."
     )
     _add_common(split_parser)
-    split_parser.add_argument("--config", default=None, help="ml/configs/splits_v1.yaml")
+    split_parser.add_argument(
+        "--config",
+        default=None,
+        help=(
+            f"Split config (default {CANONICAL_SPLIT_CONFIG}, the canonical split "
+            "that validate, stats and prepare-experiment also read)."
+        ),
+    )
     split_parser.add_argument("--seed", type=int, default=None)
     split_parser.add_argument(
         "--force",
@@ -1329,7 +1349,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     validate_parser.add_argument(
         "--deep", action="store_true", help="Also re-verify every SHA-256 (slow)."
     )
-    validate_parser.add_argument("--split-version", default="v4")
+    validate_parser.add_argument("--split-version", default=CANONICAL_SPLIT_VERSION)
     validate_parser.add_argument("--output", default=None)
     validate_parser.set_defaults(func=_cmd_validate)
 
@@ -1337,7 +1357,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "stats", help="Compute dataset, candidate, label and split statistics."
     )
     _add_common(stats_parser)
-    stats_parser.add_argument("--split-version", default="v4")
+    stats_parser.add_argument("--split-version", default=CANONICAL_SPLIT_VERSION)
     stats_parser.add_argument("--output-dir", default=None)
     stats_parser.add_argument(
         "--acceptable-threshold", type=int, default=DEFAULT_ACCEPTABLE_THRESHOLD
@@ -1458,8 +1478,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     queue_parser.add_argument(
         "--split-version",
-        default="v2",
-        help="Split manifest version to stratify against (default v2, the real corpus).",
+        default=CANONICAL_SPLIT_VERSION,
+        help=(
+            "Split manifest version to stratify against (default "
+            f"{CANONICAL_SPLIT_VERSION}, the canonical split)."
+        ),
     )
     queue_parser.add_argument("--output", default=None, help="Queue artifact path.")
     queue_parser.add_argument(
@@ -1493,7 +1516,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     _add_common(check_parser)
     check_parser.add_argument("--queue", default=None, help="Assigned queue artifact.")
-    check_parser.add_argument("--split-version", default="v4")
+    check_parser.add_argument("--split-version", default=CANONICAL_SPLIT_VERSION)
     check_parser.add_argument("--output", default=None)
     check_parser.add_argument(
         "--acceptable-threshold", type=int, default=DEFAULT_ACCEPTABLE_THRESHOLD

@@ -15,6 +15,18 @@ and about something else. Context beyond ``max_gap_ms`` is treated as absent and
 masked, rather than pulled in and labelled as adjacent. Without that bound the
 model would learn from text that has nothing to do with the breakpoint.
 
+**Mid-segment candidates.** A candidate strictly inside a segment interrupts
+that segment's speech, which is the clearest evidence there is of a bad
+breakpoint, and it is reported as exactly that: ``transcript_sentence_end`` 0,
+no pause, gaps of 0. The straddled segment's text is *split at the candidate* --
+by word timings when the segment has them, otherwise in proportion to the time
+elapsed, snapped to a word boundary -- and its first part closes the "before"
+context while the rest opens the "after" context, so an annotator (the labelling
+UI uses this same function) and the text encoder both see the sentence being
+cut. Reading the boundary signal off the segment *before* the straddled one, as
+featurepipeline-v1.0.0 did, made a mid-sentence candidate look like a clean
+sentence end and dropped the interrupted sentence from both sides.
+
 **No label leakage.** Only the transcript and the candidate timestamp are read.
 Nothing in this module can see a rating, an acceptability flag, or a split.
 """
@@ -44,15 +56,23 @@ class TranscriptContext:
     gap_before_ms: int | None = None
     gap_after_ms: int | None = None
     #: The segment immediately preceding the candidate, which is what carries
-    #: the sentence-boundary signal.
+    #: the sentence-boundary signal. ``None`` when the candidate is inside a
+    #: segment: then nothing ends at the candidate (see ``straddling_segment``).
     prior_segment: TranscriptSegment | None = None
     following_segment: TranscriptSegment | None = None
     #: Why a side is empty, when it is. Distinguishes "the episode has no
     #: transcript" from "the candidate is at the very start" from "the nearest
-    #: speech is too far away" -- three different situations that a single
-    #: empty string would flatten into one.
+    #: speech is too far away" from "the candidate is inside a segment and that
+    #: side of the cut holds no words" -- situations that a single empty string
+    #: would flatten into one.
     before_absent_reason: str | None = None
     after_absent_reason: str | None = None
+    #: The segment the candidate falls strictly inside, when it does. Its text
+    #: is split across ``before_text``/``after_text`` and its id appears in both
+    #: id lists (for whichever side received words).
+    straddling_segment: TranscriptSegment | None = None
+    #: The candidate timestamp this context was selected for.
+    timestamp_ms: int | None = None
 
     @property
     def has_before(self) -> bool:
@@ -62,40 +82,82 @@ class TranscriptContext:
     def has_after(self) -> bool:
         return bool(self.after_text.strip())
 
+    @property
+    def mid_segment(self) -> bool:
+        """True when the candidate interrupts a segment -- mid-sentence."""
+        return self.straddling_segment is not None
+
+
+def _split_at(segment: TranscriptSegment, timestamp_ms: int) -> tuple[str, str]:
+    """Split a straddled segment's text at ``timestamp_ms``: ``(head, tail)``.
+
+    With word timings that line up with the text's words, every word that has
+    started before the candidate goes to the head (a word the candidate cuts in
+    half was begun before it). Otherwise the cut is placed in proportion to the
+    time elapsed through the segment, measured in characters and snapped to the
+    nearest word boundary -- speech rate is far closer to constant per
+    character than per word. Whitespace inside the text is normalized to single
+    spaces, as the context strings are joined with them anyway.
+    """
+    tokens = segment.text.split()
+    if not tokens:
+        return ("", "")
+    if segment.words and len(segment.words) == len(tokens):
+        cut = sum(1 for word in segment.words if word.start_ms < timestamp_ms)
+    else:
+        span = max(1, segment.end_ms - segment.start_ms)
+        fraction = min(1.0, max(0.0, (timestamp_ms - segment.start_ms) / span))
+        total_chars = sum(len(token) for token in tokens) + len(tokens) - 1
+        target = fraction * total_chars
+        cut = 0
+        offset = 0
+        for token in tokens:
+            if offset + len(token) / 2.0 >= target:
+                break
+            cut += 1
+            offset += len(token) + 1
+    return (" ".join(tokens[:cut]), " ".join(tokens[cut:]))
+
 
 def _accumulate(
-    segments: Sequence[TranscriptSegment],
-    indices: Sequence[int],
+    pieces: Sequence[tuple[str, str]],
     max_chars: int,
     max_segments: int,
+    before: bool,
 ) -> tuple[str, tuple[str, ...]]:
-    """Join segment texts in ``indices`` order until a bound is hit.
+    """Join ``(segment_id, text)`` pieces until a bound is hit.
 
-    ``indices`` is given in *proximity* order (nearest the candidate first) so
+    ``pieces`` is given in *proximity* order (nearest the candidate first) so
     the truncation drops the furthest text, but the returned string is
-    reassembled in chronological order so it reads correctly.
+    reassembled in chronological order so it reads correctly -- reversed for
+    the ``before`` side, as given for the after side.
     """
-    chosen: list[int] = []
+    chosen: list[tuple[str, str]] = []
     used_chars = 0
-    for index in indices[:max_segments]:
-        text = segments[index].text.strip()
+    for segment_id, raw_text in pieces[:max_segments]:
+        text = raw_text.strip()
         if not text:
             continue
-        # Always take the nearest segment even if it alone exceeds the budget;
+        # Always take the nearest piece even if it alone exceeds the budget;
         # an empty "before" for a long sentence would be worse than a long one.
         if chosen and used_chars + len(text) + 1 > max_chars:
             break
-        chosen.append(index)
+        chosen.append((segment_id, text))
         used_chars += len(text) + 1
 
     if not chosen:
         return ("", ())
-    chosen.sort()
-    joined = " ".join(segments[index].text.strip() for index in chosen)
+    if before:
+        chosen.reverse()
+    joined = " ".join(text for _, text in chosen)
     if len(joined) > max_chars:
-        # Trim from the left: the words nearest the candidate matter most.
-        joined = joined[-max_chars:].lstrip()
-    return (joined, tuple(segments[index].segment_id for index in chosen))
+        # Trim the end furthest from the candidate: the words nearest it matter
+        # most. That is the start of the "before" text and the end of the
+        # "after" text.
+        joined = (
+            joined[-max_chars:].lstrip() if before else joined[:max_chars].rstrip()
+        )
+    return (joined, tuple(segment_id for segment_id, _ in chosen))
 
 
 def build_transcript_context(
@@ -107,10 +169,13 @@ def build_transcript_context(
 
     A segment counts as "before" when it *ends* at or before the candidate and
     as "after" when it *starts* at or after it. A segment straddling the
-    candidate -- the candidate lands mid-sentence -- belongs to neither: it is
-    the clearest possible evidence of a bad breakpoint, and splitting its text
-    across both sides would disguise that as a clean boundary. It is reported
-    through ``before_absent_reason``/``after_absent_reason`` instead.
+    candidate -- the candidate lands mid-sentence -- is split at the candidate
+    (:func:`_split_at`): its first part is the nearest "before" text and its
+    remainder the nearest "after" text, both at a gap of 0 ms, and the context
+    is marked :attr:`TranscriptContext.mid_segment` so the sentence-boundary
+    features say "interrupted" rather than borrowing the boundary of the
+    segment before it. A side the split leaves with no words at all reports
+    ``mid_segment`` as its absent reason.
     """
     if not segments:
         return TranscriptContext(
@@ -118,6 +183,7 @@ def build_transcript_context(
             after_text="",
             before_absent_reason="no_transcript",
             after_absent_reason="no_transcript",
+            timestamp_ms=timestamp_ms,
         )
 
     ordered = list(segments)
@@ -131,9 +197,18 @@ def build_transcript_context(
         for index, segment in enumerate(ordered)
         if segment.start_ms >= timestamp_ms
     ]
-    straddling = any(
-        segment.start_ms < timestamp_ms < segment.end_ms for segment in ordered
-    )
+    straddlers = [
+        segment
+        for segment in ordered
+        if segment.start_ms < timestamp_ms < segment.end_ms
+    ]
+    if straddlers:
+        # Reconciled segments never overlap, so there is at most one; should
+        # unreconciled input overlap, the most recently started is nearest.
+        straddler = max(straddlers, key=lambda s: (s.start_ms, s.end_ms, s.segment_id))
+        return _mid_segment_context(
+            ordered, before_indices, after_indices, straddler, timestamp_ms, config
+        )
 
     before_reason: str | None = None
     after_reason: str | None = None
@@ -145,34 +220,40 @@ def build_transcript_context(
 
     before_text, before_ids = ("", ())
     if prior is None:
-        before_reason = "mid_segment" if straddling else "episode_start"
+        before_reason = "episode_start"
     elif gap_before is not None and gap_before > config.max_gap_ms:
         before_reason = "gap_too_large"
         gap_before = None
         prior = None
     else:
         before_text, before_ids = _accumulate(
-            ordered,
-            list(reversed(before_indices)),
+            [
+                (ordered[index].segment_id, ordered[index].text)
+                for index in reversed(before_indices)
+            ],
             config.max_chars_before,
             config.max_segments_before,
+            before=True,
         )
         if not before_text:
             before_reason = "empty_segments"
 
     after_text, after_ids = ("", ())
     if following is None:
-        after_reason = "mid_segment" if straddling else "episode_end"
+        after_reason = "episode_end"
     elif gap_after is not None and gap_after > config.max_gap_ms:
         after_reason = "gap_too_large"
         gap_after = None
         following = None
     else:
         after_text, after_ids = _accumulate(
-            ordered,
-            after_indices,
+            [
+                (ordered[index].segment_id, ordered[index].text)
+                for index in after_indices
+            ],
             config.max_chars_after,
             config.max_segments_after,
+            before=False,
         )
         if not after_text:
             after_reason = "empty_segments"
@@ -188,6 +269,55 @@ def build_transcript_context(
         following_segment=following,
         before_absent_reason=before_reason,
         after_absent_reason=after_reason,
+        timestamp_ms=timestamp_ms,
+    )
+
+
+def _mid_segment_context(
+    ordered: Sequence[TranscriptSegment],
+    before_indices: Sequence[int],
+    after_indices: Sequence[int],
+    straddler: TranscriptSegment,
+    timestamp_ms: int,
+    config: TranscriptContextConfig,
+) -> TranscriptContext:
+    """Context for a candidate inside ``straddler``: its text split at the cut.
+
+    Speech runs through the candidate, so both gaps are 0 and the bounded-gap
+    rule has nothing to measure; further segments are chained on by the usual
+    character and segment budgets, nearest first.
+    """
+    head, tail = _split_at(straddler, timestamp_ms)
+    before_text, before_ids = _accumulate(
+        [(straddler.segment_id, head)]
+        + [
+            (ordered[index].segment_id, ordered[index].text)
+            for index in reversed(before_indices)
+        ],
+        config.max_chars_before,
+        config.max_segments_before,
+        before=True,
+    )
+    after_text, after_ids = _accumulate(
+        [(straddler.segment_id, tail)]
+        + [(ordered[index].segment_id, ordered[index].text) for index in after_indices],
+        config.max_chars_after,
+        config.max_segments_after,
+        before=False,
+    )
+    return TranscriptContext(
+        before_text=before_text,
+        after_text=after_text,
+        before_segment_ids=before_ids,
+        after_segment_ids=after_ids,
+        gap_before_ms=0,
+        gap_after_ms=0,
+        prior_segment=None,
+        following_segment=None,
+        before_absent_reason=None if before_text else "mid_segment",
+        after_absent_reason=None if after_text else "mid_segment",
+        straddling_segment=straddler,
+        timestamp_ms=timestamp_ms,
     )
 
 
@@ -228,31 +358,46 @@ def extract_text_features(
     put("chars_before", len(context.before_text) if context.has_before else None)
     put("chars_after", len(context.after_text) if context.has_after else None)
 
-    prior = context.prior_segment
-    following = context.following_segment
-    put("prior_segment_duration_ms", None if prior is None else prior.duration_ms)
-    put(
-        "following_segment_duration_ms",
-        None if following is None else following.duration_ms,
-    )
     put("transcript_gap_before_ms", context.gap_before_ms)
     put("transcript_gap_after_ms", context.gap_after_ms)
 
-    if prior is not None and following is not None:
-        put("transcript_inter_segment_pause_ms", following.start_ms - prior.end_ms)
+    straddler = context.straddling_segment
+    if straddler is not None:
+        # Mid-sentence. The speech spans on either side of the cut are the two
+        # parts of the interrupted segment; there is no pause between them,
+        # nothing ends at the candidate, and no punctuation marks the cut.
+        cut = (
+            context.timestamp_ms
+            if context.timestamp_ms is not None
+            else (straddler.start_ms + straddler.end_ms) // 2
+        )
+        put("prior_segment_duration_ms", cut - straddler.start_ms)
+        put("following_segment_duration_ms", straddler.end_ms - cut)
+        put("transcript_inter_segment_pause_ms", 0)
+        put("transcript_sentence_end", 0.0)
+        put("terminal_punctuation_ordinal", _PUNCTUATION_ORDINAL["none"])
     else:
-        put("transcript_inter_segment_pause_ms", None)
-
-    put(
-        "transcript_sentence_end",
-        None if prior is None else (1.0 if prior.sentence_end else 0.0),
-    )
-    put(
-        "terminal_punctuation_ordinal",
-        None
-        if prior is None
-        else _PUNCTUATION_ORDINAL.get(prior.terminal_punctuation, 0.0),
-    )
+        prior = context.prior_segment
+        following = context.following_segment
+        put("prior_segment_duration_ms", None if prior is None else prior.duration_ms)
+        put(
+            "following_segment_duration_ms",
+            None if following is None else following.duration_ms,
+        )
+        if prior is not None and following is not None:
+            put("transcript_inter_segment_pause_ms", following.start_ms - prior.end_ms)
+        else:
+            put("transcript_inter_segment_pause_ms", None)
+        put(
+            "transcript_sentence_end",
+            None if prior is None else (1.0 if prior.sentence_end else 0.0),
+        )
+        put(
+            "terminal_punctuation_ordinal",
+            None
+            if prior is None
+            else _PUNCTUATION_ORDINAL.get(prior.terminal_punctuation, 0.0),
+        )
 
     # Availability indicators. Never masked -- their whole job is to state
     # whether the other features are present, so a masked availability flag

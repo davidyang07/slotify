@@ -113,8 +113,15 @@ def test_local_source_may_omit_licence():
 
 
 def test_absolute_paths_are_rejected():
-    with pytest.raises(ValueError, match="repository-relative"):
+    with pytest.raises(ValueError, match="not absolute"):
         make_episode(original_path="C:/Users/me/audio.mp3")
+
+
+def test_a_data_root_relative_path_is_a_valid_manifest_path():
+    episode = make_episode(original_path="@data-root/raw/clip.mp3")
+    assert episode.original_path == "@data-root/raw/clip.mp3"
+    with pytest.raises(ValueError, match="traverse upward"):
+        make_episode(original_path="@data-root/../clip.mp3")
 
 
 def test_backslash_paths_are_rejected():

@@ -7,6 +7,7 @@ fixtures (marked ``audio``) to prove it works on actual encoded audio.
 
 from __future__ import annotations
 
+import dataclasses
 import shutil
 from pathlib import Path
 
@@ -30,11 +31,20 @@ from slotify_rank.candidates.config import (
     TranscriptConfig,
     load_generation_config,
 )
-from slotify_rank.candidates.generate import generate_for_episode
+from slotify_rank.candidates import generate as generate_module
+from slotify_rank.candidates.generate import (
+    _apply_density_cap,
+    _window_quotas,
+    generate_for_episode,
+    GenerationReport,
+)
+from slotify_rank.candidates.heuristic import score_candidate
 from slotify_rank.candidates.merge import (
+    MergedCandidate,
     assert_agrees_with_product_merge,
     merge_raw_candidates,
 )
+from slotify_rank.candidates.schema import Candidate
 from slotify_rank.candidates.transcript_candidates import (
     load_transcript,
     transcript_candidates,
@@ -213,6 +223,68 @@ def test_dataset_merge_agrees_with_the_product_merge():
     assert_agrees_with_product_merge(raw, 400)
 
 
+def test_merge_scores_the_survivor_with_its_own_values_like_the_product():
+    """A transcript end with no pause of its own beats a 1500 ms silence on its
+    sentence boundary. The product keeps the survivor *as it is* -- 0 ms of
+    silence -- so the pause reward must not be borrowed from the silence."""
+    raw = [
+        RawCandidate(ms=10_000, source="silence", silence_ms=1500, pause_ms=1500),
+        RawCandidate(
+            ms=10_200,
+            source="transcript_segment_end",
+            snippet="That settles it.",
+            sentence_end=True,
+            transcript_segment_id="seg-1",
+            transcript_before="That settles it.",
+        ),
+    ]
+    merged = merge_raw_candidates(raw, 400)
+    assert len(merged) == 1
+    survivor = merged[0]
+    assert survivor.ms == 10_200
+    # What the product's merge keeps, and therefore what gets scored.
+    assert survivor.product_silence_ms == 0
+    assert survivor.product_snippet == "That settles it."
+    # Provenance is still lossless.
+    assert survivor.silence_ms == 1500
+    assert set(survivor.sources) == {"silence", "transcript_segment_end"}
+    assert_agrees_with_product_merge(raw, 400)
+
+    profile = load_heuristic_config().canonical
+    scored = score_candidate(
+        Candidate(
+            ms=survivor.ms,
+            silence_ms=survivor.product_silence_ms,
+            snippet=survivor.product_snippet,
+            sources=(),
+        ),
+        50.0,
+        "podcast",
+        profile,
+    )
+    # base 0.4 + sentence 0.3 + mid-episode 0.1; the TypeScript scorer's 0.8,
+    # not the 1.0 (clamped) that the group's longest silence would give.
+    assert scored.score == pytest.approx(0.8)
+    assert scored.components.pause == 0.0
+
+
+def test_the_product_merge_guard_catches_a_borrowed_pause(monkeypatch):
+    """The guard compares what each survivor is scored with, not just where."""
+    from slotify_rank.candidates import merge as merge_module
+
+    raw = [
+        RawCandidate(ms=10_000, source="silence", silence_ms=1500),
+        RawCandidate(ms=10_200, source="transcript_segment_end", snippet="Done."),
+    ]
+    merged = merge_raw_candidates(raw, 400)
+    merged[0].product_silence_ms = merged[0].silence_ms  # the old behaviour
+    monkeypatch.setattr(
+        merge_module, "merge_raw_candidates", lambda *_args, **_kw: merged
+    )
+    with pytest.raises(AssertionError, match="drifted"):
+        assert_agrees_with_product_merge(raw, 400)
+
+
 def test_merge_rejects_a_negative_tolerance():
     with pytest.raises(ValueError, match="non-negative"):
         merge_raw_candidates([], -1)
@@ -367,6 +439,203 @@ def test_product_padding_is_recorded_but_never_eligible(tmp_path: Path):
         assert record.candidate_sources == ("product_padding",)
         assert not record.eligible_for_labelling
         assert not record.eligible_for_evaluation
+
+
+def test_density_cap_quota_is_per_minute_with_a_proportional_last_window():
+    assert _window_quotas(150_000, 12.0) == [12, 12, 6]
+    assert _window_quotas(120_000, 12.0) == [12, 12]
+    # A sliver of a final window still keeps its single best candidate.
+    assert _window_quotas(61_000, 12.0) == [12, 1]
+    # Fractional limits floor per window and never cut a window to nothing.
+    assert _window_quotas(180_000, 2.5) == [2, 2, 2]
+    assert _window_quotas(120_000, 0.5) == [1, 1]
+
+
+def _merged(ms, sources=("fixed_interval",), silence_ms=0, pause_ms=0):
+    return MergedCandidate(
+        ms=ms,
+        sources=tuple(sources),
+        silence_ms=silence_ms,
+        pause_ms=pause_ms,
+        product_silence_ms=silence_ms,
+        product_snippet="",
+        sentence_end=None,
+        transcript_segment_id=None,
+        transcript_before=None,
+        transcript_after=None,
+        merged_from_ms=(),
+    )
+
+
+def test_density_cap_ranks_within_a_window_on_signal_evidence():
+    merged = [
+        _merged(6_000),  # no pause, loud
+        _merged(10_000, ("pause",), pause_ms=400),
+        _merged(20_000, ("rms_minimum", "fixed_interval")),  # two sources
+        _merged(30_000, ("silence",), silence_ms=1200, pause_ms=1200),
+        _merged(40_000, ("rms_minimum",)),  # quieter valley than 6_000
+        _merged(50_000),
+        _merged(70_000),  # the second window, under its quota
+    ]
+    floors = [-20.0, -40.0, -25.0, -80.0, -35.0, -20.0, -20.0]
+    report = GenerationReport(episode_id="ep", duration_ms=120_000)
+    kept = _apply_density_cap(
+        merged, floors, 120_000, GenerationConfig(max_candidates_per_minute=3.0), report
+    )
+    # Window one keeps the silence, then the pause, then the deepest valley.
+    assert [merged[index].ms for index in kept] == [10_000, 30_000, 40_000, 70_000]
+    assert report.dropped_density_cap == 3
+    assert "per one-minute window" in report.notes[-1]
+    assert "heuristic score plays no part" in report.notes[-1]
+
+
+def _dense_episode(tmp_path: Path, minutes: int = 10):
+    """Continuous 'speech' with a short pause after every phrase.
+
+    Pause lengths vary (300-649 ms) so the signal genuinely ranks them, and
+    every sixteenth gap is a product-length silence. Nearly every non-silence
+    candidate scores 0.4 or 0.5 under the baseline -- the condition under which
+    ranking on that score collapses to "earliest wins".
+    """
+    segments: list[tuple[int, bool]] = []
+    total = 0
+    phrase = 0
+    while total < minutes * 60_000:
+        segments.append((1500, True))
+        total += 1500
+        phrase += 1
+        gap = 1000 if phrase % 16 == 0 else 300 + (phrase * 137) % 350
+        segments.append((gap, False))
+        total += gap
+    return _episode_with_audio(tmp_path, segments)
+
+
+def _deciles(records, duration_ms):
+    """Per decile of the episode: (candidates, candidates with no silence flag)."""
+    rows = []
+    for decile in range(10):
+        low, high = decile * duration_ms / 10, (decile + 1) * duration_ms / 10
+        inside = [r for r in records if low <= r.timestamp_ms < high]
+        rows.append(
+            (len(inside), sum("silence" not in r.candidate_sources for r in inside))
+        )
+    return rows
+
+
+def test_density_cap_keeps_non_silence_candidates_in_every_decile(tmp_path: Path):
+    episode, paths = _dense_episode(tmp_path)
+    duration_ms = episode.duration_ms
+    limit = 8.0
+
+    # The cap as it was: one global budget, ranked by heuristic score with
+    # ties to the earlier timestamp. Reproduced here as the reference, to prove
+    # this episode is one it failed on.
+    uncapped, _ = generate_for_episode(
+        episode, paths, config=GenerationConfig(max_candidates_per_minute=None)
+    )
+    budget = max(1, int(duration_ms / 60_000 * limit))
+    old_pool = sorted(
+        uncapped, key=lambda r: (-r.heuristic_score, r.timestamp_ms)
+    )[:budget]
+    old_rows = _deciles(old_pool, duration_ms)
+    assert old_rows[0][1] == 0 and old_rows[-1][1] == 0, (
+        "the reference rule should have left the first and last decile with "
+        f"silences only: {old_rows}"
+    )
+
+    records, report = generate_for_episode(
+        episode, paths, config=GenerationConfig(max_candidates_per_minute=limit)
+    )
+    assert report.dropped_density_cap > 0
+    rows = _deciles(records, duration_ms)
+    assert all(non_silence > 0 for _, non_silence in rows), rows
+    # And the per-minute density really is bounded per minute.
+    per_minute: dict[int, int] = {}
+    for record in records:
+        minute = record.timestamp_ms // 60_000
+        per_minute[minute] = per_minute.get(minute, 0) + 1
+    assert max(per_minute.values()) <= limit
+
+
+def test_heuristic_score_has_no_effect_on_which_candidates_survive(
+    tmp_path: Path, monkeypatch
+):
+    episode, paths = _dense_episode(tmp_path, minutes=4)
+    config = GenerationConfig(max_candidates_per_minute=6.0)
+    baseline, _ = generate_for_episode(episode, paths, config=config)
+
+    real_score = generate_module.score_candidate
+
+    def inverted(candidate, duration_seconds, mode, profile):
+        # A scorer with the opposite opinion: late, pause-free candidates best.
+        scored = real_score(candidate, duration_seconds, mode, profile)
+        return dataclasses.replace(
+            scored, score=candidate.ms / (duration_seconds * 1000.0)
+        )
+
+    monkeypatch.setattr(generate_module, "score_candidate", inverted)
+    perturbed, _ = generate_for_episode(episode, paths, config=config)
+
+    assert [r.timestamp_ms for r in perturbed] == [r.timestamp_ms for r in baseline]
+    assert [r.heuristic_score for r in perturbed] != [
+        r.heuristic_score for r in baseline
+    ], "the perturbation must actually have changed the scores"
+
+
+def test_generated_heuristic_score_is_the_products_for_a_merged_survivor(
+    tmp_path: Path,
+):
+    """End to end: a transcript end 200 ms after a 1.5 s silence's midpoint
+    survives the merge (it ends a sentence) and is scored as the product would
+    score it -- with its own 0 ms pause."""
+    segments = [(20_000, True), (1500, False), (38_500, True)]
+    paths = DataPaths(repo_root=tmp_path, data_root=tmp_path / "data")
+    paths.mkdirs()
+    transcript = paths.transcripts_dir / "ep.json"
+    transcript.write_text(
+        '{"segments": ['
+        '{"id": 0, "start_ms": 0, "end_ms": 20950, "text": "That settles it."},'
+        '{"id": 1, "start_ms": 21500, "end_ms": 40000, "text": "Next topic here."},'
+        '{"id": 2, "start_ms": 40500, "end_ms": 59000, "text": "And more."}]}',
+        encoding="utf-8",
+    )
+    episode = make_episode(
+        title="Merged",
+        duration_ms=60_000,
+        transcript_path=paths.relative(transcript),
+    )
+    write_speech_like_wav(paths.absolute(episode.normalized_path), segments)
+
+    records, _ = generate_for_episode(episode, paths)
+    survivor = next(r for r in records if r.timestamp_ms == 20_950)
+    assert "silence" in survivor.candidate_sources
+    assert "transcript_segment_end" in survivor.candidate_sources
+    assert survivor.silence_duration_ms >= 1400  # provenance kept
+
+    profile = load_heuristic_config().canonical
+    product = score_candidate(
+        Candidate(ms=20_950, silence_ms=0, snippet="That settles it.", sources=()),
+        60.0,
+        "podcast",
+        profile,
+    )
+    assert survivor.heuristic_score == product.score == pytest.approx(0.8)
+    assert survivor.raw_component_scores["pause"] == 0.0
+
+
+def test_generated_candidates_record_the_generation_settings(tmp_path: Path):
+    segments = [(3000, True), (1000, False)] * 8
+    episode, paths = _episode_with_audio(tmp_path, segments)
+    default, _ = generate_for_episode(episode, paths)
+    tighter, _ = generate_for_episode(
+        episode, paths, config=GenerationConfig(max_candidates_per_minute=3.0)
+    )
+    assert {r.generation_config_digest for r in default} == {GenerationConfig().digest}
+    assert default[0].generation_config_digest != tighter[0].generation_config_digest
+    # A rename is not a change of settings.
+    assert (
+        GenerationConfig(dataset_version="renamed").digest == GenerationConfig().digest
+    )
 
 
 def test_density_cap_is_reported_not_silent(tmp_path: Path):
