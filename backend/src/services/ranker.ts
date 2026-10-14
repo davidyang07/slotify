@@ -139,13 +139,18 @@ export const rankCandidates = async (
   });
 
   const warnings = [...payload.warnings];
-  if (payload.model.training_label_source === "weak_heuristic") {
+  // The ML package discloses a non-human label source itself; only an older
+  // payload without that disclosure gets one added here, so it is said once.
+  const disclosed = payload.warnings.some((warning) =>
+    /not (independent )?evidence of (placement|ranking) quality/i.test(warning),
+  );
+  if (!disclosed && payload.model.training_label_source === "weak_heuristic") {
     warnings.push(
       "The learned ranker is a distillation of the heuristic baseline, trained " +
         "without human labels, so its ranking is not independent evidence of " +
         "placement quality.",
     );
-  } else if (payload.model.training_label_source !== "human") {
+  } else if (!disclosed && payload.model.training_label_source !== "human") {
     // The single most important thing a viewer of this demo needs to know.
     warnings.push(
       `The learned ranker was trained with label_source=` +

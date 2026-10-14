@@ -145,6 +145,25 @@ describe("rankCandidates", { skip: process.platform === "win32" && "uses a /bin/
     assert.equal(result.ranked[0].generatedBy, "analyser");
   });
 
+  test("a disclosure the ranker already made is not repeated", async () => {
+    process.env.RANKER_MODE = "auto";
+    const out = path.join(dir, "weak-disclosed.json");
+    const disclosure =
+      "This ranking comes from a model that is a distillation of the heuristic " +
+      "baseline (heuristic_offline_v1): it was trained on labels derived from that " +
+      "baseline's own scores, without any human labels. Its ordering is therefore " +
+      "not independent evidence of placement quality.";
+    fs.writeFileSync(
+      out,
+      JSON.stringify({ ...payload("weak_heuristic"), warnings: [disclosure] }),
+    );
+    process.env.SLOTIFY_ML_PYTHON = fakePython("weak-disclosed.sh", `cat '${out}'`);
+
+    const result = await rankCandidates(request());
+    const mentions = result.warnings.filter((warning) => /distillation/.test(warning));
+    assert.deepEqual(mentions, [disclosure]);
+  });
+
   test("a human-label model carries no weak-label warning", async () => {
     process.env.RANKER_MODE = "auto";
     const out = path.join(dir, "human.json");
