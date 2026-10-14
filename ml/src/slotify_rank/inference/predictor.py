@@ -5,16 +5,38 @@ built by the Phase 3 feature path and returns scores. It does not build
 features, does not read manifests, and cannot train -- so there is no code path
 in which a "prediction" is really a fresh fit.
 
-Four safety properties, each with a test:
+Five safety properties, each with a test:
 
-**The checkpoint is verified before it is used.** ``assert_compatible`` refuses
-a checkpoint whose variant, feature ordering, dimensions or pipeline versions
-differ from the data being scored. A 110-column model handed 96 differently
-ordered columns does not crash; it produces confident nonsense, which is worse.
+**The checkpoint is consistent with itself before it is used.** At load,
+``assert_compatible`` checks the checkpoint's declared input schema against its
+own stored feature ordering and against the normalizer, and the weights are
+loaded ``strict=True`` into an architecture rebuilt from that schema, so a
+checkpoint whose metadata and weights disagree is refused rather than run.
 
-**The normalizer travels with the checkpoint.** Scoring with statistics fitted
-on different data silently shifts every input. The checkpoint records the
-normalizer's identity and the load checks it.
+**The data is checked against the checkpoint, by name.** Load-time checks
+compare the checkpoint with itself; they say nothing about the data a request
+actually produced. :func:`align_examples` compares the *served* schema -- the
+column names and order the feature path built for this audio -- with the
+checkpoint's input schema before anything is scored. A learned block of a
+different width or construction is refused. A handcrafted column the
+checkpoint needs and the served features lack is refused with
+``IncompatibleCheckpoint``: a zero standing in for a missing measurement looks
+like a real zero to the model. A served layout that is a reordering or a
+superset of the checkpoint's is projected onto the checkpoint's columns by
+name, which is how a weak-label checkpoint (trained without the ``heuristic_*``
+columns) scores features that still carry them. A feature spec or pipeline
+version that differs from the checkpoint's is disclosed in the response, not
+refused: the names and widths are the contract the weights depend on, and a
+version bump elsewhere in the repository must not take the served model down.
+A 110-column model handed 110 differently named columns does not crash; it
+produces confident nonsense, which is worse.
+
+**The normalizer is the one the checkpoint was trained behind.** Scoring with
+statistics fitted on different data silently shifts every input. The checkpoint
+records the normalizer's identity -- version, pipeline and spec versions, and the
+hash of the exact training candidates it was fitted on -- and the load refuses a
+``normalizer.json`` (beside the checkpoint, or named with ``--normalizer`` /
+``SLOTIFY_RANKER_NORMALIZER``) whose identity or column names differ.
 
 **Weights only, eval mode, no grad.** ``torch.load(..., weights_only=True)``,
 ``model.eval()`` so dropout is off, ``torch.inference_mode()`` so nothing
@@ -25,6 +47,13 @@ loads on a laptop.
 scoring reuses it. The Express API spawns one process per request today, so
 this matters mostly for batch evaluation -- but it also means a persistent
 service can be added without touching this file.
+
+What a model was trained on is read from the checkpoint itself
+(``label_source`` / ``data_provenance``). Checkpoints written before those keys
+existed -- the committed bootstrap among them -- fall back to the
+``training_summary.json`` of the same run beside them, and only when that
+summary's ``run_id`` is the checkpoint's; otherwise the provenance is reported
+as ``unknown``, never assumed to be human.
 """
 
 from __future__ import annotations
@@ -38,7 +67,11 @@ import numpy as np
 import torch
 
 from slotify_rank.datasets.normalizer import FeatureNormalizer, read_normalizer
-from slotify_rank.datasets.schema import DatasetSchema, TrainingExample
+from slotify_rank.datasets.schema import (
+    DatasetSchema,
+    TrainingExample,
+    project_handcrafted,
+)
 from slotify_rank.models.base import BaseRanker, count_parameters
 from slotify_rank.models.registry import build_model
 from slotify_rank.models.schema import ModelConfig
@@ -52,9 +85,18 @@ from slotify_rank.inference.schema import (
     ModelIdentity,
     ScoredCandidate,
     normalize_scores,
+    quantize_scores,
 )
 
-__all__ = ["RankerPredictor", "PredictorError", "score_examples"]
+__all__ = [
+    "AlignedExamples",
+    "EpisodeRanking",
+    "RankerPredictor",
+    "PredictorError",
+    "align_examples",
+    "rank_examples",
+    "score_examples",
+]
 
 
 class PredictorError(RuntimeError):
@@ -64,10 +106,10 @@ class PredictorError(RuntimeError):
 def _training_summary_beside(checkpoint_path: Path) -> Mapping[str, Any]:
     """Read the run's summary, if it sits next to the checkpoint.
 
-    Used only to surface `label_source` / `data_provenance` in the response.
-    A missing summary is reported as `unknown` rather than assumed to be real
-    supervision -- an unlabelled provenance must never read as a human-labelled
-    one.
+    Used only for checkpoints that predate stored provenance. A missing or
+    unreadable summary yields ``{}``, which the caller reports as ``unknown``
+    rather than assuming real supervision -- an unlabelled provenance must never
+    read as a human-labelled one.
     """
     summary_path = checkpoint_path.parent / "training_summary.json"
     if not summary_path.is_file():
@@ -77,6 +119,123 @@ def _training_summary_beside(checkpoint_path: Path) -> Mapping[str, Any]:
     except (json.JSONDecodeError, OSError):
         return {}
     return loaded if isinstance(loaded, Mapping) else {}
+
+
+def _training_provenance(
+    payload: Mapping[str, Any], checkpoint_path: Path
+) -> tuple[str, str]:
+    """``(label_source, data_provenance)`` for a checkpoint.
+
+    The checkpoint's own record wins. Only a legacy checkpoint (no stored
+    ``label_source``) consults the sidecar summary, and only a summary written by
+    the same run: a ``training_summary.json`` that happens to sit beside a
+    checkpoint copied from elsewhere describes some other model.
+    """
+    stored = payload.get("label_source")
+    if isinstance(stored, str) and stored:
+        provenance = payload.get("data_provenance")
+        return stored, provenance if isinstance(provenance, str) and provenance else "unknown"
+
+    summary = _training_summary_beside(checkpoint_path)
+    if summary and str(summary.get("run_id", "")) == str(payload.get("run_id", "")):
+        return (
+            str(summary.get("label_source") or "unknown"),
+            str(summary.get("data_provenance") or "unknown"),
+        )
+    return "unknown", "unknown"
+
+
+@dataclass(frozen=True)
+class AlignedExamples:
+    """Examples re-columned onto a checkpoint's layout, and what that took."""
+
+    examples: list[TrainingExample]
+    #: True when the served handcrafted layout differed and was projected by name.
+    projected: bool
+    #: Served columns the checkpoint does not consume (withheld from the model).
+    withheld_columns: tuple[str, ...]
+    #: Version differences that were disclosed rather than refused.
+    notes: tuple[str, ...]
+
+
+def align_examples(
+    examples: Sequence[TrainingExample],
+    served: DatasetSchema,
+    trained: DatasetSchema,
+) -> AlignedExamples:
+    """Check served data against a checkpoint's input schema; project by name.
+
+    Refuses (``IncompatibleCheckpoint``) when the learned blocks differ in width,
+    parts or input-schema version, when the served layout names a column twice,
+    or when a column the checkpoint was trained on is absent. Projects a
+    reordered or superset handcrafted layout onto the checkpoint's columns.
+    Reports differing feature spec / pipeline versions as notes.
+    """
+    reasons: list[str] = []
+    for field_name in ("native_embedding_dimension", "audio_dimension", "text_dimension"):
+        mine, theirs = getattr(trained, field_name), getattr(served, field_name)
+        if mine != theirs:
+            reasons.append(f"{field_name}: served {theirs}, checkpoint {mine}")
+    for field_name in ("audio_parts", "text_parts"):
+        mine, theirs = getattr(trained, field_name), getattr(served, field_name)
+        if tuple(mine) != tuple(theirs):
+            reasons.append(f"{field_name}: served {list(theirs)}, checkpoint {list(mine)}")
+    if (
+        trained.input_schema_version
+        and served.input_schema_version
+        and trained.input_schema_version != served.input_schema_version
+    ):
+        reasons.append(
+            f"input_schema_version: served {served.input_schema_version!r}, "
+            f"checkpoint {trained.input_schema_version!r} (the learned blocks are "
+            "constructed differently)"
+        )
+
+    served_names = tuple(served.handcrafted_feature_names)
+    trained_names = tuple(trained.handcrafted_feature_names)
+    duplicates = sorted({name for name in served_names if served_names.count(name) > 1})
+    if duplicates:
+        reasons.append(f"served handcrafted layout names {duplicates[:5]} more than once")
+    available = set(served_names)
+    missing = [name for name in trained_names if name not in available]
+    if missing:
+        reasons.append(
+            f"{len(missing)} handcrafted column(s) the checkpoint was trained on are "
+            f"absent from the served features: {missing[:5]}"
+        )
+    if reasons:
+        raise IncompatibleCheckpoint(
+            "The served features do not match the checkpoint's input schema:\n  - "
+            + "\n  - ".join(reasons)
+        )
+
+    try:
+        projected = project_handcrafted(examples, served_names, trained_names)
+    except ValueError as error:
+        raise IncompatibleCheckpoint(str(error)) from error
+
+    trained_set = set(trained_names)
+    withheld = tuple(name for name in served_names if name not in trained_set)
+
+    notes: list[str] = []
+    for field_name, label in (
+        ("feature_spec_version", "feature spec"),
+        ("feature_pipeline_version", "feature pipeline"),
+    ):
+        mine, theirs = getattr(trained, field_name), getattr(served, field_name)
+        if mine and theirs and mine != theirs:
+            notes.append(
+                f"The features were built under {label} {theirs!r} but the model "
+                f"was trained under {mine!r}. Columns were matched by name; a "
+                "column whose computation changed between the two would be scored "
+                "as if it had not."
+            )
+    return AlignedExamples(
+        examples=projected,
+        projected=served_names != trained_names,
+        withheld_columns=withheld,
+        notes=tuple(notes),
+    )
 
 
 @dataclass
@@ -134,8 +293,11 @@ class RankerPredictor:
         )
         variant = str(payload.get("model_variant", ""))
 
-        # Refuse a mismatch before any weight is loaded. Split hashes are allowed
-        # to differ: scoring a new upload with a trained model is the whole point.
+        # Refuse an internally inconsistent checkpoint, or a normalizer that is
+        # not the one it was trained behind, before any weight is loaded. This
+        # compares the checkpoint with itself and with its normalizer; the data
+        # being scored is compared later, in `align_examples`. Split hashes are
+        # allowed to differ: scoring a new upload is the whole point.
         assert_compatible(
             payload,
             model_variant=variant,
@@ -162,7 +324,7 @@ class RankerPredictor:
         model.to(torch.device(device))
         model.eval()
 
-        summary = _training_summary_beside(checkpoint)
+        label_source, provenance = _training_provenance(payload, checkpoint)
         identity = ModelIdentity(
             model_variant=variant,
             model_run_id=str(payload.get("run_id", "")),
@@ -176,11 +338,28 @@ class RankerPredictor:
             feature_pipeline_version=schema.feature_pipeline_version,
             input_schema_version=schema.input_schema_version,
             normalizer_version=normalizer.normalizer_version,
-            training_label_source=str(summary.get("label_source", "unknown")),
-            training_data_provenance=str(summary.get("data_provenance", "unknown")),
+            training_label_source=label_source,
+            training_data_provenance=provenance,
         )
 
         return cls(model=model, normalizer=normalizer, schema=schema, identity=identity)
+
+    def align(
+        self, examples: Sequence[TrainingExample], served_schema: DatasetSchema | None
+    ) -> AlignedExamples:
+        """Check and project served examples onto this checkpoint's columns.
+
+        ``served_schema`` is the layout the examples were built under
+        (``LoadedDataset.schema``). ``None`` is refused: without it, the only
+        thing left to check is the vector width, and equal widths are exactly
+        the case in which mis-columned inputs go unnoticed.
+        """
+        if served_schema is None:
+            raise IncompatibleCheckpoint(
+                "The served examples carry no schema, so their column names cannot "
+                "be compared with the checkpoint's. Refusing to score by width alone."
+            )
+        return align_examples(examples, served_schema, self.schema)
 
     def assert_examples_compatible(self, examples: Sequence[TrainingExample]) -> None:
         """Refuse examples whose vector widths differ from the trained layout."""
@@ -267,18 +446,28 @@ def score_examples(
     timestamps_ms: Mapping[str, int],
     feature_status: Mapping[str, str],
 ) -> list[ScoredCandidate]:
-    """Score and rank, best first.
+    """Score and rank examples already in the checkpoint's layout, best first.
 
-    Ties break on the earlier timestamp then the candidate id, so two runs over
-    the same audio produce byte-identical output.
+    Scores are quantized once (:func:`quantize_scores`, the 6 decimals
+    ``raw_score`` reports) *before* sorting and normalizing. A float32 forward
+    pass does not give two identical candidates bit-identical outputs -- two
+    copies of one vector in one batch have been observed 7e-9 apart -- and
+    sorting or min-max scaling the unquantized values would let that noise
+    decide the order and stretch it into a 0-vs-100 ``normalized_score``. After
+    quantization, ordering, normalization and the reported ``raw_score`` all
+    describe the same numbers, and ties break on the earlier timestamp then the
+    candidate id, so two runs over the same audio produce byte-identical output.
+
+    Use :func:`rank_examples` for served data: it checks the served schema first.
     """
     ranking, acceptability = predictor.score(examples)
-    normalized = normalize_scores(ranking)
+    quantized = quantize_scores(ranking)
+    normalized = normalize_scores(quantized)
 
     ordered = sorted(
         range(len(examples)),
         key=lambda index: (
-            -ranking[index],
+            -quantized[index],
             timestamps_ms.get(examples[index].candidate_id, 0),
             examples[index].candidate_id,
         ),
@@ -293,7 +482,7 @@ def score_examples(
                 candidate_id=example.candidate_id,
                 insertion_time_seconds=round(timestamp_ms / 1000.0, 3),
                 insertion_ms=timestamp_ms,
-                raw_score=round(ranking[index], 6),
+                raw_score=quantized[index],
                 normalized_score=normalized[index],
                 rank=rank,
                 acceptability_logit=(
@@ -309,3 +498,31 @@ def score_examples(
             )
         )
     return scored
+
+
+@dataclass(frozen=True)
+class EpisodeRanking:
+    """A ranked episode plus what the response must disclose about it."""
+
+    ranked: list[ScoredCandidate]
+    warnings: list[str]
+    withheld_columns: tuple[str, ...] = ()
+
+
+def rank_examples(
+    predictor: RankerPredictor,
+    examples: Sequence[TrainingExample],
+    served_schema: DatasetSchema | None,
+    timestamps_ms: Mapping[str, int],
+    feature_status: Mapping[str, str],
+) -> EpisodeRanking:
+    """The product path: check the served schema, project, then score and rank."""
+    if not examples:
+        return EpisodeRanking(ranked=[], warnings=[])
+    aligned = predictor.align(examples, served_schema)
+    ranked = score_examples(predictor, aligned.examples, timestamps_ms, feature_status)
+    return EpisodeRanking(
+        ranked=ranked,
+        warnings=list(aligned.notes),
+        withheld_columns=aligned.withheld_columns,
+    )

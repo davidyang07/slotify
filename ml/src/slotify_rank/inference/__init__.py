@@ -8,18 +8,24 @@ request.
 
 from slotify_rank.inference.schema import (
     INFERENCE_SCHEMA_VERSION,
+    WEAK_LABEL_DISCLOSURE,
     ExcludedCandidate,
     InferenceResult,
     ModelIdentity,
     ScoredCandidate,
     normalize_scores,
+    quantize_scores,
+    training_disclosures,
 )
 
 __all__ = [
     "INFERENCE_SCHEMA_VERSION",
+    "WEAK_LABEL_DISCLOSURE",
     "ExcludedCandidate",
     "InferenceResult",
     "ModelIdentity",
     "ScoredCandidate",
     "normalize_scores",
+    "quantize_scores",
+    "training_disclosures",
 ]

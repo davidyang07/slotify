@@ -66,7 +66,7 @@
     },
     "labels": {
       "source": "..\\data-synthetic\\labels\\labels_synthetic.jsonl",
-      "label_source": "human",
+      "label_source": "synthetic",
       "labelled_candidate_count": 80,
       "rubric_versions": [
         "rubric-v1.0.0"

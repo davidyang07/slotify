@@ -254,7 +254,9 @@ class ResolvedConfig:
     git_commit: str
     overrides: Mapping[str, Any] = field(default_factory=dict)
     smoke: bool = False
-    label_source: str = "human"
+    #: What supervised the run, read from the loaded labels. ``unknown`` by
+    #: default so a caller that never set it cannot record a human-trained run.
+    label_source: str = "unknown"
     synthetic_data: bool = False
 
     def to_dict(self) -> dict[str, Any]:

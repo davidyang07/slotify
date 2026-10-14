@@ -19,6 +19,14 @@ produced it.
 built is listed in ``excluded`` with a reason. It is never scored from a
 zero-filled vector, and the ranked list is exactly as long as the set of
 candidates that really were scored.
+
+**What the model learned from is said in words, not only in a field.** When the
+scoring checkpoint was not trained on human labels, ``warnings`` carries a plain
+sentence saying so (:func:`training_disclosures`), added by the result itself so
+no caller can build a payload without it. ``model.training_label_source`` says
+the same thing in a machine-readable field, but a field is easy to not display.
+Adding a sentence to ``warnings`` does not change the document's shape, so
+``schema_version`` is unchanged.
 """
 
 from __future__ import annotations
@@ -30,14 +38,61 @@ from slotify_rank.config.versions import PACKAGE_VERSION
 
 __all__ = [
     "INFERENCE_SCHEMA_VERSION",
+    "SCORE_DECIMALS",
+    "WEAK_LABEL_DISCLOSURE",
     "ScoreScale",
     "ScoredCandidate",
     "ExcludedCandidate",
     "ModelIdentity",
     "InferenceResult",
+    "normalize_scores",
+    "quantize_scores",
+    "training_disclosures",
 ]
 
 INFERENCE_SCHEMA_VERSION = "inference-v1.0.0"
+
+#: Decimal places a raw score is quantized to before it is ordered, normalized
+#: or reported. Float32 forward passes are not bit-reproducible across rows of
+#: one batch (identical inputs have been observed ~7e-9 apart), so anything finer
+#: than this is arithmetic noise, not a preference.
+SCORE_DECIMALS = 6
+
+#: The disclosure every response from a weak-label checkpoint carries.
+WEAK_LABEL_DISCLOSURE = (
+    "This ranking comes from a model that is a distillation of the heuristic "
+    "baseline (heuristic_offline_v1): it was trained on labels derived from that "
+    "baseline's own scores, without any human labels. Its ordering is therefore "
+    "not independent evidence of placement quality."
+)
+
+_SYNTHETIC_DISCLOSURE = (
+    "This ranking comes from a model trained on synthetic fixture data, not on "
+    "real audio or human labels. Its ordering is not evidence of placement quality."
+)
+
+_UNKNOWN_DISCLOSURE = (
+    "What this model was trained on is not recorded (label source unknown), so "
+    "its ordering cannot be treated as evidence of placement quality."
+)
+
+
+def training_disclosures(label_source: str) -> list[str]:
+    """The plain-language warnings a model's supervision obliges a response to carry.
+
+    Empty only for a model trained on human labels alone. A mixed source
+    (``human+weak_heuristic``) carries the weak disclosure: one weak row is
+    enough for the teacher's ordering to be in the weights.
+    """
+    parts = set(str(label_source).split("+"))
+    disclosures: list[str] = []
+    if "weak_heuristic" in parts:
+        disclosures.append(WEAK_LABEL_DISCLOSURE)
+    if "synthetic" in parts:
+        disclosures.append(_SYNTHETIC_DISCLOSURE)
+    if not disclosures and parts != {"human"}:
+        disclosures.append(_UNKNOWN_DISCLOSURE)
+    return disclosures
 
 #: How ``normalized_score`` was derived. ``episode_relative_min_max`` is the
 #: only scale a learned ranker can honestly offer today: its raw score is
@@ -148,6 +203,17 @@ class InferenceResult:
     schema_version: str = INFERENCE_SCHEMA_VERSION
     package_version: str = PACKAGE_VERSION
 
+    def __post_init__(self) -> None:
+        # Added here rather than by the caller so that no code path can build a
+        # response from a weak or synthetic model without saying so.
+        missing = [
+            disclosure
+            for disclosure in training_disclosures(self.model.training_label_source)
+            if disclosure not in self.warnings
+        ]
+        if missing:
+            object.__setattr__(self, "warnings", (*missing, *self.warnings))
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema_version": self.schema_version,
@@ -168,17 +234,26 @@ class InferenceResult:
         }
 
 
+def quantize_scores(raw_scores: Sequence[float]) -> list[float]:
+    """Round raw scores to :data:`SCORE_DECIMALS`, once, before any use of them."""
+    return [round(float(score), SCORE_DECIMALS) for score in raw_scores]
+
+
 def normalize_scores(raw_scores: Sequence[float]) -> list[float]:
     """Project raw scores onto 0-100 relative to this episode.
 
     Identical scores map to 50 rather than to an arbitrary spread: a ranker that
-    could not separate its candidates should not appear to have done so.
+    could not separate its candidates should not appear to have done so. "No
+    spread" means less than half a quantum (``10**-SCORE_DECIMALS``): callers
+    pass :func:`quantize_scores` output, in which any real difference is at
+    least one quantum, so float noise below that can never be stretched into a
+    0-vs-100 difference.
     """
     values = [float(score) for score in raw_scores]
     if not values:
         return []
     low = min(values)
     high = max(values)
-    if high - low < 1e-9:
+    if high - low < 0.5 * 10.0**-SCORE_DECIMALS:
         return [50.0 for _ in values]
     return [round(100.0 * (value - low) / (high - low), 2) for value in values]

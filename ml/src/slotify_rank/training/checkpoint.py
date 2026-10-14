@@ -11,7 +11,24 @@ checkpoint to the exact class layout that wrote it.
 input schema, the feature ordering, the pipeline versions, the normalizer
 identity and the split hash. :func:`assert_compatible` refuses a mismatch rather
 than letting a 110-column model be handed 96 columns of differently-ordered
-features -- which does not crash, and produces confident nonsense.
+features -- which does not crash, and produces confident nonsense. The
+normalizer is checked by identity, not just by version: its column names must be
+the checkpoint's, and its training-split hash must be the one the checkpoint
+recorded, so statistics fitted on a different corpus (``--normalizer`` /
+``SLOTIFY_RANKER_NORMALIZER`` pointing at the wrong file) are refused.
+
+**Supervision travels with the weights.** ``label_source`` and
+``data_provenance`` are stored in the payload, so what a model was trained on
+cannot be lost by moving the ``.pt`` away from its run directory. They are
+additive keys under the same ``checkpoint-schema-v1.0.0``: a checkpoint written
+before they existed (the committed bootstrap, ``gated-d8ed976101aa4c3b``) simply
+lacks them, and :mod:`slotify_rank.inference.predictor` falls back to that run's
+``training_summary.json`` for it alone. ``dropped_handcrafted_features`` records
+the columns a weak-label run withheld from the model (see
+:mod:`slotify_rank.training.prepare`). These keys are purely additive -- no
+existing key changed meaning, and a reader that predates them ignores them -- so
+``checkpoint-schema-v1.0.0`` still describes both generations. A reader must
+treat their absence as "written before they existed", never as a default value.
 
 **Writes are atomic, on OneDrive too.** ``torch.save`` streams, so a crash
 mid-write leaves a truncated file that often still loads. Saves go to a
@@ -136,8 +153,16 @@ def build_checkpoint(
     run_id: str,
     early_stopping_state: Mapping[str, Any],
     rng_state: RngState | None = None,
+    label_source: str = "unknown",
+    data_provenance: str = "unknown",
+    dropped_handcrafted_features: tuple[str, ...] = (),
 ) -> dict[str, Any]:
-    """Assemble the payload. Every field is a primitive or a state_dict."""
+    """Assemble the payload. Every field is a primitive or a state_dict.
+
+    ``label_source`` defaults to ``unknown`` rather than ``human``: a writer that
+    forgot to say what supervised the weights must never produce a checkpoint
+    that reads as human-trained.
+    """
     payload: dict[str, Any] = {
         "checkpoint_schema_version": CHECKPOINT_SCHEMA_VERSION,
         "model_state_dict": model.state_dict(),
@@ -169,6 +194,9 @@ def build_checkpoint(
         "git_commit": git_commit,
         "run_id": run_id,
         "early_stopping_state": json.dumps(dict(early_stopping_state), sort_keys=True),
+        "label_source": str(label_source),
+        "data_provenance": str(data_provenance),
+        "dropped_handcrafted_features": [str(name) for name in dropped_handcrafted_features],
     }
     if rng_state is not None:
         payload["rng_state"] = rng_state.to_payload()
@@ -239,7 +267,14 @@ def assert_compatible(
     ``allow_split_mismatch`` exists for inference-only use: scoring a new corpus
     with a trained model is legitimate, and its split hash will never match. It
     does *not* relax the schema checks, because those govern whether the weights
-    line up with the columns at all.
+    line up with the columns at all -- nor the normalizer's identity, because the
+    statistics a model was trained behind are part of the model, whatever corpus
+    it is scoring.
+
+    ``schema`` is compared exactly, name for name. A caller holding a schema of
+    a *different* layout (a superset of the checkpoint's columns, as every
+    weak-label checkpoint sees at inference) projects its examples onto the
+    checkpoint's columns first; see :func:`slotify_rank.inference.predictor.align_examples`.
     """
     reasons: list[str] = []
 
@@ -250,6 +285,7 @@ def assert_compatible(
         )
 
     stored_schema_raw = payload.get("input_schema")
+    stored_schema: DatasetSchema | None = None
     if isinstance(stored_schema_raw, Mapping):
         stored_schema = DatasetSchema.from_mapping(stored_schema_raw)
         reasons.extend(schema.incompatibilities(stored_schema))
@@ -282,6 +318,38 @@ def assert_compatible(
                     f"normalizer feature_pipeline_version {stored_pipeline!r} != "
                     f"{normalizer.feature_pipeline_version!r}"
                 )
+            stored_spec = str(reference.get("feature_spec_version", ""))
+            if (
+                stored_spec
+                and normalizer.feature_spec_version
+                and stored_spec != normalizer.feature_spec_version
+            ):
+                reasons.append(
+                    f"normalizer feature_spec_version {stored_spec!r} != "
+                    f"{normalizer.feature_spec_version!r}"
+                )
+            # The identity check. Two normalizers of the same version over the
+            # same pipeline can still be fitted on entirely different training
+            # splits; the split hash is what tells them apart. A normalizer that
+            # records no hash cannot prove it is the right one, so it is refused
+            # whenever the checkpoint recorded one.
+            stored_hash = str(reference.get("training_split_hash", ""))
+            if stored_hash and stored_hash != normalizer.training_split_hash:
+                reasons.append(
+                    "normalizer was fitted on a different training split "
+                    f"(training_split_hash {normalizer.training_split_hash!r}, the "
+                    f"checkpoint was trained with {stored_hash!r}); its statistics "
+                    "would shift every input"
+                )
+        if stored_schema is not None and tuple(normalizer.feature_names) != tuple(
+            stored_schema.handcrafted_feature_names
+        ):
+            reasons.append(
+                "normalizer columns differ from the checkpoint's handcrafted layout "
+                f"({normalizer.dimension} normalizer column(s) vs "
+                f"{stored_schema.handcrafted_dimension}; first difference: "
+                f"{_first_difference(normalizer.feature_names, stored_schema.handcrafted_feature_names)})"
+            )
 
     if dataset_split_hash is not None and not allow_split_mismatch:
         stored_split = str(payload.get("dataset_split_hash", ""))
@@ -296,6 +364,15 @@ def assert_compatible(
             "Refusing to load an incompatible checkpoint:\n  - "
             + "\n  - ".join(reasons)
         )
+
+
+def _first_difference(left: Any, right: Any) -> str:
+    for index, (a, b) in enumerate(zip(left, right)):
+        if a != b:
+            return f"column {index}: {a!r} vs {b!r}"
+    if len(left) != len(right):
+        return f"lengths {len(left)} vs {len(right)}"
+    return "none"
 
 
 def inspect_checkpoint(path: Path) -> dict[str, Any]:
@@ -330,4 +407,8 @@ def inspect_checkpoint(path: Path) -> dict[str, Any]:
         "text_dimension": schema.get("text_dimension"),
         "normalizer_reference": payload.get("normalizer_reference"),
         "resolved_dependency_versions": payload.get("resolved_dependency_versions"),
+        # Absent (None) on checkpoints written before these were stored.
+        "label_source": payload.get("label_source"),
+        "data_provenance": payload.get("data_provenance"),
+        "dropped_handcrafted_features": payload.get("dropped_handcrafted_features"),
     }

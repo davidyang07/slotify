@@ -15,6 +15,25 @@ near-duplicates.
 Exit code 1 when ``--require-publishable`` is passed and the headline is not
 publishable, so a CI job can assert the claim still holds rather than assuming
 it.
+
+The pre-registered protocol is enforced here, not only recorded:
+
+* **The model must be the nominated one.** ``experiment train`` nominates the
+  median seed of the headline variant in its training-matrix summary. A
+  ``--model`` whose ``run_id`` is not that run is refused, unless
+  ``--allow-unnominated`` is passed -- and then the comparison is recorded as
+  unnominated and its headline is not publishable. Otherwise "evaluate the best
+  of the three seeds on test" is one command away.
+* **The labels must be the frozen ones.** The label export is verified against
+  the frozen snapshot (``experiment freeze``) before anything is scored; a
+  mismatch is a refusal. With ``--experiment-config`` the snapshot is the one
+  the experiment names and must exist; without it, ``--label-snapshot`` names
+  one, and a comparison with none is recorded as unverified and not publishable.
+* **The claim is judged.** With ``--experiment-config`` the report carries a
+  PASS/FAIL verdict against the experiment's pre-registered
+  ``minimum_relative_improvement_percent``.
+* **The data is checked against the checkpoint by column name**, exactly as on
+  the product path (:func:`slotify_rank.inference.predictor.align_examples`).
 """
 
 from __future__ import annotations
@@ -28,6 +47,7 @@ from typing import Any, Sequence
 
 from slotify_rank.data.paths import DataPaths
 from slotify_rank.evaluation.compare import CANONICAL_BASELINE
+from slotify_rank.experiment.canonical import CANONICAL_SPLIT_VERSION
 
 __all__ = ["register"]
 
@@ -59,6 +79,64 @@ def _training_episode_ids(checkpoint: Path) -> list[str]:
     return sorted(episodes)
 
 
+def _nomination(
+    matrix_path: Path | None,
+    run_id: str,
+    experiment_version: str,
+) -> dict[str, Any]:
+    """Whether ``run_id`` is the run the training matrix nominated.
+
+    The matrix's own ``ok`` must hold: a matrix with a failed cell, a wrong label
+    source or no headline run nominates nothing, whatever ``reported_run`` says.
+    """
+    from slotify_rank.training.reporting import repo_relative
+
+    block: dict[str, Any] = {
+        "nominated": False,
+        "training_matrix": repo_relative(matrix_path) if matrix_path else None,
+        "model_run_id": run_id,
+    }
+    if matrix_path is None:
+        block["reason"] = (
+            "no training matrix was named (pass --training-matrix or "
+            "--experiment-config), so the checkpoint's nomination cannot be checked"
+        )
+        return block
+    if not matrix_path.is_file():
+        block["reason"] = f"no training matrix summary at {repo_relative(matrix_path)}"
+        return block
+    try:
+        matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as error:
+        block["reason"] = f"the training matrix summary is unreadable: {error}"
+        return block
+    reported = matrix.get("reported_run") or {}
+    block["nominated_run_id"] = reported.get("run_id")
+    block["matrix_experiment_version"] = matrix.get("experiment_version")
+    if experiment_version and matrix.get("experiment_version") != experiment_version:
+        block["reason"] = (
+            f"the training matrix is for {matrix.get('experiment_version')!r}, not "
+            f"{experiment_version!r}"
+        )
+    elif not matrix.get("ok"):
+        block["reason"] = (
+            "the training matrix nominated no run: "
+            f"{matrix.get('blocking_reasons') or 'no usable headline run'}"
+        )
+    elif not reported.get("run_id"):
+        block["reason"] = "the training matrix records no nominated run id"
+    elif str(reported.get("run_id")) != run_id:
+        block["reason"] = (
+            f"the matrix nominated {reported.get('run_id')!r} "
+            f"({reported.get('variant')} seed {reported.get('seed')}), not {run_id!r}"
+        )
+    else:
+        block["nominated"] = True
+        block["variant"] = reported.get("variant")
+        block["seed"] = reported.get("seed")
+    return block
+
+
 def _evaluation_id(parts: Sequence[str]) -> str:
     digest = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
     return f"eval-{digest}"
@@ -81,21 +159,114 @@ def _cmd_compare(args: argparse.Namespace) -> int:
         write_comparison,
     )
     from slotify_rank.evaluation.metrics import MetricConfig, evaluate_rankings
+    from slotify_rank.experiment.freeze import read_snapshot, verify_against_snapshot
     from slotify_rank.features.assemble import read_feature_manifest
     from slotify_rank.inference.predictor import RankerPredictor
+    from slotify_rank.inference.schema import quantize_scores
     from slotify_rank.training.config import git_commit
+    from slotify_rank.training.reporting import repo_relative
 
     paths = _paths(args)
     checkpoint = Path(args.model)
     label_export = Path(args.labels)
+    # The manifest actually read -- hashed and recorded below, so the report
+    # names the bytes the number came from rather than the default location.
+    features_manifest = (
+        Path(args.features_manifest) if args.features_manifest else paths.features_manifest
+    )
+
+    experiment = None
+    if args.experiment_config:
+        from slotify_rank.experiment.canonical import load_experiment_config
+
+        experiment = load_experiment_config(Path(args.experiment_config))
+
+    # -- the protocol, checked before anything is scored ----------------------
+    predictor = RankerPredictor.load(checkpoint, args.normalizer)
+    matrix_path = (
+        Path(args.training_matrix)
+        if args.training_matrix
+        else (
+            paths.data_root.parent
+            / "artifacts"
+            / "experiments"
+            / f"{experiment.experiment_version}-training-matrix.json"
+            if experiment
+            else None
+        )
+    )
+    nomination = _nomination(
+        matrix_path,
+        predictor.identity.model_run_id,
+        experiment.experiment_version if experiment else "",
+    )
+    nomination["allowed_unnominated"] = bool(args.allow_unnominated)
+    if not nomination["nominated"] and not args.allow_unnominated:
+        print(
+            f"error: {checkpoint} is not the run the training matrix nominated: "
+            f"{nomination['reason']}. The pre-registered protocol evaluates the "
+            "median seed and nothing else; pass --allow-unnominated to evaluate it "
+            "anyway (recorded, and the headline is then not publishable).",
+            file=sys.stderr,
+        )
+        return 1
+
+    split_manifest = paths.split_manifest(args.split_version)
+    snapshot_path = (
+        Path(args.label_snapshot)
+        if args.label_snapshot
+        else (
+            paths.labels_dir
+            / f"label_snapshot_{experiment.labels['snapshot_version']}.json"
+            if experiment
+            else None
+        )
+    )
+    if snapshot_path is None:
+        snapshot_block: dict[str, Any] = {
+            "verified": False,
+            "reason": (
+                "no frozen label snapshot was named (pass --label-snapshot or "
+                "--experiment-config)"
+            ),
+        }
+    else:
+        if not snapshot_path.is_file():
+            print(
+                f"error: no frozen label snapshot at {repo_relative(snapshot_path)}. "
+                "Freeze one with `experiment freeze` before evaluating; the "
+                "evaluation must be reproducible against labels that cannot move.",
+                file=sys.stderr,
+            )
+            return 1
+        snapshot = read_snapshot(snapshot_path)
+        mismatches = verify_against_snapshot(
+            snapshot,
+            label_export=label_export,
+            candidate_manifest=paths.candidates_manifest,
+            feature_manifest=features_manifest,
+            split_manifest=split_manifest,
+        )
+        if mismatches:
+            print(
+                "error: the inputs do not match the frozen label snapshot "
+                f"{repo_relative(snapshot_path)}:",
+                file=sys.stderr,
+            )
+            for mismatch in mismatches:
+                print(f"  - {mismatch}", file=sys.stderr)
+            return 1
+        snapshot_block = {
+            "verified": True,
+            "path": repo_relative(snapshot_path),
+            "snapshot_version": snapshot.snapshot_version,
+            "content_hash": snapshot.content_hash(),
+        }
 
     allowed = tuple(dict.fromkeys(["human", *(args.allow_label_source or [])]))
     labels = read_label_export(label_export, allowed_label_sources=allowed)
 
-    header, records = read_feature_manifest(
-        Path(args.features_manifest) if args.features_manifest else paths.features_manifest
-    )
-    split_manifest = paths.split_manifest(args.split_version)
+    header, records = read_feature_manifest(features_manifest)
     split_lookup = (
         dict(read_split_manifest(split_manifest).by_episode)
         if split_manifest.is_file()
@@ -187,10 +358,16 @@ def _cmd_compare(args: argparse.Namespace) -> int:
         )
         return 1
 
-    predictor = RankerPredictor.load(checkpoint, args.normalizer)
-    ranking, _ = predictor.score(examples)
+    # The evaluated data's own column layout against the checkpoint's, by name;
+    # a superset (a weak-label checkpoint sees heuristic_* columns it was trained
+    # without) is projected, a missing column is refused.
+    aligned = predictor.align(examples, loaded.schema)
+    ranking, _ = predictor.score(aligned.examples)
+    # Quantized exactly as the product path does, so the ranking evaluated is
+    # the ranking served (float32 noise cannot reorder tied candidates).
     model_scores = {
-        example.candidate_id: score for example, score in zip(examples, ranking)
+        example.candidate_id: score
+        for example, score in zip(examples, quantize_scores(ranking))
     }
 
     commit = git_commit(paths.repo_root)
@@ -200,7 +377,7 @@ def _cmd_compare(args: argparse.Namespace) -> int:
 
     artifact_hashes = {
         "label_export": _hash(label_export),
-        "feature_manifest": _hash(paths.features_manifest),
+        "feature_manifest": _hash(features_manifest),
         "candidate_manifest": _hash(paths.candidates_manifest),
         "episode_manifest": _hash(paths.episodes_manifest),
         "split_manifest": _hash(split_manifest),
@@ -210,24 +387,25 @@ def _cmd_compare(args: argparse.Namespace) -> int:
 
     experiment_version = ""
     experiment_digest = ""
-    if args.experiment_config:
-        from slotify_rank.experiment.canonical import load_experiment_config
-
-        experiment = load_experiment_config(Path(args.experiment_config))
+    if experiment is not None:
         experiment_version = experiment.experiment_version
         experiment_digest = experiment.digest()
         artifact_hashes["experiment_config"] = _hash(Path(args.experiment_config))
+    if snapshot_path is not None:
+        artifact_hashes["label_snapshot"] = _hash(snapshot_path)
+    if matrix_path is not None:
+        artifact_hashes["training_matrix"] = _hash(matrix_path)
 
     inputs = ComparisonInputs(
         split=args.split,
         label_source=labels.label_source,
-        label_export=str(label_export),
-        features_manifest=str(paths.features_manifest),
-        split_manifest=str(split_manifest),
+        label_export=repo_relative(label_export),
+        features_manifest=repo_relative(features_manifest),
+        split_manifest=repo_relative(split_manifest),
         split_version=args.split_version,
         model_run_id=predictor.identity.model_run_id,
         model_variant=predictor.identity.model_variant,
-        model_checkpoint=str(checkpoint),
+        model_checkpoint=repo_relative(checkpoint),
         model_training_label_source=predictor.identity.training_label_source,
         baseline_version=sorted(baseline_versions)[0],
         baseline_config_version=sorted(config_versions)[0],
@@ -306,7 +484,22 @@ def _cmd_compare(args: argparse.Namespace) -> int:
         classical_baseline=classical,
         require_metric_crosscheck=not args.allow_missing_crosscheck,
         synthetic_inputs=synthetic_inputs,
+        protocol={"nomination": nomination, "label_snapshot": snapshot_block},
+        claim_threshold_percent=(
+            experiment.minimum_relative_improvement_percent if experiment else None
+        ),
+        claim_statement=(str(experiment.claim.get("statement", "")) if experiment else ""),
     )
+    for note in aligned.notes:
+        # A model scored on features built under a different spec or pipeline
+        # version than it was trained on is not the model's measured quality.
+        result.blocking_reasons.append(note)
+    if aligned.withheld_columns:
+        result.warnings.append(
+            f"{len(aligned.withheld_columns)} evaluated column(s) are not inputs of "
+            f"this checkpoint and were withheld from it: "
+            f"{list(aligned.withheld_columns)[:5]}"
+        )
     if not training_episodes:
         result.warnings.append(
             "the training run's episode list was unavailable, so the leakage check "
@@ -336,6 +529,16 @@ def _cmd_compare(args: argparse.Namespace) -> int:
         print("  HEADLINE NOT PUBLISHABLE:")
         for reason in result.blocking_reasons:
             print(f"    - {reason}")
+    claim = result.claim()
+    if claim["evaluated"]:
+        print(
+            f"  CLAIM VERDICT: {claim['verdict']} (pre-registered minimum "
+            f"{claim['minimum_relative_improvement_percent']:g} %)"
+        )
+        for reason in claim["reasons"]:
+            print(f"    - {reason}")
+    else:
+        print(f"  claim verdict: not evaluated ({claim['reason']})")
     for warning in result.warnings:
         print(f"  warning: {warning}")
     for name, path in sorted(written.items()):
@@ -411,7 +614,36 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         help=f"Recorded for the report; the canonical denominator is {CANONICAL_BASELINE}.",
     )
     compare_parser.add_argument("--split", default="test")
-    compare_parser.add_argument("--split-version", default="v2", dest="split_version")
+    compare_parser.add_argument(
+        "--split-version",
+        default=CANONICAL_SPLIT_VERSION,
+        dest="split_version",
+        help=f"Split manifest version (default: {CANONICAL_SPLIT_VERSION}, the "
+        "canonical experiment's split).",
+    )
+    compare_parser.add_argument(
+        "--training-matrix",
+        default=None,
+        dest="training_matrix",
+        help="The `experiment train` matrix summary whose nominated (median-seed) "
+        "run --model must be. Default with --experiment-config: "
+        "artifacts/experiments/<experiment_version>-training-matrix.json.",
+    )
+    compare_parser.add_argument(
+        "--allow-unnominated",
+        action="store_true",
+        dest="allow_unnominated",
+        help="Evaluate a checkpoint the training matrix did not nominate. Recorded "
+        "in the report, and the headline is marked NOT PUBLISHABLE.",
+    )
+    compare_parser.add_argument(
+        "--label-snapshot",
+        default=None,
+        dest="label_snapshot",
+        help="Frozen label snapshot to verify the export against. Default with "
+        "--experiment-config: the snapshot the experiment names. Without either, "
+        "the comparison is recorded as unverified and not publishable.",
+    )
     compare_parser.add_argument(
         "--features-manifest", default=None, dest="features_manifest"
     )
@@ -439,7 +671,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--experiment-config",
         default=None,
         dest="experiment_config",
-        help="Canonical experiment definition to record on the comparison.",
+        help="Canonical experiment definition. Its training matrix nominates the "
+        "only checkpoint that may be evaluated, its frozen snapshot must match the "
+        "label export, and its pre-registered threshold yields a PASS/FAIL verdict.",
     )
     compare_parser.add_argument(
         "--bootstrap-resamples", type=int, default=2000, dest="bootstrap_resamples"

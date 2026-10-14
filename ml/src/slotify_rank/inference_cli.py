@@ -11,6 +11,12 @@ out.
 Machine-readable JSON goes to ``--output`` (or to stdout with
 ``--output -``); human progress goes to stderr. The two never interleave,
 because the Node service parses stdout.
+
+``rank`` reads the pipeline settings from the committed ``ml/configs/`` unless
+``--config-dir`` names another directory, so serving builds features with the
+same values the corpus pipeline does. The served feature layout is compared
+with the checkpoint's by column name before anything is scored (see
+:func:`slotify_rank.inference.predictor.align_examples`).
 """
 
 from __future__ import annotations
@@ -55,7 +61,7 @@ def _cmd_rank(args: argparse.Namespace) -> int:
         prepare_episode,
         workspace,
     )
-    from slotify_rank.inference.predictor import RankerPredictor, score_examples
+    from slotify_rank.inference.predictor import RankerPredictor, rank_examples
     from slotify_rank.inference.schema import ExcludedCandidate, InferenceResult
 
     def log(message: str) -> None:
@@ -86,13 +92,20 @@ def _cmd_rank(args: argparse.Namespace) -> int:
         )
         examples = list(episode_examples(prepared))
         started = time.perf_counter()
-        ranked = score_examples(
+        ranking = rank_examples(
             predictor,
             examples,
+            prepared.dataset.schema,
             prepared.timestamps_ms,
             prepared.feature_status,
         )
+        ranked = ranking.ranked
         score_seconds = round(time.perf_counter() - started, 3)
+        if ranking.withheld_columns:
+            log(
+                f"  {len(ranking.withheld_columns)} served column(s) not used by "
+                "this checkpoint were withheld from it"
+            )
 
         timings = dict(prepared.timings_seconds)
         timings["model_load"] = load_seconds
@@ -115,7 +128,9 @@ def _cmd_rank(args: argparse.Namespace) -> int:
             ),
             model=predictor.identity,
             candidate_count=len(prepared.candidates),
-            warnings=tuple(prepared.warnings),
+            # The training disclosure (weak / synthetic / unknown supervision)
+            # is prepended by InferenceResult itself.
+            warnings=(*prepared.warnings, *ranking.warnings),
             timings_seconds=timings,
         )
 
@@ -174,8 +189,8 @@ def register(subparsers: argparse._SubParsersAction) -> None:
         "--config-dir",
         default=None,
         dest="config_dir",
-        help="Directory of pipeline YAML configs (default: the built-in values, "
-        "which ml/configs/ currently matches exactly).",
+        help="Directory of pipeline YAML configs (default: the repository's "
+        "committed ml/configs/, the same files the corpus pipeline reads).",
     )
     rank.add_argument(
         "--no-transcribe",

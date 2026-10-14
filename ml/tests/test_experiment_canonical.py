@@ -16,6 +16,7 @@ import pytest
 from slotify_rank.data.paths import DataPaths
 from slotify_rank.data.splits import SplitConfig, compute_splits, write_split_manifest
 from slotify_rank.experiment.canonical import (
+    CANONICAL_SPLIT_VERSION,
     EXPERIMENT_CONFIG_SCHEMA_VERSION,
     ExperimentConfigError,
     load_experiment_config,
@@ -325,3 +326,26 @@ def test_a_written_manifest_round_trips(tmp_path: Path):
     assert payload["experiment_version"] == "test-experiment-v1"
     assert payload["config_digest"] == manifest.config_digest
     assert payload["ready"] is manifest.ready
+
+
+def test_the_canonical_split_constant_is_the_committed_experiments_split():
+    """Every command defaults to this; it must be the split v2 commits to."""
+    committed = load_experiment_config(REPO_ROOT / "ml" / "configs" / "experiment_v2.yaml")
+    assert CANONICAL_SPLIT_VERSION == committed.split_version == "v4"
+
+
+def test_a_resolved_manifest_records_repo_relative_paths(tmp_path: Path):
+    """The resolved manifest is committed; it must not carry anyone's home."""
+    config = load_experiment_config(_write(tmp_path, _VALID))
+    paths = _paths_with_split(tmp_path)
+    manifest = resolve_manifest(config, tmp_path, paths, human_label_count=2400)
+    recorded = [
+        manifest.split_summary["manifest_path"],
+        manifest.label_summary["snapshot_path"],
+        manifest.label_summary["export_path"],
+    ]
+    for value in recorded:
+        assert not Path(value).is_absolute(), value
+    assert manifest.split_summary["manifest_path"] == "data/manifests/splits_v3.json"
+    assert not any(str(tmp_path) in warning for warning in manifest.warnings)
+    assert not any(str(tmp_path) in reason for reason in manifest.blocking_reasons)

@@ -22,6 +22,13 @@ Smoke provenance is carried explicitly. When a run trains on synthetic fixtures
 the summary says so in its first field and in its title, because a number
 labelled "NDCG@3: 0.94" with no provenance is exactly the kind of thing that
 ends up quoted somewhere it should not be.
+
+Paths are recorded **relative to the repository root, with forward slashes**
+(:func:`repo_relative`), the same rule every manifest follows. These summaries
+are committed, and an absolute path records the home directory of whoever ran
+the training -- information nobody else can use and nobody should publish. A
+run directory outside the checkout has no repository-relative form and is
+recorded as given.
 """
 
 from __future__ import annotations
@@ -34,16 +41,48 @@ from typing import Any, Mapping, Sequence
 
 from slotify_rank.config.versions import PACKAGE_VERSION, TRAINING_DATASET_VERSION
 from slotify_rank.data.checksum import atomic_write_bytes
+from slotify_rank.data.paths import to_repo_relative
 
 __all__ = [
     "RunArtifacts",
     "write_json",
     "append_epoch_metrics",
     "write_training_summary",
+    "data_provenance",
+    "repo_relative",
     "SYNTHETIC_WARNING",
     "SMOKE_WARNING",
     "WEAK_SUPERVISION_WARNING",
 ]
+
+
+def repo_relative(path: Path | str | None, repo_root: Path | None = None) -> str:
+    """``path`` relative to the repository root, POSIX-style, for a report.
+
+    Falls back to the path as given (still POSIX-style) when it lies outside the
+    repository -- a scratch run directory, a test's temp dir -- because there is
+    no truthful relative form to record. Empty in, empty out.
+    """
+    if path is None or str(path) == "":
+        return ""
+    try:
+        return to_repo_relative(path, repo_root)
+    except (ValueError, FileNotFoundError, OSError):
+        return Path(path).as_posix()
+
+
+def data_provenance(label_source: str, synthetic: bool, smoke: bool) -> str:
+    """The one-word class of evidence a run's numbers are.
+
+    Shared by the run summary and the checkpoint, so the two cannot disagree.
+    """
+    if synthetic or label_source == "synthetic":
+        return "synthetic_fixture"
+    if label_source != "human":
+        return "weak_supervision"
+    if smoke:
+        return "smoke_limited"
+    return "real"
 
 SYNTHETIC_WARNING = (
     "SYNTHETIC SMOKE RUN. This model was trained on generated fixtures, not on "
@@ -173,26 +212,23 @@ def build_summary(
     synthetic: bool,
     smoke: bool,
     overrides: Mapping[str, Any],
-    label_source: str = "human",
+    label_source: str = "unknown",
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
     """The machine-readable result. No metric is invented here.
 
     ``label_source`` is read from the label set the run actually loaded, never
-    assumed. A run supervised by anything other than human judgement is
-    classified as such here, so its numbers cannot be quoted as model quality by
-    a reader who only sees this file.
+    assumed -- and defaults to ``unknown``, not ``human``, so a caller that
+    forgot it cannot produce a summary that reads as human-trained. A run
+    supervised by anything other than human judgement is classified as such
+    here, so its numbers cannot be quoted as model quality by a reader who only
+    sees this file.
     """
     best = dict(result.best_metrics or {})
+    synthetic = bool(synthetic or label_source == "synthetic")
     weak = label_source != "human"
-    provenance = (
-        "synthetic_fixture"
-        if synthetic
-        else "weak_supervision"
-        if weak
-        else "smoke_limited"
-        if smoke
-        else "real"
-    )
+    provenance = data_provenance(label_source, synthetic, smoke)
+    dropped = dataset_summary.get("dropped_handcrafted_features") or {}
     summary: dict[str, Any] = {
         "evidence_class": (
             "synthetic smoke run - not a model-quality result"
@@ -209,6 +245,10 @@ def build_summary(
         "synthetic_data": synthetic,
         "smoke": smoke,
         "run_id": run_id,
+        # What the run trained against, so a cached run can be checked against
+        # the data it would be re-run on (``experiment train`` reuses a cell
+        # only when this matches).
+        "dataset_fingerprint": dataset_summary.get("dataset_fingerprint"),
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "package_version": PACKAGE_VERSION,
         "training_dataset_version": TRAINING_DATASET_VERSION,
@@ -231,15 +271,18 @@ def build_summary(
         "resolved_dtype": result.dtype,
         "stop_reason": result.stop_reason,
         "interrupted": result.interrupted,
+        "model_selection_warnings": list(getattr(result, "selection_warnings", ()) or ()),
+        "dropped_handcrafted_features": list(dropped.get("names") or ()),
+        "dropped_handcrafted_reason": dropped.get("reason"),
         "overrides": dict(overrides),
         "artifacts": {
-            "directory": str(artifacts.directory),
-            "best_checkpoint": result.best_checkpoint_path,
-            "last_checkpoint": result.last_checkpoint_path,
-            "epoch_metrics": str(artifacts.epoch_metrics),
-            "dataset_summary": str(artifacts.dataset_summary),
-            "normalizer": str(artifacts.normalizer),
-            "resolved_config": str(artifacts.resolved_config),
+            "directory": repo_relative(artifacts.directory, repo_root),
+            "best_checkpoint": repo_relative(result.best_checkpoint_path, repo_root),
+            "last_checkpoint": repo_relative(result.last_checkpoint_path, repo_root),
+            "epoch_metrics": repo_relative(artifacts.epoch_metrics, repo_root),
+            "dataset_summary": repo_relative(artifacts.dataset_summary, repo_root),
+            "normalizer": repo_relative(artifacts.normalizer, repo_root),
+            "resolved_config": repo_relative(artifacts.resolved_config, repo_root),
         },
         "environment": dict(environment),
     }
@@ -308,6 +351,24 @@ def write_training_summary(artifacts: RunArtifacts, summary: Mapping[str, Any]) 
         f"| Stop reason | {summary['stop_reason']} |",
         "",
     ]
+
+    selection = summary.get("model_selection_warnings") or []
+    if selection:
+        lines += ["## Model selection caveats", ""]
+        lines += [f"- {warning}" for warning in selection]
+        lines.append("")
+
+    dropped = summary.get("dropped_handcrafted_features") or []
+    if dropped:
+        lines += [
+            "## Withheld input columns",
+            "",
+            f"{len(dropped)} handcrafted column(s) were withheld from the model: "
+            f"{summary.get('dropped_handcrafted_reason')}",
+            "",
+            *(f"- `{name}`" for name in dropped),
+            "",
+        ]
 
     overrides = summary.get("overrides") or {}
     lines += ["## Resolved overrides", ""]

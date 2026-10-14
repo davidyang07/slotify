@@ -125,8 +125,13 @@ evaluation:
   cutoffs: [1, 3, 5]
   relevance_threshold: 4.0
   gain_offset: 1.0
-  # Percentile bootstrap over episodes, because the metric is macro-averaged over
-  # episodes and the episode is the unit of resampling.
+  # Percentile CLUSTER bootstrap over series: series are drawn with replacement
+  # and every episode of a drawn series is kept, because episodes of one show
+  # are correlated (the split is grouped by series for that reason). The metric
+  # is still macro-averaged over the drawn episodes. This comment originally
+  # said "over episodes"; the values below are unchanged, and resampling the
+  # correlated unit only widens the interval -- it makes the claim harder to
+  # support, not easier.
   bootstrap_resamples: 2000
   bootstrap_confidence: 0.95
   bootstrap_seed: 20260829

@@ -36,8 +36,8 @@ from "we do not know whether the topic changed". A record Phase 3 marked
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Literal, Mapping
+from dataclasses import dataclass, replace
+from typing import Any, Literal, Mapping, Sequence
 
 import numpy as np
 
@@ -55,9 +55,24 @@ __all__ = [
     "EXCLUSION_REASONS",
     "TrainingExample",
     "DatasetSchema",
+    "TEACHER_FEATURE_PREFIX",
     "audio_dimension",
     "text_dimension",
+    "teacher_feature_names",
+    "project_handcrafted",
 ]
+
+#: Prefix of every handcrafted column that is ``heuristic_offline_v1``'s own
+#: opinion of a candidate: its total score, its additive components, its raw
+#: total and its clamp flag (see ``features/structural.py``). Weak labels are
+#: within-episode quantiles of that same score, so a model trained on weak labels
+#: with these columns as inputs can reproduce its teacher by copying one column.
+TEACHER_FEATURE_PREFIX = "heuristic_"
+
+
+def teacher_feature_names(names: Sequence[str]) -> tuple[str, ...]:
+    """The columns that carry the heuristic baseline's own score, in order."""
+    return tuple(name for name in names if str(name).startswith(TEACHER_FEATURE_PREFIX))
 
 #: Native width of one stored vector. Both Whisper tiny.en's encoder and MiniLM
 #: happen to be 384; this constant is a documented *expectation*, and every
@@ -241,6 +256,23 @@ class DatasetSchema:
             dataset_version=str(raw.get("dataset_version", "")),
         )
 
+    def with_handcrafted(self, names: Sequence[str]) -> "DatasetSchema":
+        """This schema with its handcrafted block narrowed to ``names``.
+
+        Everything else -- the learned blocks, their construction and every
+        version -- is kept, because a column subset is still the same feature
+        spec read through the same pipeline; only the model's view of it shrinks.
+        """
+        kept = tuple(str(name) for name in names)
+        unknown = [name for name in kept if name not in self.handcrafted_feature_names]
+        if unknown:
+            raise ValueError(
+                f"Cannot narrow the schema to columns it does not have: {unknown[:5]}"
+            )
+        return replace(
+            self, handcrafted_feature_names=kept, handcrafted_dimension=len(kept)
+        )
+
     def incompatibilities(self, other: "DatasetSchema") -> list[str]:
         """Every reason ``other`` cannot be substituted for this schema.
 
@@ -284,3 +316,54 @@ class DatasetSchema:
             if mine and theirs and mine != theirs:
                 reasons.append(f"{field_name} {theirs!r} != {mine!r}")
         return reasons
+
+
+def project_handcrafted(
+    examples: Sequence[TrainingExample],
+    source_names: Sequence[str],
+    target_names: Sequence[str],
+) -> list[TrainingExample]:
+    """Re-column every example's handcrafted block onto ``target_names``, by name.
+
+    The values and their missing mask move together, so a masked feature stays
+    masked in its new position. Every target column must exist in the source,
+    exactly once: a missing column is a refusal rather than a zero-fill, because
+    a zero standing in for an absent measurement is indistinguishable from a
+    real zero to the model. Extra source columns are dropped, which is the point
+    -- a model trained without a column must never be shown it.
+    """
+    source = tuple(str(name) for name in source_names)
+    target = tuple(str(name) for name in target_names)
+    duplicates = sorted({name for name in source if source.count(name) > 1})
+    if duplicates:
+        raise ValueError(
+            f"The source layout names {duplicates[:5]} more than once, so a "
+            "projection by name would be ambiguous."
+        )
+    position = {name: index for index, name in enumerate(source)}
+    missing = [name for name in target if name not in position]
+    if missing:
+        raise ValueError(
+            f"{len(missing)} required column(s) are absent from the source layout: "
+            f"{missing[:5]}"
+        )
+    if source == target:
+        return list(examples)
+    indices = np.asarray([position[name] for name in target], dtype=np.int64)
+    projected: list[TrainingExample] = []
+    for example in examples:
+        if example.handcrafted.shape[0] != len(source):
+            raise ValueError(
+                f"{example.candidate_id}: {example.handcrafted.shape[0]} handcrafted "
+                f"values but the source layout declares {len(source)} columns"
+            )
+        projected.append(
+            replace(
+                example,
+                handcrafted=np.ascontiguousarray(example.handcrafted[indices]),
+                handcrafted_missing_mask=np.ascontiguousarray(
+                    example.handcrafted_missing_mask[indices]
+                ),
+            )
+        )
+    return projected

@@ -29,7 +29,7 @@ from slotify_rank.datasets.schema import (
     TrainingExample,
 )
 from slotify_rank.features.assemble import read_feature_manifest
-from tests.training_fixtures import load_corpus, make_corpus
+from tests.training_fixtures import SYNTHETIC_SOURCES, load_corpus, make_corpus
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +61,7 @@ def test_embedding_dimensions_come_from_the_artifact_not_a_constant(tmp_path):
 def test_native_dimension_can_be_declared(tmp_path):
     paths, corpus = make_corpus(tmp_path, native_dimension=64)
     header, records = read_feature_manifest(paths.features_manifest)
-    labels = read_label_export(corpus.label_export)
+    labels = read_label_export(corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES)
     loaded = build_examples(
         paths=paths,
         header=header,
@@ -76,7 +76,7 @@ def test_native_dimension_can_be_declared(tmp_path):
 def test_incompatible_feature_pipeline_version_is_rejected(tmp_path):
     paths, corpus, _ = load_corpus(tmp_path)
     header, records = read_feature_manifest(paths.features_manifest)
-    labels = read_label_export(corpus.label_export)
+    labels = read_label_export(corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES)
     loaded = build_examples(
         paths=paths,
         header=header,
@@ -93,7 +93,7 @@ def test_incompatible_feature_pipeline_version_is_rejected(tmp_path):
 def test_missing_labels_are_counted_not_dropped(tmp_path):
     paths, corpus, _ = load_corpus(tmp_path)
     header, records = read_feature_manifest(paths.features_manifest)
-    labels = read_label_export(corpus.label_export)
+    labels = read_label_export(corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES)
     trimmed = replace(
         labels, labels={k: v for k, v in list(labels.labels.items())[:5]}
     )
@@ -108,7 +108,7 @@ def test_missing_labels_are_counted_not_dropped(tmp_path):
 def test_synthetic_candidates_are_excluded(tmp_path):
     paths, corpus, _ = load_corpus(tmp_path)
     header, records = read_feature_manifest(paths.features_manifest)
-    labels = read_label_export(corpus.label_export)
+    labels = read_label_export(corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES)
     padding = DatasetCandidate(
         episode_id=records[0].episode_id,
         candidate_id=records[0].candidate_id,
@@ -132,7 +132,7 @@ def test_synthetic_candidates_are_excluded(tmp_path):
 def test_ineligible_candidates_are_reported_separately_from_synthetic(tmp_path):
     paths, corpus, _ = load_corpus(tmp_path)
     header, records = read_feature_manifest(paths.features_manifest)
-    labels = read_label_export(corpus.label_export)
+    labels = read_label_export(corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES)
     ineligible = DatasetCandidate(
         episode_id=records[0].episode_id,
         candidate_id=records[0].candidate_id,
@@ -154,7 +154,7 @@ def test_ineligible_candidates_are_reported_separately_from_synthetic(tmp_path):
 def test_duplicate_candidate_ids_are_a_hard_failure(tmp_path):
     paths, corpus, _ = load_corpus(tmp_path)
     header, records = read_feature_manifest(paths.features_manifest)
-    labels = read_label_export(corpus.label_export)
+    labels = read_label_export(corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES)
     with pytest.raises(ValueError, match="Duplicate candidate_id"):
         build_examples(
             paths=paths,
@@ -167,7 +167,7 @@ def test_duplicate_candidate_ids_are_a_hard_failure(tmp_path):
 def test_split_disagreement_with_the_manifest_is_rejected(tmp_path):
     paths, corpus, _ = load_corpus(tmp_path)
     header, records = read_feature_manifest(paths.features_manifest)
-    labels = read_label_export(corpus.label_export)
+    labels = read_label_export(corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES)
     lying = {records[0].episode_id: "test"}
     loaded = build_examples(
         paths=paths,
@@ -184,7 +184,7 @@ def test_split_disagreement_with_the_manifest_is_rejected(tmp_path):
 def test_unassigned_split_never_becomes_an_example(tmp_path):
     paths, corpus, _ = load_corpus(tmp_path)
     header, records = read_feature_manifest(paths.features_manifest)
-    labels = read_label_export(corpus.label_export)
+    labels = read_label_export(corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES)
     orphan = replace(records[0], dataset_split="unassigned")
     loaded = build_examples(
         paths=paths, header=header, records=[orphan, *records[1:]], labels=labels
@@ -223,7 +223,7 @@ def test_missing_text_modality_is_masked_not_faked(tmp_path):
 def test_require_complete_multimodal_filters_partial_records(tmp_path):
     paths, corpus = make_corpus(tmp_path, text_missing_episode_stride=3)
     header, records = read_feature_manifest(paths.features_manifest)
-    labels = read_label_export(corpus.label_export)
+    labels = read_label_export(corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES)
     loaded = build_examples(
         paths=paths,
         header=header,
@@ -238,7 +238,7 @@ def test_require_complete_multimodal_filters_partial_records(tmp_path):
 def test_failed_records_are_excluded_as_invalid(tmp_path):
     paths, corpus, _ = load_corpus(tmp_path)
     header, records = read_feature_manifest(paths.features_manifest)
-    labels = read_label_export(corpus.label_export)
+    labels = read_label_export(corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES)
     broken = replace(
         records[0],
         feature_status="failed",
@@ -257,7 +257,7 @@ def test_failed_records_are_excluded_as_invalid(tmp_path):
 def test_non_finite_handcrafted_values_are_excluded(tmp_path):
     paths, corpus, _ = load_corpus(tmp_path)
     header, records = read_feature_manifest(paths.features_manifest)
-    labels = read_label_export(corpus.label_export)
+    labels = read_label_export(corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES)
     values = list(records[0].handcrafted_feature_values)
     values[0] = float("nan")
     poisoned = replace(records[0], handcrafted_feature_values=tuple(values))
@@ -517,3 +517,51 @@ def test_example_rejects_an_available_but_zero_modality():
             quality_score=3.0,
             is_acceptable=True,
         )
+
+
+# ---------------------------------------------------------------------------
+# Synthetic labels are synthetic
+# ---------------------------------------------------------------------------
+
+
+def test_the_synthetic_fixture_stamps_every_row_synthetic(tmp_path):
+    import json
+
+    _, corpus = make_corpus(tmp_path, episode_count=3, candidates_per_episode=2)
+    rows = [
+        json.loads(line)
+        for line in corpus.label_export.read_text(encoding="utf-8").splitlines()
+    ]
+    assert {row["label_source"] for row in rows} == {"synthetic"}
+    metadata = json.loads(
+        corpus.label_export.with_suffix(".jsonl.meta.json").read_text(encoding="utf-8")
+    )
+    assert metadata["label_source"] == "synthetic"
+
+
+def test_a_human_only_loader_refuses_the_synthetic_fixture(tmp_path):
+    _, corpus = make_corpus(tmp_path, episode_count=3, candidates_per_episode=2)
+    with pytest.raises(ValueError, match="label_source='synthetic'"):
+        read_label_export(corpus.label_export)
+    labels = read_label_export(corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES)
+    assert labels.label_source == "synthetic"
+
+
+def test_a_legacy_fixture_row_claiming_human_is_still_synthetic():
+    """Fixture exports written before the stamp said label_source=human and
+    synthetic=true. The flag wins, so those rows cannot pass a human-only gate."""
+    row = {
+        "candidate_id": "e:000000001",
+        "episode_id": "e",
+        "annotator_id": "synthetic-annotator",
+        "quality_score": 4,
+        "is_acceptable": True,
+        "label_source": "human",
+        "synthetic": True,
+    }
+    with pytest.raises(ValueError, match="label_source='synthetic'"):
+        aggregate_labels([row], acceptable_threshold=3.0)
+    allowed = aggregate_labels(
+        [row], acceptable_threshold=3.0, allowed_label_sources=("synthetic",)
+    )
+    assert allowed.label_source == "synthetic"

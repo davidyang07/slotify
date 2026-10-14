@@ -4,10 +4,25 @@ Order matters here and is fixed:
 
 1. read the feature manifest and the human labels;
 2. decide eligibility, accounting for every excluded candidate;
-3. apply any episode/candidate caps (smoke runs only, always recorded);
-4. fit the scalar normalizer **on the training split alone**;
-5. apply it to every split;
-6. generate within-episode pairs, per split.
+3. for a weak-label run, drop the teacher's own columns from the input schema;
+4. apply any episode/candidate caps (smoke runs only, always recorded);
+5. fit the scalar normalizer **on the training split alone**;
+6. apply it to every split;
+7. generate within-episode pairs, per split.
+
+Step 3 exists because weak labels are within-episode quantiles of
+``heuristic_offline_v1``'s score, and that score -- with its additive
+components, raw total and clamp flag -- is also a handcrafted input column. A
+model shown its teacher's answer as an input learns to copy one column, and its
+validation metric then measures how faithfully it copied. Dropping every
+``heuristic_*`` column forces a weak-label run to reproduce the teacher from the
+audio, the transcript and the other scalars, which is the only version of that
+run that says anything about the architecture. Human- and synthetic-label runs
+keep the columns: for them the baseline's opinion is a legitimate feature, not
+the target. Which columns were dropped, and why, is recorded in the dataset and
+training summaries and in the checkpoint; inference projects the served
+features onto the checkpoint's columns by name, so the dropped ones are never
+shown to the model.
 
 Step 4 before step 5 and never the reverse: fitting after merging is the single
 most common way a small-dataset result turns out to be optimistic.
@@ -39,12 +54,34 @@ from slotify_rank.datasets.ranking_dataset import (
     MaterializedFeatures,
     materialize,
 )
-from slotify_rank.datasets.schema import DatasetSchema, TrainingExample
+from slotify_rank.datasets.schema import (
+    DatasetSchema,
+    TrainingExample,
+    project_handcrafted,
+    teacher_feature_names,
+)
 from slotify_rank.features.assemble import read_feature_manifest
+# The writer's own constant, so the training side cannot drift from it.
+from slotify_rank.labelling.weak import WEAK_LABEL_SOURCE
 from slotify_rank.ranking.pairs import PairSet, generate_pairs
 from slotify_rank.training.config import TrainingConfig
 
-__all__ = ["PreparedDataset", "prepare_dataset", "dataset_fingerprint"]
+__all__ = [
+    "PreparedDataset",
+    "prepare_dataset",
+    "dataset_fingerprint",
+    "drops_teacher_features",
+]
+
+
+def drops_teacher_features(label_source: str) -> bool:
+    """Whether a run supervised by ``label_source`` must not see ``heuristic_*``.
+
+    True whenever any part of a (possibly mixed, ``+``-joined) label source is
+    the weak heuristic: one weak row is enough for the teacher's column to leak
+    the target.
+    """
+    return WEAK_LABEL_SOURCE in str(label_source).split("+")
 
 
 @dataclass
@@ -62,6 +99,10 @@ class PreparedDataset:
     fingerprint: str
     label_set: LabelSet | None = None
     limits_applied: dict[str, Any] = field(default_factory=dict)
+    #: Handcrafted columns present in the feature manifest but withheld from the
+    #: model, with the reason. Empty for human- and synthetic-label runs.
+    dropped_handcrafted_features: tuple[str, ...] = ()
+    dropped_handcrafted_reason: str = ""
 
     @property
     def validation_groups(self) -> EpisodeGroups:
@@ -88,7 +129,12 @@ class PreparedDataset:
             "validation_pair_count": len(self.validation_pairs),
             "episode_overlap_between_splits": sorted(overlap),
             "limits_applied": dict(self.limits_applied),
-            "eligibility": self.loaded.summary(),
+            "dropped_handcrafted_features": {
+                "names": list(self.dropped_handcrafted_features),
+                "count": len(self.dropped_handcrafted_features),
+                "reason": self.dropped_handcrafted_reason or None,
+            },
+            "eligibility": _with_repo_relative_label_source(self.loaded.summary()),
             "train_pairs": self.train_pairs.summary(),
             "validation_pairs": self.validation_pairs.summary(),
             "normalizer": {
@@ -101,6 +147,20 @@ class PreparedDataset:
                         "binary_feature_mask", "feature_names")
             },
         }
+
+
+def _with_repo_relative_label_source(summary: dict[str, Any]) -> dict[str, Any]:
+    """The eligibility summary with the label export's path made repo-relative.
+
+    It is committed with every run, and the path as typed on the command line
+    is relative to whatever directory the operator happened to be in.
+    """
+    from slotify_rank.training.reporting import repo_relative
+
+    labels = summary.get("labels")
+    if isinstance(labels, dict) and labels.get("source"):
+        summary["labels"] = {**labels, "source": repo_relative(labels["source"])}
+    return summary
 
 
 def dataset_fingerprint(
@@ -220,6 +280,32 @@ def prepare_dataset(
         )
     assert loaded.schema is not None
 
+    dropped: tuple[str, ...] = ()
+    dropped_reason = ""
+    if drops_teacher_features(labels.label_source):
+        dropped = teacher_feature_names(loaded.schema.handcrafted_feature_names)
+        if dropped:
+            kept = tuple(
+                name
+                for name in loaded.schema.handcrafted_feature_names
+                if name not in dropped
+            )
+            if not kept:
+                raise RuntimeError(
+                    "Every handcrafted column is a heuristic_* column, so a "
+                    "weak-label run would have no handcrafted input left once the "
+                    "teacher's columns are withheld."
+                )
+            loaded.examples = project_handcrafted(
+                loaded.examples, loaded.schema.handcrafted_feature_names, kept
+            )
+            loaded.schema = loaded.schema.with_handcrafted(kept)
+            dropped_reason = (
+                f"label_source={labels.label_source!r}: weak labels are "
+                "within-episode quantiles of heuristic_offline_v1's score, which "
+                "these columns carry. Withheld so the model cannot copy its teacher."
+            )
+
     examples, limits = _apply_limits(
         loaded.examples, config.max_episodes, config.max_candidates
     )
@@ -303,6 +389,8 @@ def prepare_dataset(
         fingerprint=fingerprint,
         label_set=labels,
         limits_applied=limits,
+        dropped_handcrafted_features=dropped,
+        dropped_handcrafted_reason=dropped_reason,
     )
 
 

@@ -90,7 +90,16 @@ def synthesize(workspace: Path, episodes: int = 8, candidates: int = 8, **extra)
 
 
 def base_args(workspace, labels: Path) -> list[str]:
-    return ["--data-root", str(workspace.data_root), "--labels", str(labels)]
+    # The fixture is stamped label_source=synthetic, so -- like a weak-label
+    # run -- training on it means naming the source.
+    return [
+        "--data-root",
+        str(workspace.data_root),
+        "--labels",
+        str(labels),
+        "--allow-label-source",
+        "synthetic",
+    ]
 
 
 def train(
@@ -211,6 +220,113 @@ def test_the_summary_labels_synthetic_data_loudly(workspace):
     assert "SYNTHETIC SMOKE RUN" in markdown
 
 
+def test_every_record_of_the_run_names_its_real_label_source(workspace):
+    """The summary, the resolved config and the checkpoint all say synthetic.
+
+    resolved_config.json used to record ``label_source: human`` for every run,
+    weak and synthetic alike, because nothing ever set it.
+    """
+    from slotify_rank.training.checkpoint import load_checkpoint
+
+    _, directory = train(workspace, workspace.labels, extra=["--epochs", "2"])
+    resolved = json.loads((directory / "resolved_config.json").read_text("utf-8"))
+    summary = json.loads((directory / "training_summary.json").read_text("utf-8"))
+    payload = load_checkpoint(directory / "best_checkpoint.pt")
+    assert resolved["label_source"] == "synthetic"
+    assert summary["label_source"] == "synthetic"
+    assert payload["label_source"] == "synthetic"
+    assert payload["data_provenance"] == "synthetic_fixture"
+    assert summary["dataset_fingerprint"] == resolved["dataset_fingerprint"]
+
+
+def test_the_synthetic_fixture_cannot_be_trained_on_without_naming_it(workspace, capsys):
+    code = main(
+        [
+            "training",
+            "run",
+            "--data-root",
+            str(workspace.data_root),
+            "--labels",
+            str(workspace.labels),
+            "--model",
+            "handcrafted",
+            "--run-dir",
+            str(workspace / "refused"),
+        ]
+    )
+    assert code == 1
+    assert "--allow-label-source synthetic" in capsys.readouterr().err
+
+
+def test_the_summary_records_repo_relative_paths(workspace):
+    """Run reports are committed; they must not carry the operator's home."""
+    _, directory = train(workspace, workspace.labels, extra=["--epochs", "2"])
+    summary = json.loads((directory / "training_summary.json").read_text("utf-8"))
+    for name, value in summary["artifacts"].items():
+        assert not Path(value).is_absolute(), (name, value)
+        assert "\\" not in value
+    assert summary["artifacts"]["directory"] == directory.relative_to(REPO_ROOT).as_posix()
+    dataset = json.loads((directory / "dataset_summary.json").read_text("utf-8"))
+    assert not Path(dataset["eligibility"]["labels"]["source"]).is_absolute()
+
+
+def test_thin_validation_is_recorded_as_a_selection_caveat(workspace):
+    """The fixture puts 2 of 8 episodes in validation -- too few to select on."""
+    _, directory = train(workspace, workspace.labels, extra=["--epochs", "2"])
+    summary = json.loads((directory / "training_summary.json").read_text("utf-8"))
+    assert summary["validation_episode_count"] < 3
+    assert any(
+        "validation episode(s)" in warning
+        for warning in summary["model_selection_warnings"]
+    )
+    markdown = (directory / "training_summary.md").read_text("utf-8")
+    assert "## Model selection caveats" in markdown
+
+
+def test_the_default_split_version_is_the_canonical_one():
+    import argparse
+
+    from slotify_rank import evaluation_cli, experiment_cli, training_cli
+    from slotify_rank.experiment.canonical import CANONICAL_SPLIT_VERSION
+
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers()
+    for module in (training_cli, evaluation_cli, experiment_cli):
+        module.register(sub)
+    defaults = {
+        "training run": parser.parse_args(["training", "run"]).split_version,
+        "training prepare": parser.parse_args(["training", "prepare"]).split_version,
+        "evaluation compare": parser.parse_args(
+            ["evaluation", "compare", "--labels", "x", "--model", "y"]
+        ).split_version,
+        "experiment train": parser.parse_args(
+            ["experiment", "train", "--labels", "x"]
+        ).split_version,
+        "experiment readiness": parser.parse_args(
+            ["experiment", "readiness"]
+        ).split_version,
+        "experiment freeze": parser.parse_args(["experiment", "freeze"]).split_version,
+    }
+    assert set(defaults.values()) == {CANONICAL_SPLIT_VERSION}, defaults
+
+
+COMMITTED_RUNS = REPO_ROOT / "artifacts" / "training"
+COMMITTED_EXPERIMENTS = REPO_ROOT / "artifacts" / "experiments"
+
+
+def test_committed_reports_carry_no_absolute_paths():
+    """The committed run and experiment reports were scrubbed of an operator's
+    absolute Windows paths; nothing that writes them may put one back."""
+    offenders = []
+    for path in [*COMMITTED_RUNS.glob("*/*.json"), *COMMITTED_RUNS.glob("*/*.md"),
+                 *COMMITTED_EXPERIMENTS.glob("*.json")]:
+        text = path.read_text(encoding="utf-8")
+        for marker in (":\\\\Users", "C:\\\\", "/Users/", "/home/"):
+            if marker in text:
+                offenders.append((path.relative_to(REPO_ROOT).as_posix(), marker))
+    assert not offenders, offenders
+
+
 def test_the_summary_records_the_measurable_facts(workspace):
     labels = workspace.labels
     _, directory = train(workspace, labels, "gated", extra=["--epochs", "3"])
@@ -301,6 +417,32 @@ def test_validate_reproduces_the_best_checkpoint_metric(workspace):
         summary["best_validation_ndcg_at_3"], abs=1e-6
     )
     assert report["model_variant"] == "gated"
+
+
+def test_validate_refuses_a_normalizer_fitted_on_other_data(workspace, capsys):
+    """validate scores through the normalizer beside the checkpoint, and that
+    normalizer must be the one the checkpoint was trained behind."""
+    from dataclasses import replace
+
+    from slotify_rank.datasets.normalizer import read_normalizer, write_normalizer
+
+    labels = workspace.labels
+    _, directory = train(workspace, labels, extra=["--epochs", "2"])
+    normalizer = read_normalizer(directory / "normalizer.json")
+    write_normalizer(
+        directory / "normalizer.json", replace(normalizer, training_split_hash="f" * 32)
+    )
+    code = main(
+        [
+            "training",
+            "validate",
+            *base_args(workspace, labels),
+            "--checkpoint",
+            str(directory / "best_checkpoint.pt"),
+        ]
+    )
+    assert code == 1
+    assert "different training split" in capsys.readouterr().err
 
 
 def test_inspect_prints_the_checkpoint_metadata(workspace, capsys):

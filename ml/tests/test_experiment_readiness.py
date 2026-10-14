@@ -9,6 +9,7 @@ from slotify_rank.experiment.freeze import (
     FrozenLabelSnapshot,
     build_snapshot,
     read_snapshot,
+    verify_against_snapshot,
     write_snapshot,
 )
 from slotify_rank.experiment.readiness import (
@@ -160,6 +161,65 @@ def test_snapshot_build_and_immutability(tmp_path):
     )
     with pytest.raises(FileExistsError):
         write_snapshot(path, other)
+
+
+def _frozen(tmp_path):
+    corpus = build_corpus({"s-a": "train", "s-b": "test"}, candidates_per_episode=4)
+    export = tmp_path / "labels_v1.jsonl"
+    export.write_text('{"candidate_id": "x"}\n', encoding="utf-8")
+    candidates = tmp_path / "candidates.jsonl"
+    candidates.write_text("{}\n", encoding="utf-8")
+    split = tmp_path / "splits_v4.json"
+    split.write_text("{}", encoding="utf-8")
+    snapshot = build_snapshot(
+        corpus.aggregated,
+        {c.candidate_id: c.dataset_split for c in corpus.candidates},
+        label_export_path=export,
+        candidate_manifest_path=candidates,
+        feature_manifest_path=None,
+        split_manifest_path=split,
+        excluded_labels=[],
+        snapshot_version="v1",
+    )
+    return snapshot, export, candidates, split
+
+
+def test_the_frozen_export_verifies(tmp_path):
+    snapshot, export, candidates, split = _frozen(tmp_path)
+    assert verify_against_snapshot(snapshot, export, candidates, None, split) == []
+
+
+def test_an_export_edited_after_the_freeze_is_refused(tmp_path):
+    snapshot, export, candidates, split = _frozen(tmp_path)
+    export.write_text('{"candidate_id": "y"}\n', encoding="utf-8")
+    mismatches = verify_against_snapshot(snapshot, export, candidates, None, split)
+    assert any("label export" in m for m in mismatches)
+
+
+def test_moved_candidates_or_split_are_refused(tmp_path):
+    snapshot, export, candidates, split = _frozen(tmp_path)
+    candidates.write_text("{}\n{}\n", encoding="utf-8")
+    split.unlink()
+    mismatches = verify_against_snapshot(snapshot, export, candidates, None, split)
+    assert any("candidate manifest" in m for m in mismatches)
+    assert any("split manifest is missing" in m for m in mismatches)
+
+
+def test_a_snapshot_frozen_without_an_export_verifies_nothing(tmp_path):
+    corpus = build_corpus({"s-a": "train"}, candidates_per_episode=2)
+    snapshot = build_snapshot(
+        corpus.aggregated,
+        {},
+        label_export_path=tmp_path / "absent.jsonl",
+        candidate_manifest_path=tmp_path / "absent-candidates.jsonl",
+        feature_manifest_path=None,
+        split_manifest_path=None,
+        excluded_labels=[],
+    )
+    export = tmp_path / "labels.jsonl"
+    export.write_text("{}\n", encoding="utf-8")
+    mismatches = verify_against_snapshot(snapshot, export)
+    assert any("recorded no label export hash" in m for m in mismatches)
 
 
 def test_snapshot_read_rejects_wrong_schema(tmp_path):

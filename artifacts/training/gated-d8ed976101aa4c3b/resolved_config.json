@@ -6,7 +6,7 @@
   "git_commit": "6a3b1e8a9b541a89ec074eafb5a6f22adecf4312",
   "overrides": {},
   "smoke": false,
-  "label_source": "human",
+  "label_source": "weak_heuristic",
   "synthetic_data": false,
   "training": {
     "optimizer": "adamw",

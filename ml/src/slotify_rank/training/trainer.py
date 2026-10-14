@@ -21,6 +21,20 @@ tolerance rather than bitwise, and the tolerance is stated in the test.
 Mixed precision is supported where the device supports it safely and is never
 required. On CPU it is refused outright: float16 has no accelerated CPU kernels
 here and would be slower than float32 while looking like an optimization.
+
+When selection cannot discriminate
+----------------------------------
+
+Best-checkpoint selection is only as informative as the validation split behind
+it. With one validation episode, NDCG@3 is decided by which three of that
+episode's candidates come first; and once the metric hits its maximum (1.0) no
+later epoch can beat it, so the "best" checkpoint is whichever epoch got there
+first. The committed bootstrap (``gated-d8ed976101aa4c3b``) is exactly that
+case: one validation episode, NDCG@3 = 1.0 at epoch 1, nine epochs run, epoch 1
+kept. Selection semantics are deliberately not changed for this -- an
+undecidable selection is reported, not quietly replaced by a different rule --
+but :func:`model_selection_warnings` names the condition, and the run summary
+records it.
 """
 
 from __future__ import annotations
@@ -58,11 +72,62 @@ __all__ = [
     "Trainer",
     "TrainingResult",
     "EpochMetrics",
+    "MIN_VALIDATION_EPISODES_FOR_SELECTION",
+    "model_selection_warnings",
     "set_global_seed",
     "build_seeded_model",
 ]
 
 _DEPENDENCIES = ("torch", "numpy", "slotify-rank")
+
+#: Below this many validation episodes, the selection metric is a macro-average
+#: over too few rankings to tell epochs apart. Matches the evaluation side's
+#: "fewer than 3 episodes" caveat, so the two report thin data the same way.
+MIN_VALIDATION_EPISODES_FOR_SELECTION = 3
+
+#: The largest value NDCG@k can take.
+_NDCG_MAXIMUM = 1.0
+
+
+def model_selection_warnings(
+    validation_episode_count: int,
+    validation_candidate_count: int,
+    best_epoch: int,
+    best_metric: float | None,
+    first_epoch: int = 1,
+) -> list[str]:
+    """Why this run's checkpoint selection may not have selected anything.
+
+    Two conditions, both observed on the committed bootstrap run:
+
+    * too few validation episodes for the metric to discriminate between epochs;
+    * the best metric saturated at its maximum on the first epoch, so no later
+      epoch *could* be selected and early stopping measured nothing.
+
+    Returned as plain sentences for the summary. Selection itself is unchanged.
+    """
+    warnings: list[str] = []
+    if validation_episode_count < MIN_VALIDATION_EPISODES_FOR_SELECTION:
+        warnings.append(
+            f"checkpoint selection rested on {validation_episode_count} validation "
+            f"episode(s) ({validation_candidate_count} candidate(s)), fewer than "
+            f"{MIN_VALIDATION_EPISODES_FOR_SELECTION}. Validation NDCG@3 is a "
+            "macro-average over episodes, so with this few it cannot reliably tell "
+            "one epoch from another; the selected checkpoint is not evidence that "
+            "it generalises better than any other epoch."
+        )
+    if (
+        best_metric is not None
+        and best_epoch == first_epoch
+        and best_metric >= _NDCG_MAXIMUM - 1e-12
+    ):
+        warnings.append(
+            f"validation NDCG@3 reached its maximum ({_NDCG_MAXIMUM}) at epoch "
+            f"{best_epoch}, the first epoch, so no later epoch could beat it: the "
+            "selected checkpoint is the first-epoch model by construction, and "
+            "early stopping measured nothing after that point."
+        )
+    return warnings
 
 
 def set_global_seed(seed: int) -> None:
@@ -143,6 +208,8 @@ class TrainingResult:
     interrupted: bool = False
     best_checkpoint_path: str = ""
     last_checkpoint_path: str = ""
+    #: See :func:`model_selection_warnings`. Empty when selection was informative.
+    selection_warnings: list[str] = field(default_factory=list)
 
 
 class Trainer:
@@ -159,6 +226,8 @@ class Trainer:
         git_commit: str = "unknown",
         label_manifest_hash: str = "",
         on_epoch: Callable[[EpochMetrics], None] | None = None,
+        label_source: str | None = None,
+        data_provenance: str = "unknown",
     ):
         self.config = config
         self.dataset = dataset
@@ -168,6 +237,15 @@ class Trainer:
         self.git_commit = git_commit
         self.label_manifest_hash = label_manifest_hash
         self.on_epoch = on_epoch
+        # Stored in every checkpoint. Read from the labels that were actually
+        # loaded unless the caller knows better (the CLI overrides it with
+        # "synthetic" for a fixture corpus); never assumed to be human.
+        if label_source is None:
+            label_source = (
+                dataset.label_set.label_source if dataset.label_set else "unknown"
+            )
+        self.label_source = str(label_source)
+        self.data_provenance = str(data_provenance)
 
         self.device_name = resolve_device(config.device)
         self.device = torch.device(self.device_name)
@@ -328,6 +406,16 @@ class Trainer:
             interrupted = True
             stop_reason = "interrupted by the user; resume from last_checkpoint.pt"
 
+        validation_rows = list(self.dataset.validation_rows)
+        selection_warnings = model_selection_warnings(
+            validation_episode_count=len(
+                {self.features.episode_ids[row] for row in validation_rows}
+            ),
+            validation_candidate_count=len(validation_rows),
+            best_epoch=self.early_stopping.best_epoch,
+            best_metric=self.early_stopping.best_metric,
+        )
+
         return TrainingResult(
             run_id=self.run_id,
             epochs_run=len(self.epoch_metrics),
@@ -343,6 +431,7 @@ class Trainer:
             interrupted=interrupted,
             best_checkpoint_path=str(best_checkpoint) if best_metrics else "",
             last_checkpoint_path=str(last_checkpoint),
+            selection_warnings=selection_warnings,
         )
 
     def _run_epoch(self, epoch: int) -> EpochMetrics:
@@ -495,6 +584,11 @@ class Trainer:
             rng_state=RngState(
                 torch_state=torch.get_rng_state(),
                 loader_state=self.loader_generator.get_state(),
+            ),
+            label_source=self.label_source,
+            data_provenance=self.data_provenance,
+            dropped_handcrafted_features=tuple(
+                self.dataset.dropped_handcrafted_features
             ),
         )
 

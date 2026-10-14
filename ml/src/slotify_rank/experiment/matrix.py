@@ -116,11 +116,14 @@ class RunOutcome:
 
 def read_outcome(run: PlannedRun, exit_code: int) -> RunOutcome:
     """Read one run's own summary. A missing field stays ``None``."""
+    from slotify_rank.training.reporting import repo_relative
+
     summary_path = run.run_dir / "training_summary.json"
     outcome = RunOutcome(
         variant=run.variant,
         seed=run.seed,
-        run_dir=str(run.run_dir),
+        # Repo-relative: the matrix summary is committed alongside the runs.
+        run_dir=repo_relative(run.run_dir),
         exit_code=exit_code,
     )
     if not summary_path.is_file():

@@ -48,13 +48,13 @@
     }
   },
   "artifacts": {
-    "directory": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\gated-58e27d4507da3401",
-    "best_checkpoint": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\gated-58e27d4507da3401\\best_checkpoint.pt",
-    "last_checkpoint": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\gated-58e27d4507da3401\\last_checkpoint.pt",
-    "epoch_metrics": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\gated-58e27d4507da3401\\epoch_metrics.jsonl",
-    "dataset_summary": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\gated-58e27d4507da3401\\dataset_summary.json",
-    "normalizer": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\gated-58e27d4507da3401\\normalizer.json",
-    "resolved_config": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\gated-58e27d4507da3401\\resolved_config.json"
+    "directory": "artifacts/training/gated-58e27d4507da3401",
+    "best_checkpoint": "artifacts/training/gated-58e27d4507da3401/best_checkpoint.pt",
+    "last_checkpoint": "artifacts/training/gated-58e27d4507da3401/last_checkpoint.pt",
+    "epoch_metrics": "artifacts/training/gated-58e27d4507da3401/epoch_metrics.jsonl",
+    "dataset_summary": "artifacts/training/gated-58e27d4507da3401/dataset_summary.json",
+    "normalizer": "artifacts/training/gated-58e27d4507da3401/normalizer.json",
+    "resolved_config": "artifacts/training/gated-58e27d4507da3401/resolved_config.json"
   },
   "environment": {
     "device": "cpu",

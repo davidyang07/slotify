@@ -10,6 +10,13 @@ against ``label-snapshot-v1`` must always mean the same bytes.
 The snapshot references private data (candidate ids, pseudonymous annotator
 ids), so it is written under the git-ignored data root by default. The committed
 experiment manifest carries only its hash, not its contents.
+
+A snapshot nobody checks pins nothing. :func:`verify_against_snapshot` is what
+``evaluation compare`` runs before it reads a single label: the export it was
+handed must be byte-identical to the one frozen, and the candidate, feature and
+split manifests must be the ones the snapshot recorded. Any difference is a
+refusal -- an evaluation against labels or candidates that moved after the
+freeze is not the frozen experiment.
 """
 
 from __future__ import annotations
@@ -28,7 +35,13 @@ from slotify_rank.config.versions import (
 from slotify_rank.data.checksum import atomic_write_bytes, sha256_file, sha256_text
 from slotify_rank.datasets.labels import AggregatedLabel
 
-__all__ = ["FrozenLabelSnapshot", "build_snapshot", "write_snapshot", "read_snapshot"]
+__all__ = [
+    "FrozenLabelSnapshot",
+    "build_snapshot",
+    "write_snapshot",
+    "read_snapshot",
+    "verify_against_snapshot",
+]
 
 
 @dataclass(frozen=True)
@@ -181,3 +194,54 @@ def read_snapshot(path: Path) -> FrozenLabelSnapshot:
             f"this build reads {LABEL_SNAPSHOT_SCHEMA_VERSION!r}."
         )
     return FrozenLabelSnapshot.from_mapping(raw)
+
+
+def verify_against_snapshot(
+    snapshot: FrozenLabelSnapshot,
+    label_export: Path,
+    candidate_manifest: Path | None = None,
+    feature_manifest: Path | None = None,
+    split_manifest: Path | None = None,
+) -> list[str]:
+    """Every way the artifacts on disk differ from what ``snapshot`` froze.
+
+    Empty means verified. The label export is always checked -- it is what the
+    snapshot exists to pin -- and a snapshot that recorded no export hash cannot
+    verify one. The manifests are checked whenever the snapshot recorded them.
+    """
+    mismatches: list[str] = []
+
+    def current(path: Path | None) -> str | None:
+        return sha256_file(Path(path)) if path and Path(path).is_file() else None
+
+    label_hash = current(label_export)
+    if not snapshot.label_manifest_hash:
+        mismatches.append(
+            f"snapshot {snapshot.snapshot_version} recorded no label export hash (it "
+            "was frozen before an export existed), so no export can be verified "
+            "against it; re-export and freeze a new snapshot version"
+        )
+    elif label_hash is None:
+        mismatches.append(f"label export {Path(label_export).name} does not exist")
+    elif label_hash != snapshot.label_manifest_hash:
+        mismatches.append(
+            f"label export {Path(label_export).name} hashes to {label_hash[:16]}..., "
+            f"but snapshot {snapshot.snapshot_version} froze "
+            f"{snapshot.label_manifest_hash[:16]}..."
+        )
+
+    for name, recorded, path in (
+        ("candidate manifest", snapshot.candidate_manifest_hash or None, candidate_manifest),
+        ("feature manifest", snapshot.feature_manifest_hash, feature_manifest),
+        ("split manifest", snapshot.split_manifest_hash, split_manifest),
+    ):
+        if not recorded:
+            continue
+        observed = current(path)
+        if observed != recorded:
+            mismatches.append(
+                f"the {name} "
+                + ("is missing" if observed is None else f"hashes to {observed[:16]}...")
+                + f", but snapshot {snapshot.snapshot_version} froze {recorded[:16]}..."
+            )
+    return mismatches

@@ -15,7 +15,7 @@ from slotify_rank.training.config import (
     load_training_config,
 )
 from slotify_rank.training.prepare import dataset_fingerprint, prepare_dataset
-from tests.training_fixtures import make_corpus
+from tests.training_fixtures import SYNTHETIC_SOURCES, make_corpus
 
 
 def prepared(tmp_path, config: TrainingConfig | None = None, **corpus_overrides):
@@ -23,7 +23,9 @@ def prepared(tmp_path, config: TrainingConfig | None = None, **corpus_overrides)
         tmp_path, **{"episode_count": 10, "candidates_per_episode": 8, **corpus_overrides}
     )
     config = config or TrainingConfig()
-    return paths, corpus, prepare_dataset(paths, config, corpus.label_export)
+    return paths, corpus, prepare_dataset(
+        paths, config, corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -201,14 +203,18 @@ def test_an_empty_validation_split_is_refused(tmp_path):
     paths, corpus = make_corpus(tmp_path, episode_count=3, candidates_per_episode=6)
     # Episodes 0,1,2 map to train,train,validation -- so "test" is empty.
     with pytest.raises(RuntimeError, match="split is empty"):
-        prepare_dataset(paths, config, corpus.label_export)
+        prepare_dataset(
+            paths, config, corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES
+        )
 
 
 def test_native_embedding_dimension_is_read_from_the_artifacts(tmp_path):
     paths, corpus = make_corpus(
         tmp_path, episode_count=10, candidates_per_episode=6, native_dimension=96
     )
-    dataset = prepare_dataset(paths, TrainingConfig(), corpus.label_export)
+    dataset = prepare_dataset(
+        paths, TrainingConfig(), corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES
+    )
     assert dataset.schema.native_embedding_dimension == 96
     assert dataset.schema.audio_dimension == 96 * 4
     assert dataset.schema.text_dimension == 96 * 4

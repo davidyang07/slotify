@@ -20,7 +20,17 @@ from slotify_rank.datasets.loader import EligibilityConfig, LoadedDataset, build
 from slotify_rank.datasets.synthetic import SyntheticCorpusConfig, build_synthetic_corpus
 from slotify_rank.features.assemble import read_feature_manifest
 
-__all__ = ["make_corpus", "load_corpus", "paths_for", "shared_corpus"]
+__all__ = [
+    "SYNTHETIC_SOURCES",
+    "make_corpus",
+    "load_corpus",
+    "paths_for",
+    "shared_corpus",
+]
+
+#: The fixture corpus is stamped label_source=synthetic, so every loader call on
+#: it must name that source -- exactly as a real caller would have to.
+SYNTHETIC_SOURCES: tuple[str, ...] = ("synthetic",)
 
 #: config-overrides -> (DataPaths, SyntheticCorpus), built at most once.
 _CORPUS_CACHE: dict[tuple, tuple[DataPaths, Any]] = {}
@@ -57,7 +67,7 @@ def load_corpus(
 ) -> tuple[DataPaths, Any, LoadedDataset]:
     paths, corpus = make_corpus(tmp_path, **overrides)
     header, records = read_feature_manifest(paths.features_manifest)
-    labels = read_label_export(corpus.label_export)
+    labels = read_label_export(corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES)
     loaded = build_examples(
         paths=paths,
         header=header,

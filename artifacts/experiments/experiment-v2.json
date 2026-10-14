@@ -9,7 +9,7 @@
     "0 human-labelled candidate(s) exist, fewer than the 2400 this experiment requires"
   ],
   "warnings": [
-    "no frozen label snapshot at C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\data\\labels\\label_snapshot_full-v2.json; freeze one with `experiment freeze` before evaluating"
+    "no frozen label snapshot at data/labels/label_snapshot_full-v2.json; freeze one with `experiment freeze` before evaluating"
   ],
   "artifact_hashes": {
     "experiment_config": "d6b2a104a9b345123cbf574dcf71e06a52281493da15b7cafcae8832caca03dd",
@@ -34,7 +34,7 @@
     "model_config:gated": "e31d6b650c0f0ec7fc1a8071b54ed41eee0fc10b4111d3a28e81418848300cb7"
   },
   "split": {
-    "manifest_path": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\data\\manifests\\splits_v4.json",
+    "manifest_path": "data/manifests/splits_v4.json",
     "version": "v4",
     "algorithm_version": "split-stratified-greedy-v1.0.0",
     "seed": 42,
@@ -97,8 +97,8 @@
   },
   "labels": {
     "snapshot_version": "full-v2",
-    "snapshot_path": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\data\\labels\\label_snapshot_full-v2.json",
-    "export_path": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\data\\labels\\labels_full-v2.jsonl",
+    "snapshot_path": "data/labels/label_snapshot_full-v2.json",
+    "export_path": "data/labels/labels_full-v2.jsonl",
     "minimum_human_labels": 2400,
     "human_label_count": 0,
     "allowed_label_sources": [

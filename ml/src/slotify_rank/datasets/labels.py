@@ -8,11 +8,20 @@ code.
 
 A caller may pass ``allowed_label_sources`` to opt into another source
 explicitly -- ``weak_heuristic`` for the bootstrap distillation run that proves
-the inference path works before any human labels exist. Doing so is a named,
+the inference path works before any human labels exist, ``synthetic`` for the
+generated fixture corpus that exercises the training path. Doing so is a named,
 recorded decision: the resulting :class:`LabelSet` carries ``label_source``,
-the training summary records it, the checkpoint records it, and the evaluation
-comparison refuses to publish a headline metric from anything but ``human``.
-There is deliberately no default that reaches weak labels.
+the training summary records it, the checkpoint records it (a checkpoint
+written before ``label_source`` was stored is read through its run's
+``training_summary.json`` instead; see ``inference/predictor.py``), and the
+evaluation comparison refuses to publish a headline metric from anything but
+``human``. There is deliberately no default
+that reaches weak or synthetic labels.
+
+A row that declares ``synthetic: true`` is a synthetic label whatever its
+``label_source`` says. Fixture exports written before the fixture was stamped
+``label_source: synthetic`` claimed ``human``, and honouring that claim would
+let generated numbers through every gate that requires human judgement.
 
 Multiple annotators per candidate are aggregated deterministically:
 
@@ -37,9 +46,20 @@ __all__ = [
     "AggregatedLabel",
     "LabelSet",
     "DEFAULT_ALLOWED_LABEL_SOURCES",
+    "HUMAN_LABEL_SOURCE",
+    "SYNTHETIC_LABEL_SOURCE",
     "aggregate_labels",
+    "effective_label_source",
     "read_label_export",
 ]
+
+#: Judgements a person made with the rubric. The only supervised source a
+#: headline may rest on.
+HUMAN_LABEL_SOURCE = "human"
+
+#: Generated fixture targets (:mod:`slotify_rank.datasets.synthetic`). Not a
+#: judgement of anything.
+SYNTHETIC_LABEL_SOURCE = "synthetic"
 
 
 @dataclass(frozen=True)
@@ -95,7 +115,18 @@ class LabelSet:
 
 
 #: The only source a caller gets without asking for something else by name.
-DEFAULT_ALLOWED_LABEL_SOURCES: tuple[str, ...] = ("human",)
+DEFAULT_ALLOWED_LABEL_SOURCES: tuple[str, ...] = (HUMAN_LABEL_SOURCE,)
+
+
+def effective_label_source(row: Mapping[str, Any]) -> str:
+    """What a label row really is, which is not always what it claims.
+
+    ``synthetic: true`` wins over a ``label_source`` of ``human``: see the module
+    docstring for why a legacy fixture row cannot be taken at its word.
+    """
+    if bool(row.get("synthetic", False)):
+        return SYNTHETIC_LABEL_SOURCE
+    return str(row.get("label_source", HUMAN_LABEL_SOURCE))
 
 
 def aggregate_labels(
@@ -111,14 +142,15 @@ def aggregate_labels(
     grouped: dict[str, list[Mapping[str, Any]]] = {}
     observed: set[str] = set()
     for row in rows:
-        label_source = str(row.get("label_source", "human"))
+        label_source = effective_label_source(row)
         if label_source not in allowed:
             raise ValueError(
                 f"{source or 'label rows'}: candidate "
                 f"{row.get('candidate_id')!r} carries label_source={label_source!r}, "
                 f"but this run allows {list(allowed)}. Only human labels are a "
                 "supervised source by default; anything else must be requested by "
-                "name and is recorded on the run."
+                "name (e.g. --allow-label-source "
+                f"{label_source}) and is recorded on the run."
             )
         observed.add(label_source)
         grouped.setdefault(str(row["candidate_id"]), []).append(row)

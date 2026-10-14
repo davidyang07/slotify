@@ -31,6 +31,7 @@ from typing import Any, Iterator, Mapping, Sequence
 
 from slotify_rank.candidates.config import GenerationConfig, load_generation_config
 from slotify_rank.candidates.generate import generate_for_episode
+from slotify_rank.config.settings import find_repo_root
 from slotify_rank.config.feature_settings import (
     EmbeddingConfig,
     FeatureConfig,
@@ -61,7 +62,9 @@ from slotify_rank.pipeline.stages import (
 
 __all__ = [
     "InferenceWorkspace",
+    "PipelineConfigs",
     "PreparedEpisode",
+    "default_config_dir",
     "workspace",
     "prepare_episode",
 ]
@@ -119,31 +122,52 @@ class PreparedEpisode:
     timings_seconds: dict[str, float] = field(default_factory=dict)
 
 
+def default_config_dir() -> Path:
+    """The committed ``ml/configs/`` directory of this checkout.
+
+    The product calls ``infer rank`` without ``--config-dir``. If that fell back
+    to the dataclass defaults in code, serving would read one set of values and
+    the corpus pipeline -- which every training run's features came from --
+    another, and the two would drift the first time someone edited a YAML
+    without editing the matching default. They agree today; nothing kept them
+    agreeing. So the default is the committed YAML itself, located the same way
+    every other repository path is (``find_repo_root``, overridable with
+    ``SLOTIFY_REPO_ROOT``). Not finding it is an error, not a fallback.
+    """
+    root = find_repo_root()
+    directory = root / "ml" / "configs"
+    if not directory.is_dir():
+        raise FileNotFoundError(
+            f"No ml/configs directory under the repository root {root}. Pass "
+            "--config-dir explicitly; inference will not silently substitute the "
+            "built-in defaults for the committed pipeline configuration."
+        )
+    return directory
+
+
 @dataclass(frozen=True)
 class PipelineConfigs:
-    """The four configs the Phase 3 stages need, loaded once."""
+    """The five configs the Phase 3 stages need, loaded once."""
 
     transcription: TranscriptionConfig
     features: FeatureConfig
     embeddings: EmbeddingConfig
     pipeline: PipelineConfig
     generation: GenerationConfig
+    #: Where they were read from, so a response can be traced to its settings.
+    source_dir: str = ""
 
     @classmethod
     def load(cls, config_dir: Path | str | None = None) -> "PipelineConfigs":
-        base = Path(config_dir) if config_dir else None
+        """Read the five YAMLs from ``config_dir`` (default: the committed ones)."""
+        base = Path(config_dir) if config_dir else default_config_dir()
         return cls(
-            transcription=load_transcription_config(
-                base / "transcription_v1.yaml" if base else None
-            ),
-            features=load_feature_config(base / "features_v1.yaml" if base else None),
-            embeddings=load_embedding_config(
-                base / "embeddings_v1.yaml" if base else None
-            ),
-            pipeline=load_pipeline_config(
-                base / "feature_pipeline_v1.yaml" if base else None
-            ),
-            generation=load_generation_config(base / "dataset_v1.yaml" if base else None),
+            transcription=load_transcription_config(base / "transcription_v1.yaml"),
+            features=load_feature_config(base / "features_v1.yaml"),
+            embeddings=load_embedding_config(base / "embeddings_v1.yaml"),
+            pipeline=load_pipeline_config(base / "feature_pipeline_v1.yaml"),
+            generation=load_generation_config(base / "dataset_v1.yaml"),
+            source_dir=base.as_posix(),
         )
 
 

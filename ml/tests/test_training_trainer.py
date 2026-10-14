@@ -23,7 +23,7 @@ from slotify_rank.training.config import TrainingConfig
 from slotify_rank.training.early_stopping import EarlyStopping
 from slotify_rank.training.prepare import prepare_dataset
 from slotify_rank.training.trainer import Trainer, build_seeded_model
-from tests.training_fixtures import shared_corpus
+from tests.training_fixtures import SYNTHETIC_SOURCES, shared_corpus
 
 
 def build_trainer(
@@ -37,7 +37,9 @@ def build_trainer(
         **{"episode_count": 10, "candidates_per_episode": 8, **corpus_overrides}
     )
     config = config or TrainingConfig(epochs=3, early_stopping_patience=0)
-    dataset = prepare_dataset(paths, config, corpus.label_export)
+    dataset = prepare_dataset(
+        paths, config, corpus.label_export, allowed_label_sources=SYNTHETIC_SOURCES
+    )
     model_config = ModelConfig(variant=variant, auxiliary_head=config.auxiliary_head)
     # Seeded before construction, so two runs with the same seed start from the
     # same weights -- see build_seeded_model.
@@ -512,3 +514,57 @@ def test_resuming_a_finished_run_has_nothing_to_do(tmp_path):
     resumed, _, _ = build_trainer(tmp_path / "b", config, run_dir="done2")
     resumed.resume_from(Path(result.last_checkpoint_path))
     assert resumed.start_epoch > config.epochs
+
+
+# ---------------------------------------------------------------------------
+# When checkpoint selection cannot discriminate
+# ---------------------------------------------------------------------------
+
+
+def test_one_validation_episode_is_a_selection_caveat():
+    from slotify_rank.training.trainer import model_selection_warnings
+
+    warnings = model_selection_warnings(
+        validation_episode_count=1,
+        validation_candidate_count=67,
+        best_epoch=4,
+        best_metric=0.8,
+    )
+    assert len(warnings) == 1
+    assert "1 validation episode(s) (67 candidate(s))" in warnings[0]
+
+
+def test_a_metric_saturated_on_the_first_epoch_is_a_selection_caveat():
+    """The committed bootstrap: 1 episode, NDCG@3 = 1.0 at epoch 1, nothing
+    could beat it. Both conditions are named."""
+    from slotify_rank.training.trainer import model_selection_warnings
+
+    warnings = model_selection_warnings(
+        validation_episode_count=1,
+        validation_candidate_count=67,
+        best_epoch=1,
+        best_metric=1.0,
+    )
+    assert len(warnings) == 2
+    assert any("first epoch" in warning for warning in warnings)
+
+
+def test_an_informative_selection_raises_no_caveat():
+    from slotify_rank.training.trainer import model_selection_warnings
+
+    assert model_selection_warnings(12, 800, best_epoch=7, best_metric=0.71) == []
+    # A maximum reached later is a result of training, not of the first step.
+    assert model_selection_warnings(12, 800, best_epoch=5, best_metric=1.0) == []
+
+
+def test_the_trainer_records_selection_caveats_and_provenance(tmp_path):
+    trainer, dataset, _ = build_trainer(tmp_path)
+    result = trainer.train()
+    validation_episodes = {
+        dataset.features.episode_ids[row] for row in dataset.validation_rows
+    }
+    if len(validation_episodes) < 3:
+        assert any("validation episode" in w for w in result.selection_warnings)
+    payload = load_checkpoint(Path(result.last_checkpoint_path))
+    # Read from the loaded labels: the fixture is synthetic, never "human".
+    assert payload["label_source"] == "synthetic"

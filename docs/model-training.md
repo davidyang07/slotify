@@ -76,9 +76,13 @@ validation episode, and enough non-tied within-episode pairs to learn from.
 
 ### Label requirements
 
-Human labels are the **only** default supervised source. Weak or heuristic
-labels are never loaded — the loader raises if a row carries
-`label_source != "human"`. Multiple annotators per candidate are aggregated
+Human labels are the **only** default supervised source. Weak, heuristic or
+synthetic labels are never loaded by default — the loader raises if a row
+carries `label_source != "human"`, and a row marked `synthetic: true` counts as
+synthetic whatever its `label_source` says. Another source is reached only by
+naming it (`--allow-label-source weak_heuristic`, `--allow-label-source
+synthetic`), and whatever was loaded is recorded in `resolved_config.json`, the
+dataset and training summaries, and the checkpoint. Multiple annotators per candidate are aggregated
 deterministically: quality score by mean, acceptability by majority vote (ties
 broken by the mean against the exported threshold), and any `is_unusable` vote
 removes the candidate.
@@ -99,6 +103,30 @@ constructed model inputs are:
 | handcrafted | 110 (from the manifest header) | normalized scalars + missing masks |
 | audio | 4 × 384 = 1536 | stored `before`, `after`, `context`, `difference` |
 | text | 4 × 384 = 1536 | stored `before`, `after`, plus their `difference` and elementwise `product` (arithmetic on cached MiniLM output — **not** a model re-run) |
+
+### Weak-label runs do not see their teacher
+
+Weak labels (`label weak`) are within-episode quantiles of
+`heuristic_offline_v1`'s score — and that score is also a handcrafted input,
+`heuristic_total_score`, alongside its additive components
+(`heuristic_component_*`), `heuristic_raw_total` and `heuristic_clamped`. A model
+given those columns can reproduce its targets by copying one input, and its
+validation NDCG then measures the copy. So when the label source includes
+`weak_heuristic`, `training prepare` / `training run` **withhold every
+`heuristic_*` column** from the model's input schema; the normalizer is fitted
+on the remaining columns, and the withheld names and the reason are recorded in
+`dataset_summary.json`, `training_summary.json` and the checkpoint
+(`dropped_handcrafted_features`). Inference still builds every column and
+projects them onto the checkpoint's by name, so the withheld ones never reach
+the model. Human- and synthetic-label runs keep the columns.
+
+The committed bootstrap `gated-d8ed976101aa4c3b` predates this rule: it was
+trained **with** the `heuristic_*` columns as inputs, so it had its teacher's
+answer available, and should be read as a distillation in the most literal
+sense. Its `resolved_config.json` originally recorded `label_source: human`,
+because that field was a constant until it was set from the loaded labels; it
+has since been corrected to `weak_heuristic`, matching the run's
+`training_summary.json` and `dataset_summary.json`.
 
 ---
 
@@ -218,15 +246,53 @@ before it can be read is a remote-code-execution primitive with a `.pt`
 extension, and model files get shared around.
 
 Each checkpoint records the model variant, the input schema, the feature
-ordering, the feature-pipeline versions, the normalizer identity, the split
-hash, the seed, the resolved device/dtype, the dependency versions, the git
-commit, and the run id. Loading **rejects** an incompatible variant, input
-dimension, feature ordering, feature-pipeline version, normalizer version, or
-split hash (the last overridable for inference-only use on a new corpus). Writes
-go through the Phase 2 Windows/OneDrive-safe atomic rename, so a crash leaves the
-previous file or the new one, never half of either.
+ordering, the feature-pipeline versions, the normalizer identity (version,
+pipeline/spec versions and the training-split hash), the split hash, the seed,
+the resolved device/dtype, the dependency versions, the git commit, the run id,
+and — from this version on — `label_source`, `data_provenance` and
+`dropped_handcrafted_features`. Those three are additive keys under the same
+`checkpoint-schema-v1.0.0`; a checkpoint without them (the committed bootstrap)
+is read through its own run's `training_summary.json` for provenance, and is
+otherwise reported as `unknown`.
+
+What is checked, and against what:
+
+- **Resume and validate** rebuild the dataset from the data on disk and compare
+  its schema with the checkpoint's exactly — variant, input dimensions, feature
+  names and order, versions — and refuse a mismatch. `training validate` scores
+  through the checkpoint's own `normalizer.json` when it sits beside the
+  checkpoint, so `--allow-split-mismatch` scores a new corpus with the
+  statistics the model was trained behind.
+- **Every load** checks the normalizer's identity: its column names must be the
+  checkpoint's and its `training_split_hash` the one the checkpoint recorded, so
+  a normalizer fitted on other data is refused rather than shifting every input.
+  The split hash of the *data* is overridable for inference-only use on a new
+  corpus; the normalizer's never is.
+- **Inference and evaluation** compare the served data's column names with the
+  checkpoint's input schema and project by name — see
+  [`model-inference.md`](model-inference.md) § Scoring.
+
+Writes go through the Phase 2 Windows/OneDrive-safe atomic rename, so a crash
+leaves the previous file or the new one, never half of either.
 
 All `.pt` files are git-ignored.
+
+## When checkpoint selection cannot select
+
+The best checkpoint is the epoch with the highest validation NDCG@3. That rule
+is only as informative as the validation split behind it, and two conditions
+make it uninformative:
+
+- **fewer than 3 validation episodes** — NDCG@3 is a macro-average over
+  episodes, so with one or two it cannot tell epochs apart;
+- **the metric saturates at its maximum (1.0) on the first epoch** — no later
+  epoch can beat it, so the "best" checkpoint is the first-epoch model by
+  construction and early stopping measures nothing.
+
+Both are recorded in `training_summary.json` (`model_selection_warnings`), in the
+Markdown summary, and on stderr. Selection itself is unchanged. The committed
+bootstrap `gated-d8ed976101aa4c3b` hit both: one validation episode of 67
+candidates, NDCG@3 = 1.0 at epoch 1, nine epochs run, epoch 1 kept.
 
 ## Resume behaviour
 
@@ -305,9 +371,11 @@ the smoke run able to fail (a loop that cannot learn a planted signal is broken)
 python -m slotify_rank.cli training synthesize --data-root ../data-synthetic --episodes 10 --candidates-per-episode 8
 
 # Train the gated model on it. --smoke is a recorded shorthand for small caps.
+# The fixture is stamped label_source=synthetic, so the source must be named.
 python -m slotify_rank.cli training run \
     --data-root ../data-synthetic \
     --labels ../data-synthetic/labels/labels_synthetic.jsonl \
+    --allow-label-source synthetic \
     --model-config configs/models/gated_v1.yaml --smoke
 ```
 
@@ -317,7 +385,10 @@ mode: every value it changes is written to the run's `resolved_config.json` unde
 
 The committed smoke reports live at
 `artifacts/training/{handcrafted,concat,gated}-*/` (reports committed;
-checkpoints git-ignored).
+checkpoints git-ignored). They were written before the fixture was stamped
+`synthetic`, so their `resolved_config.json` and `dataset_summary.json` said
+`label_source: human`. Those fields have been corrected to `synthetic`, matching
+each run's `training_summary.json` and its `synthetic_data: true`.
 
 ---
 
@@ -346,6 +417,10 @@ python -m slotify_rank.cli experiment train \
 That writes one run directory per (variant, seed) cell plus
 `artifacts/experiments/experiment-v2-training-matrix.json`, which carries
 every run's validation NDCG@3, the per-variant spread, and the run it nominates.
+A cell that already holds a `training_summary.json` is reused only when its
+recorded dataset fingerprint (the bytes of the feature manifest and the label
+export) matches the data this invocation would train on; otherwise it is
+retrained. `--split-version` defaults to `v4` here and in every other command.
 
 **The nominated run is the median seed by validation NDCG@3, not the best.**
 Training one configuration under three seeds and reporting the best of them
@@ -354,6 +429,8 @@ staying entirely within the letter of "we used a held-out test set". The matrix
 records all three so the spread is visible rather than taken on trust, and it
 refuses to nominate anything when a cell failed, when a cell trained on a label
 source the experiment does not allow, or when the headline variant is missing.
+`evaluation compare` then refuses any `--model` that is not the nominated run
+(unless `--allow-unnominated`, which is recorded and blocks the headline).
 
 The resulting `training_summary.json` files carry `data_provenance: real` and
 `label_source: human`, and their **validation** metrics are the first that may

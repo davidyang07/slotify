@@ -10,8 +10,9 @@ Markdown summary. A run's numbers can therefore always be traced to the flags
 that produced them.
 
 Synthetic fixtures are opt-in and self-declaring: ``training synthesize`` writes
-them, and any run against them is detected from the label export's metadata and
-labelled ``synthetic`` throughout its reports.
+them with ``label_source: synthetic``, training on them requires naming that
+source (``--allow-label-source synthetic``), and any run against them is
+labelled ``synthetic`` throughout its reports and its checkpoint.
 """
 
 from __future__ import annotations
@@ -26,10 +27,12 @@ from slotify_rank.data import manifests
 from slotify_rank.datasets.labels import DEFAULT_ALLOWED_LABEL_SOURCES
 from slotify_rank.data.paths import DataPaths
 from slotify_rank.data.splits import read_split_manifest
+from slotify_rank.experiment.canonical import CANONICAL_SPLIT_VERSION
 from slotify_rank.training.reporting import (
     RunArtifacts,
     append_epoch_metrics,
     build_summary,
+    data_provenance,
     write_json,
     write_pairs,
     write_training_summary,
@@ -144,7 +147,9 @@ def _prepare(args: argparse.Namespace, config: Any):
         config=config,
         label_export=label_export,
         candidates=_dataset_candidates(paths),
-        split_lookup=_split_lookup(paths, getattr(args, "split_version", "v1")),
+        split_lookup=_split_lookup(
+            paths, getattr(args, "split_version", None) or CANONICAL_SPLIT_VERSION
+        ),
         allowed_label_sources=_allowed_label_sources(args),
     )
     return paths, label_export, dataset
@@ -273,6 +278,13 @@ def _run_training(args: argparse.Namespace, resume_from: Path | None) -> int:
     model_config = _model_config(args, config)
 
     synthetic = _is_synthetic(label_export)
+    # Read from the labels that were loaded, not assumed from a flag.
+    label_source = (
+        "synthetic"
+        if synthetic
+        else (dataset.label_set.label_source if dataset.label_set else "unknown")
+    )
+    provenance = data_provenance(label_source, synthetic, smoke)
     commit = git_commit(paths.repo_root)
     run_id = compute_run_id(config, model_config, dataset.fingerprint, commit)
 
@@ -294,6 +306,8 @@ def _run_training(args: argparse.Namespace, resume_from: Path | None) -> int:
         git_commit=commit,
         label_manifest_hash=dataset.fingerprint,
         on_epoch=lambda metrics: _report_epoch(artifacts, metrics),
+        label_source=label_source,
+        data_provenance=provenance,
     )
 
     if resume_from is not None:
@@ -327,6 +341,7 @@ def _run_training(args: argparse.Namespace, resume_from: Path | None) -> int:
         git_commit=commit,
         overrides=overrides,
         smoke=smoke,
+        label_source=label_source,
         synthetic_data=synthetic,
     )
     write_json(artifacts.resolved_config, resolved.to_dict())
@@ -340,6 +355,11 @@ def _run_training(args: argparse.Namespace, resume_from: Path | None) -> int:
 
     if synthetic:
         print("*** SYNTHETIC SMOKE TRAINING - not a model-quality measurement ***")
+    if dataset.dropped_handcrafted_features:
+        print(
+            f"Withheld {len(dataset.dropped_handcrafted_features)} heuristic_* "
+            f"column(s) from the model: {dataset.dropped_handcrafted_reason}"
+        )
     print(
         f"Run {run_id}: {model_config.experiment_name}, "
         f"{model.parameter_count():,} parameters on {trainer.device_name}"
@@ -357,12 +377,8 @@ def _run_training(args: argparse.Namespace, resume_from: Path | None) -> int:
         synthetic=synthetic,
         smoke=smoke,
         overrides=overrides,
-        # Read from the labels that were loaded, not assumed from a flag.
-        label_source=(
-            "synthetic"
-            if synthetic
-            else (dataset.label_set.label_source if dataset.label_set else "unknown")
-        ),
+        label_source=label_source,
+        repo_root=paths.repo_root,
     )
     write_training_summary(artifacts, summary)
 
@@ -372,6 +388,8 @@ def _run_training(args: argparse.Namespace, resume_from: Path | None) -> int:
         f"Best validation NDCG@{config.metric_k}: "
         f"{'undefined' if best is None else f'{best:.4f}'} at epoch {result.best_epoch}"
     )
+    for warning in result.selection_warnings:
+        print(f"WARNING (model selection): {warning}", file=sys.stderr)
     print(f"Runtime: {result.seconds:.1f}s  Artifacts: {artifacts.directory}")
     if result.interrupted:
         print("Interrupted; resume with `training resume`.", file=sys.stderr)
@@ -420,16 +438,32 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     from slotify_rank.ranking.metrics import evaluate_validation
     from slotify_rank.training.checkpoint import assert_compatible, load_checkpoint
 
+    from slotify_rank.datasets.normalizer import read_normalizer
+    from slotify_rank.datasets.ranking_dataset import materialize
+
     config, _, _ = _resolve_config(args)
     _, _, dataset = _prepare(args, config)
-    payload = load_checkpoint(Path(args.checkpoint))
+    checkpoint = Path(args.checkpoint)
+    payload = load_checkpoint(checkpoint)
+
+    # Score through the statistics the model was trained behind. The dataset's
+    # own normalizer is refitted on whatever corpus was just loaded; it is the
+    # same one only when the corpus is the training corpus, and the identity
+    # check below refuses it otherwise rather than shifting every input.
+    beside = checkpoint.parent / "normalizer.json"
+    normalizer = read_normalizer(beside) if beside.is_file() else dataset.normalizer
+    features = dataset.features
+    if normalizer is not dataset.normalizer:
+        ordered_ids = list(dataset.features.candidate_ids)
+        by_id = {example.candidate_id: example for example in dataset.loaded.examples}
+        features = materialize([by_id[cid] for cid in ordered_ids], normalizer)
 
     model_config = ModelConfig.from_mapping(payload["model_config"])
     assert_compatible(
         payload,
         model_variant=model_config.variant,
         schema=dataset.schema,
-        normalizer=dataset.normalizer,
+        normalizer=normalizer,
         dataset_split_hash=dataset.normalizer.training_split_hash,
         allow_split_mismatch=bool(args.allow_split_mismatch),
     )
@@ -439,18 +473,20 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     model.eval()
 
     rows = list(dataset.validation_rows)
-    scores = torch.full((len(dataset.features),), float("nan"))
-    logits = torch.full((len(dataset.features),), float("nan"))
+    scores = torch.full((len(features),), float("nan"))
+    logits = torch.full((len(features),), float("nan"))
     with torch.no_grad():
         for start in range(0, len(rows), 64):
             chunk = rows[start : start + 64]
-            output = model(**dataset.features.features_at(chunk))
+            output = model(**features.features_at(chunk))
             scores[chunk] = output.ranking_score
             if output.acceptability_logit is not None:
                 logits[chunk] = output.acceptability_logit
 
+    from slotify_rank.datasets.ranking_dataset import EpisodeGroups
+
     metrics = evaluate_validation(
-        dataset.validation_groups,
+        EpisodeGroups(features, rows),
         scores,
         logits if bool(torch.isfinite(logits[rows]).all()) else None,
         config=MetricConfig(
@@ -550,13 +586,20 @@ def _add_common(parser: argparse.ArgumentParser) -> None:
         dest="allow_label_source",
         action="append",
         metavar="SOURCE",
-        help="Permit a non-human label source (e.g. weak_heuristic). Repeatable. "
-        "Human labels are always allowed. Whatever is used is recorded in the "
-        "run summary and the checkpoint, and evaluation refuses to publish a "
-        "headline metric from anything but human labels.",
+        help="Permit a non-human label source (weak_heuristic, or synthetic for "
+        "the `training synthesize` fixture). Repeatable. Human labels are always "
+        "allowed. Whatever is used is recorded in the run summary and the "
+        "checkpoint, and evaluation refuses to publish a headline metric from "
+        "anything but human labels. A weak_heuristic run also withholds every "
+        "heuristic_* input column from the model.",
     )
     parser.add_argument("--training-config", help="Training config YAML.")
-    parser.add_argument("--split-version", default="v1", help="Split manifest version.")
+    parser.add_argument(
+        "--split-version",
+        default=CANONICAL_SPLIT_VERSION,
+        help=f"Split manifest version (default: {CANONICAL_SPLIT_VERSION}, the "
+        "canonical experiment's split).",
+    )
     parser.add_argument("--output", help="Write the machine-readable report here.")
 
 

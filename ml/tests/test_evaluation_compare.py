@@ -246,3 +246,131 @@ def test_a_blocked_summary_says_so_before_showing_the_number(tmp_path: Path) -> 
     summary = render_summary(result.to_dict())
     assert "NOT PUBLISHABLE" in summary
     assert summary.index("NOT PUBLISHABLE") < summary.index("Relative improvement")
+
+
+# ---------------------------------------------------------------------------
+# The pre-registered claim and the protocol
+# ---------------------------------------------------------------------------
+
+
+def test_a_publishable_improvement_above_the_threshold_passes() -> None:
+    examples, baseline, model = three_episodes()
+    result = compare(
+        examples,
+        baseline,
+        model,
+        inputs(),
+        "eval-test",
+        claim_threshold_percent=18.0,
+        claim_statement="improving NDCG@3 by 18%",
+    )
+    assert result.publishable
+    claim = result.to_dict()["claim"]
+    assert claim["evaluated"] is True
+    assert claim["verdict"] == "PASS"
+    assert claim["minimum_relative_improvement_percent"] == 18.0
+    assert claim["reasons"] == []
+    assert "## Claim verdict: PASS" in render_summary(result.to_dict())
+
+
+def test_an_improvement_below_the_threshold_fails() -> None:
+    examples, baseline, _ = three_episodes()
+    # Identical systems: a publishable 0 % improvement, under any threshold.
+    result = compare(
+        examples, baseline, dict(baseline), inputs(), "eval-test", claim_threshold_percent=18.0
+    )
+    claim = result.claim()
+    assert claim["verdict"] == "FAIL"
+    assert any("below the pre-registered 18 %" in reason for reason in claim["reasons"])
+
+
+def test_an_unpublishable_headline_fails_the_claim_whatever_the_number() -> None:
+    examples, baseline, model = three_episodes()
+    result = compare(
+        examples,
+        baseline,
+        model,
+        inputs(label_source="weak_heuristic"),
+        "eval-test",
+        claim_threshold_percent=18.0,
+    )
+    assert result.headline()["relative_improvement_percent"] > 18.0
+    claim = result.claim()
+    assert claim["verdict"] == "FAIL"
+    assert any("not publishable" in reason for reason in claim["reasons"])
+
+
+def test_a_blocking_reason_added_after_compare_still_fails_the_claim() -> None:
+    """The CLI appends findings after compare() returns; the verdict sees them."""
+    examples, baseline, model = three_episodes()
+    result = compare(
+        examples, baseline, model, inputs(), "eval-test", claim_threshold_percent=18.0
+    )
+    assert result.claim()["verdict"] == "PASS"
+    result.blocking_reasons.append("a late finding")
+    assert result.to_dict()["claim"]["verdict"] == "FAIL"
+
+
+def test_without_a_claim_there_is_no_verdict_and_it_says_so() -> None:
+    examples, baseline, model = three_episodes()
+    payload = compare(examples, baseline, model, inputs(), "eval-test").to_dict()
+    assert payload["claim"]["evaluated"] is False
+    assert payload["claim"]["verdict"] is None
+    assert "NOT EVALUATED" in render_summary(payload)
+
+
+def test_an_unnominated_checkpoint_blocks_the_headline() -> None:
+    examples, baseline, model = three_episodes()
+    result = compare(
+        examples,
+        baseline,
+        model,
+        inputs(),
+        "eval-test",
+        protocol={
+            "nomination": {
+                "nominated": False,
+                "allowed_unnominated": True,
+                "reason": "the matrix nominated 'gated-other'",
+            },
+            "label_snapshot": {"verified": True},
+        },
+    )
+    assert not result.publishable
+    assert any("training matrix nominated" in r for r in result.blocking_reasons)
+    assert result.to_dict()["protocol"]["nomination"]["allowed_unnominated"] is True
+
+
+def test_an_unverified_label_export_blocks_the_headline() -> None:
+    examples, baseline, model = three_episodes()
+    result = compare(
+        examples,
+        baseline,
+        model,
+        inputs(),
+        "eval-test",
+        protocol={
+            "nomination": {"nominated": True},
+            "label_snapshot": {"verified": False, "reason": "none was named"},
+        },
+    )
+    assert any("frozen label snapshot" in r for r in result.blocking_reasons)
+    assert "Label export verified against the frozen snapshot: NO" in render_summary(
+        result.to_dict()
+    )
+
+
+def test_a_followed_protocol_adds_no_blocking_reason() -> None:
+    examples, baseline, model = three_episodes()
+    result = compare(
+        examples,
+        baseline,
+        model,
+        inputs(),
+        "eval-test",
+        protocol={
+            "nomination": {"nominated": True, "allowed_unnominated": False},
+            "label_snapshot": {"verified": True},
+        },
+    )
+    assert result.publishable

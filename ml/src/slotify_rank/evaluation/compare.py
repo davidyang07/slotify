@@ -8,7 +8,7 @@ This module exists to produce exactly one number honestly:
 and to refuse to produce it when the conditions that would make it meaningful
 are not met. The refusals are the point. Any pipeline can divide two floats.
 
-Four gates, each of which independently marks the headline **not publishable**:
+Each of these gates independently marks the headline **not publishable**:
 
 **Ground truth must be human.** A comparison against `heuristic_offline_v1`
 scored with weak, heuristic-derived labels is circular: the baseline is the
@@ -29,18 +29,37 @@ actually contain episodes that no other split does.
 undefined NDCG. Those episodes are excluded and counted, never scored as zero
 (which would deflate) or as one (which would inflate).
 
-**The inputs must be real.** The synthetic fixture corpus carries
-``label_source: human`` on purpose, so it exercises the whole training and
-evaluation path. That makes it exactly the thing that could produce a
-publishable-looking result from generated numbers, so a synthetic label export
-or feature manifest blocks the headline outright.
+**The inputs must be real.** The synthetic fixture corpus is stamped
+``label_source: synthetic``, so the ground-truth gate above already refuses it;
+fixture exports written before that stamp claimed ``human``, and the loader
+treats any row marked ``synthetic: true`` as synthetic whatever it claims. A
+synthetic label export or feature manifest still blocks the headline here as
+well, by its own ``synthetic`` flag, so generated numbers are refused twice.
+
+**The protocol must have been followed** (when the caller supplies one -- the
+CLI always does). The evaluated checkpoint must be the run the training matrix
+nominated, and the label export must match the frozen snapshot; see
+``evaluation_cli``. A comparison run outside that protocol is recorded as such
+and is not publishable.
 
 **Uncertainty is reported, not implied.** NDCG@3 is macro-averaged over
-episodes, and a test split has a few dozen of them, so the point estimate has
-real spread. A percentile bootstrap over episodes -- resampling the unit the
-average is taken over -- gives an interval for the baseline, for the model and
-for the relative improvement itself. The improvement's interval is the one that
-matters: a headline of "+21%" whose interval spans zero is not a result.
+episodes, and the test split is small: the committed one (split v4,
+``artifacts/dataset/split_statistics.json``) holds 7 episodes from 3 series. A
+percentile bootstrap gives an interval for the baseline, for the model and for
+the relative improvement itself, and it resamples **series**, not episodes --
+episodes of one show share hosts, room, mic chain and editing rhythm, so they
+are correlated, and the split is grouped by series for exactly that reason.
+Resampling episodes would treat 7 correlated observations as 7 independent ones
+and produce an interval that is too narrow. A drawn series contributes all of
+its episodes, and both systems are resampled on the same draw. With 3 series the
+bootstrap can only produce a handful of distinct resamples, and the report says
+so. The improvement's interval is the one that matters: a headline of "+21%"
+whose interval spans zero is not a result.
+
+**The claim is judged, not described.** When the pre-registered experiment is
+supplied, the report carries a PASS/FAIL verdict against its
+``minimum_relative_improvement_percent``. PASS requires a publishable headline
+at or above the threshold; anything else is FAIL, with the reason.
 
 **A second opinion on the metric.** ``sklearn.metrics.ndcg_score`` recomputes
 the per-episode NDCG independently (:mod:`slotify_rank.evaluation.crosscheck`).
@@ -85,6 +104,7 @@ from slotify_rank.evaluation.metrics import (
 __all__ = [
     "EVALUATION_SCHEMA_VERSION",
     "CANONICAL_BASELINE",
+    "MAX_SERIES_FOR_THIN_PARTITION_WARNING",
     "BootstrapConfig",
     "ComparisonInputs",
     "ComparisonResult",
@@ -96,7 +116,14 @@ __all__ = [
     "render_summary",
 ]
 
-EVALUATION_SCHEMA_VERSION = "evaluation-v1.0.0"
+#: v1.1.0: the bootstrap resamples series (``bootstrap.config.unit``,
+#: ``bootstrap.series_count``), and the report carries ``claim`` (the PASS/FAIL
+#: verdict) and ``protocol`` (training-matrix nomination, label-snapshot check).
+EVALUATION_SCHEMA_VERSION = "evaluation-v1.1.0"
+
+#: A test partition with this many series or fewer gets the explicit caveat. The
+#: committed split has exactly 3, which is the case the caveat exists for.
+MAX_SERIES_FOR_THIN_PARTITION_WARNING = 3
 
 #: The only baseline a headline improvement may be quoted against. Named here so
 #: a different denominator cannot be substituted without editing this constant.
@@ -128,12 +155,17 @@ def relative_improvement_percent(
 
 @dataclass(frozen=True)
 class BootstrapConfig:
-    """Percentile bootstrap over episodes.
+    """Percentile cluster bootstrap: series are drawn, episodes ride along.
 
-    The episode is the resampling unit because the metric is macro-averaged over
-    episodes; resampling candidates instead would treat one episode's fifty
-    candidates as fifty independent observations and produce an interval several
-    times too narrow.
+    The metric is macro-averaged over episodes, but episodes are not the
+    independent unit: episodes of one series are correlated, and the split is
+    grouped by series precisely because of it. Resampling episodes would treat
+    a show's six episodes as six independent observations (and resampling
+    candidates, fifty per episode, would be worse still); either produces an
+    interval too narrow by an amount that depends on how alike a show's
+    episodes are. So series are resampled with replacement, every episode of a
+    drawn series is kept, and the macro-average is taken over the resulting
+    episodes.
     """
 
     resamples: int = 2000
@@ -151,7 +183,7 @@ class BootstrapConfig:
             "resamples": self.resamples,
             "confidence": self.confidence,
             "seed": self.seed,
-            "unit": "episode",
+            "unit": "series",
             "method": "percentile",
         }
 
@@ -160,37 +192,53 @@ def bootstrap_interval(
     per_episode_baseline: Mapping[str, float],
     per_episode_model: Mapping[str, float],
     config: BootstrapConfig,
+    series_by_episode: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Bootstrap the two macro-averages and their relative improvement.
 
-    Both systems are resampled on the *same* episode draw, which is what makes
-    the improvement's interval meaningful: the two scores are paired
-    observations of one episode, and resampling them independently would throw
-    that pairing away and widen the interval for no reason.
+    Clusters are series (``series_by_episode``; an episode missing from it is
+    its own series, and how many were is recorded). When the mapping covers none
+    of the scored episodes every episode is its own cluster, which is an episode
+    bootstrap, and the result's ``config.unit`` says ``episode`` so it is not
+    mistaken for the series one.
 
-    ``None`` everywhere when there are fewer than two scored episodes -- an
-    interval from one observation is not an interval.
+    Both systems are resampled on the *same* draw, which is what makes the
+    improvement's interval meaningful: the two scores are paired observations of
+    one episode, and resampling them independently would throw that pairing
+    away and widen the interval for no reason.
+
+    Not measured when fewer than two clusters have both scores -- an interval
+    from one series is not an interval.
     """
+    lookup = dict(series_by_episode or {})
     episodes = sorted(set(per_episode_baseline) & set(per_episode_model))
-    if len(episodes) < 2:
+    unmapped = [episode for episode in episodes if episode not in lookup]
+    unit = "series" if len(unmapped) < len(episodes) else "episode"
+    recorded_config = {**config.to_dict(), "unit": unit}
+    clusters: dict[str, list[str]] = {}
+    for episode_id in episodes:
+        clusters.setdefault(lookup.get(episode_id, episode_id), []).append(episode_id)
+    cluster_ids = sorted(clusters)
+    if len(cluster_ids) < 2:
         return {
             "measured": False,
             "reason": (
-                f"{len(episodes)} episode(s) have both scores; a bootstrap needs at "
-                "least two"
+                f"{len(episodes)} episode(s) in {len(cluster_ids)} {unit}(s) have both "
+                f"scores; a bootstrap over {unit} needs at least two"
             ),
-            "config": config.to_dict(),
+            "config": recorded_config,
         }
 
     generator = random.Random(config.seed)
     baseline_draws: list[float] = []
     model_draws: list[float] = []
     improvement_draws: list[float] = []
-    count = len(episodes)
+    cluster_count = len(cluster_ids)
     for _ in range(config.resamples):
-        sample = [episodes[generator.randrange(count)] for _ in range(count)]
-        baseline_mean = sum(per_episode_baseline[e] for e in sample) / count
-        model_mean = sum(per_episode_model[e] for e in sample) / count
+        drawn = [cluster_ids[generator.randrange(cluster_count)] for _ in range(cluster_count)]
+        sample = [episode for cluster in drawn for episode in clusters[cluster]]
+        baseline_mean = sum(per_episode_baseline[e] for e in sample) / len(sample)
+        model_mean = sum(per_episode_model[e] for e in sample) / len(sample)
         baseline_draws.append(baseline_mean)
         model_draws.append(model_mean)
         improvement = relative_improvement_percent(model_mean, baseline_mean)
@@ -208,8 +256,14 @@ def bootstrap_interval(
 
     return {
         "measured": True,
-        "config": config.to_dict(),
-        "episode_count": count,
+        "config": recorded_config,
+        "episode_count": len(episodes),
+        "series_count": cluster_count,
+        # Episodes with no series in the mapping, each resampled as its own.
+        "unmapped_episode_count": len(unmapped),
+        # Multisets of k clusters drawn with replacement: C(2k-1, k). With 3
+        # series that is 10, so a 95% interval is read off 10 possible values.
+        "distinct_resamples_possible": math.comb(2 * cluster_count - 1, cluster_count),
         "baseline_ndcg_at_3": percentiles(baseline_draws),
         "model_ndcg_at_3": percentiles(model_draws),
         "relative_improvement_percent": percentiles(improvement_draws),
@@ -305,11 +359,65 @@ class ComparisonResult:
     bootstrap: Mapping[str, Any] = field(default_factory=dict)
     metric_crosscheck: Mapping[str, Any] = field(default_factory=dict)
     classical_baseline: Mapping[str, Any] = field(default_factory=dict)
+    #: How the run related to the pre-registered protocol: was the checkpoint
+    #: the nominated one, was the label export the frozen one. Empty when the
+    #: caller applied no protocol (a library call); the CLI always fills it.
+    protocol: Mapping[str, Any] = field(default_factory=dict)
+    #: The pre-registered threshold, when the experiment was supplied.
+    claim_threshold_percent: float | None = None
+    claim_statement: str = ""
 
     @property
     def publishable(self) -> bool:
         """Whether the headline number may be published."""
         return not self.blocking_reasons
+
+    def claim(self) -> dict[str, Any]:
+        """PASS/FAIL against the pre-registered claim, computed on demand.
+
+        On demand because blocking reasons can still be added after
+        :func:`compare` returns (the CLI adds protocol findings), and the verdict
+        must reflect every one of them.
+        """
+        if self.claim_threshold_percent is None:
+            return {
+                "evaluated": False,
+                "verdict": None,
+                "reason": (
+                    "no pre-registered claim was supplied (pass --experiment-config), "
+                    "so there is nothing to judge this comparison against"
+                ),
+            }
+        threshold = float(self.claim_threshold_percent)
+        improvement = self.headline()["relative_improvement_percent"]
+        reasons: list[str] = []
+        if not self.publishable:
+            reasons.append(
+                "the headline is not publishable "
+                f"({len(self.blocking_reasons)} blocking reason(s)), so the claim "
+                "is unsupported whatever the number says"
+            )
+        if improvement is None:
+            reasons.append("the relative improvement is undefined")
+        elif improvement < threshold:
+            reasons.append(
+                f"the measured relative improvement {improvement:.2f} % is below the "
+                f"pre-registered {threshold:g} %"
+            )
+        interval = (
+            self.bootstrap.get("relative_improvement_percent")
+            if self.bootstrap.get("measured")
+            else None
+        )
+        return {
+            "evaluated": True,
+            "verdict": "FAIL" if reasons else "PASS",
+            "statement": self.claim_statement,
+            "minimum_relative_improvement_percent": threshold,
+            "measured_relative_improvement_percent": improvement,
+            "relative_improvement_interval": interval,
+            "reasons": reasons,
+        }
 
     def headline(self) -> dict[str, Any]:
         baseline = self.baseline_reports[3].aggregate["ndcg_at_k"]
@@ -346,10 +454,12 @@ class ComparisonResult:
             "bootstrap": dict(self.bootstrap),
             "metric_crosscheck": dict(self.metric_crosscheck),
             "classical_baseline": dict(self.classical_baseline),
+            "protocol": dict(self.protocol),
             "headline_publishable": self.publishable,
             "blocking_reasons": list(self.blocking_reasons),
             "warnings": list(self.warnings),
             "headline": self.headline(),
+            "claim": self.claim(),
             "metrics": {
                 "baseline": {
                     f"at_{k}": report.aggregate | report.coverage
@@ -427,8 +537,16 @@ def compare(
     classical_baseline: Mapping[str, Any] | None = None,
     require_metric_crosscheck: bool = True,
     synthetic_inputs: Sequence[str] = (),
+    protocol: Mapping[str, Any] | None = None,
+    claim_threshold_percent: float | None = None,
+    claim_statement: str = "",
 ) -> ComparisonResult:
-    """Score both systems on the same candidates with the same labels."""
+    """Score both systems on the same candidates with the same labels.
+
+    ``protocol`` carries the pre-registered checks the caller made (see
+    ``evaluation_cli``): a checkpoint the training matrix did not nominate, or a
+    label export not verified against the frozen snapshot, blocks the headline.
+    """
     if not examples:
         raise ValueError(
             "No labelled candidate in the evaluation split, so there is nothing "
@@ -492,6 +610,21 @@ def compare(
             "number measured on generated data is not a result."
         )
 
+    protocol_block = dict(protocol or {})
+    nomination = protocol_block.get("nomination")
+    if isinstance(nomination, Mapping) and not nomination.get("nominated"):
+        blocking.append(
+            "the evaluated checkpoint is not the run the training matrix nominated "
+            f"(median seed): {nomination.get('reason')}. It was evaluated only "
+            "because --allow-unnominated was passed."
+        )
+    snapshot = protocol_block.get("label_snapshot")
+    if isinstance(snapshot, Mapping) and not snapshot.get("verified"):
+        blocking.append(
+            "the label export was not verified against a frozen label snapshot: "
+            f"{snapshot.get('reason')}"
+        )
+
     leaked = sorted(set(training_episode_ids) & set(grouped))
     if leaked:
         blocking.append(
@@ -513,13 +646,15 @@ def compare(
     evaluated_series = {
         (series_by_episode or {}).get(episode_id, episode_id) for episode_id in grouped
     }
-    if len(evaluated_series) < 3:
+    if len(evaluated_series) <= MAX_SERIES_FOR_THIN_PARTITION_WARNING:
         warnings.append(
             f"the test partition holds {len(evaluated_series)} series "
             f"({sorted(evaluated_series)}). Episodes of one show share hosts, room, "
             "mic chain and editing rhythm, so a macro-average over them measures "
-            "one show's quirks as much as the model. Read the interval, not the "
-            "point estimate."
+            "one show's quirks as much as the model. The bootstrap resamples "
+            "series, and with this few it has only a handful of distinct resamples "
+            "to draw from, so even the interval is coarse. Read the interval, not "
+            "the point estimate."
         )
     if not inputs.seeds:
         warnings.append(
@@ -565,7 +700,10 @@ def compare(
         if entry.ndcg_at_k is not None
     }
     bootstrap_result = bootstrap_interval(
-        per_episode_baseline, per_episode_model, bootstrap or BootstrapConfig()
+        per_episode_baseline,
+        per_episode_model,
+        bootstrap or BootstrapConfig(),
+        series_by_episode=series_by_episode,
     )
     interval = (
         bootstrap_result.get("relative_improvement_percent")
@@ -576,7 +714,7 @@ def compare(
         warnings.append(
             f"the {bootstrap_result['config']['confidence']:.0%} bootstrap interval "
             f"for the relative improvement is [{interval['low']:.2f}, "
-            f"{interval['high']:.2f}] %, which spans zero: this many episodes cannot "
+            f"{interval['high']:.2f}] %, which spans zero: this many series cannot "
             "distinguish the model from the baseline."
         )
 
@@ -643,6 +781,9 @@ def compare(
         bootstrap=bootstrap_result,
         metric_crosscheck=crosscheck,
         classical_baseline=classical,
+        protocol=protocol_block,
+        claim_threshold_percent=claim_threshold_percent,
+        claim_statement=claim_statement,
     )
 
 
@@ -670,11 +811,25 @@ def _render_uncertainty(payload: Mapping[str, Any]) -> list[str]:
         ]
         return lines
     config = bootstrap["config"]
+    if config.get("unit") == "series":
+        unit_sentence = (
+            f"Percentile cluster bootstrap, {config['resamples']} resamples of "
+            f"{bootstrap.get('series_count')} series covering "
+            f"{bootstrap['episode_count']} episode(s), seed {config['seed']}. Series "
+            "are the resampling unit because episodes of one show are correlated; a "
+            "drawn series contributes all of its episodes. With "
+            f"{bootstrap.get('series_count')} series only "
+            f"{bootstrap.get('distinct_resamples_possible')} distinct resamples exist."
+        )
+    else:
+        unit_sentence = (
+            f"Percentile bootstrap, {config['resamples']} resamples over "
+            f"{bootstrap['episode_count']} episode(s), seed {config['seed']}. No "
+            "series mapping was supplied, so each episode was treated as "
+            "independent -- the interval is narrower than a series bootstrap's."
+        )
     lines += [
-        f"Percentile bootstrap, {config['resamples']} resamples over "
-        f"{bootstrap['episode_count']} episode(s), seed {config['seed']}. The "
-        "episode is the resampling unit because the metric is macro-averaged over "
-        "episodes.",
+        unit_sentence,
         "",
         f"- Baseline NDCG@3 {int(config['confidence'] * 100)}% interval: "
         + _interval(bootstrap.get("baseline_ndcg_at_3")),
@@ -685,6 +840,61 @@ def _render_uncertainty(payload: Mapping[str, Any]) -> list[str]:
         "",
     ]
     return lines
+
+
+def _render_claim(payload: Mapping[str, Any]) -> list[str]:
+    claim = payload.get("claim") or {}
+    if not claim.get("evaluated"):
+        return [
+            "## Claim verdict - NOT EVALUATED",
+            "",
+            f"{claim.get('reason', 'no pre-registered claim was supplied')}.",
+            "",
+        ]
+    lines = [
+        f"## Claim verdict: {claim['verdict']}",
+        "",
+        f"- Claim: {claim.get('statement') or '(no statement recorded)'}",
+        f"- Pre-registered minimum relative improvement: "
+        f"{claim['minimum_relative_improvement_percent']:g} %",
+        "- Measured relative improvement: "
+        + (
+            "undefined"
+            if claim.get("measured_relative_improvement_percent") is None
+            else f"{claim['measured_relative_improvement_percent']:.2f} %"
+        ),
+        "- Interval: " + _interval(claim.get("relative_improvement_interval"), " %"),
+        "",
+    ]
+    for reason in claim.get("reasons", ()):
+        lines.append(f"- FAIL because {reason}.")
+    if claim.get("reasons"):
+        lines.append("")
+    return lines
+
+
+def _render_protocol(payload: Mapping[str, Any]) -> list[str]:
+    protocol = payload.get("protocol") or {}
+    if not protocol:
+        return []
+    nomination = protocol.get("nomination") or {}
+    snapshot = protocol.get("label_snapshot") or {}
+    return [
+        "## Protocol",
+        "",
+        "- Nominated by the training matrix: "
+        + ("yes" if nomination.get("nominated") else "NO")
+        + (f" ({nomination.get('reason')})" if nomination.get("reason") else "")
+        + (
+            "; evaluated under --allow-unnominated"
+            if nomination.get("allowed_unnominated")
+            else ""
+        ),
+        "- Label export verified against the frozen snapshot: "
+        + ("yes" if snapshot.get("verified") else "NO")
+        + (f" ({snapshot.get('reason')})" if snapshot.get("reason") else ""),
+        "",
+    ]
 
 
 def _render_cohort(payload: Mapping[str, Any]) -> list[str]:
@@ -820,6 +1030,8 @@ def render_summary(payload: Mapping[str, Any]) -> str:
         "",
     ]
 
+    lines += _render_claim(payload)
+    lines += _render_protocol(payload)
     lines += _render_uncertainty(payload)
     lines += _render_cohort(payload)
     lines += _render_crosscheck(payload)

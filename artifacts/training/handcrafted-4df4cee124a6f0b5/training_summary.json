@@ -48,13 +48,13 @@
     }
   },
   "artifacts": {
-    "directory": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\handcrafted-4df4cee124a6f0b5",
-    "best_checkpoint": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\handcrafted-4df4cee124a6f0b5\\best_checkpoint.pt",
-    "last_checkpoint": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\handcrafted-4df4cee124a6f0b5\\last_checkpoint.pt",
-    "epoch_metrics": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\handcrafted-4df4cee124a6f0b5\\epoch_metrics.jsonl",
-    "dataset_summary": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\handcrafted-4df4cee124a6f0b5\\dataset_summary.json",
-    "normalizer": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\handcrafted-4df4cee124a6f0b5\\normalizer.json",
-    "resolved_config": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\handcrafted-4df4cee124a6f0b5\\resolved_config.json"
+    "directory": "artifacts/training/handcrafted-4df4cee124a6f0b5",
+    "best_checkpoint": "artifacts/training/handcrafted-4df4cee124a6f0b5/best_checkpoint.pt",
+    "last_checkpoint": "artifacts/training/handcrafted-4df4cee124a6f0b5/last_checkpoint.pt",
+    "epoch_metrics": "artifacts/training/handcrafted-4df4cee124a6f0b5/epoch_metrics.jsonl",
+    "dataset_summary": "artifacts/training/handcrafted-4df4cee124a6f0b5/dataset_summary.json",
+    "normalizer": "artifacts/training/handcrafted-4df4cee124a6f0b5/normalizer.json",
+    "resolved_config": "artifacts/training/handcrafted-4df4cee124a6f0b5/resolved_config.json"
   },
   "environment": {
     "device": "cpu",

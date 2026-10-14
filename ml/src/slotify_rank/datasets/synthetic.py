@@ -5,9 +5,12 @@ here is a human judgement. The fixtures exist so the real training path -- the
 real loader, the real normalizer, the real pair generator, the real PyTorch
 modules, the real optimizer -- can be exercised end to end before enough genuine
 labels exist to train on. Every artifact written by this module carries
-``"synthetic": true`` and a ``label_source`` of ``"synthetic"``, and the
-training reports propagate that flag, so a metric measured on it can never be
-mistaken for a model-quality result.
+``"synthetic": true`` and a ``label_source`` of ``"synthetic"`` -- on the export's
+metadata *and on every label row* -- and the training reports propagate both, so
+a metric measured on it can never be mistaken for a model-quality result. The
+label loader is human-only by default, so training on the fixture means naming
+the source (``--allow-label-source synthetic``), exactly as a weak-label run
+must; every gate that requires human labels refuses it.
 
 Why not just mock the tensors: because the failures worth catching live in the
 joins -- a row id that does not resolve, a split that leaks, a feature column
@@ -45,6 +48,7 @@ from slotify_rank.data import manifests
 from slotify_rank.data.checksum import atomic_write_bytes
 from slotify_rank.data.paths import DataPaths
 from slotify_rank.data.schema import DatasetCandidate, EpisodeRecord
+from slotify_rank.datasets.labels import SYNTHETIC_LABEL_SOURCE
 from slotify_rank.datasets.schema import NATIVE_EMBEDDING_DIMENSION
 from slotify_rank.embeddings.store import EmbeddingMetadata, write_embeddings
 from slotify_rank.features.assemble import write_feature_manifest
@@ -327,7 +331,9 @@ def build_synthetic_corpus(
                     "is_unusable": False,
                     "notes": None,
                     "rubric_version": LABEL_RUBRIC_VERSION,
-                    "label_source": "human",
+                    # Not "human": these are generated numbers, and a fixture
+                    # that claimed otherwise would pass every human-only gate.
+                    "label_source": SYNTHETIC_LABEL_SOURCE,
                     "synthetic": True,
                 }
             )
@@ -379,7 +385,7 @@ def build_synthetic_corpus(
         "acceptable_rule": f"quality_score >= {config.acceptable_threshold}",
         "row_count": len(label_rows),
         "annotators": [config.annotator_id],
-        "label_source": "human",
+        "label_source": SYNTHETIC_LABEL_SOURCE,
         "synthetic": True,
         "note": (
             "SYNTHETIC FIXTURE. These are generated numbers, not human judgements. "

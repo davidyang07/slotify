@@ -48,13 +48,13 @@
     }
   },
   "artifacts": {
-    "directory": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\concat-3a9f3c90166e0027",
-    "best_checkpoint": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\concat-3a9f3c90166e0027\\best_checkpoint.pt",
-    "last_checkpoint": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\concat-3a9f3c90166e0027\\last_checkpoint.pt",
-    "epoch_metrics": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\concat-3a9f3c90166e0027\\epoch_metrics.jsonl",
-    "dataset_summary": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\concat-3a9f3c90166e0027\\dataset_summary.json",
-    "normalizer": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\concat-3a9f3c90166e0027\\normalizer.json",
-    "resolved_config": "C:\\Users\\danda\\OneDrive\\Documents\\GitHub\\slotify\\artifacts\\training\\concat-3a9f3c90166e0027\\resolved_config.json"
+    "directory": "artifacts/training/concat-3a9f3c90166e0027",
+    "best_checkpoint": "artifacts/training/concat-3a9f3c90166e0027/best_checkpoint.pt",
+    "last_checkpoint": "artifacts/training/concat-3a9f3c90166e0027/last_checkpoint.pt",
+    "epoch_metrics": "artifacts/training/concat-3a9f3c90166e0027/epoch_metrics.jsonl",
+    "dataset_summary": "artifacts/training/concat-3a9f3c90166e0027/dataset_summary.json",
+    "normalizer": "artifacts/training/concat-3a9f3c90166e0027/normalizer.json",
+    "resolved_config": "artifacts/training/concat-3a9f3c90166e0027/resolved_config.json"
   },
   "environment": {
     "device": "cpu",

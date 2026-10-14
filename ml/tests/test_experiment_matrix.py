@@ -194,3 +194,13 @@ def test_a_run_that_wrote_nothing_is_recorded_as_such(tmp_path: Path):
     outcome = read_outcome(PlannedRun("gated", 42, tmp_path / "absent"), 0)
     assert outcome.ok is False
     assert "no training_summary.json" in outcome.error
+
+
+def test_an_outcome_records_its_run_directory_repo_relative():
+    """The matrix summary is committed with the runs; no absolute paths."""
+    from slotify_rank.config.settings import find_repo_root
+    from slotify_rank.experiment.matrix import PlannedRun
+
+    run_dir = Path(find_repo_root()) / "artifacts" / "training" / "gated-seed42-absent"
+    outcome = read_outcome(PlannedRun("gated", 42, run_dir), 1)
+    assert outcome.run_dir == "artifacts/training/gated-seed42-absent"

@@ -158,7 +158,8 @@ python -m slotify_rank.cli experiment manifest --require-ready
 python -m slotify_rank.cli experiment train \
     --labels ../data/labels/labels_full-v2.jsonl --split-version v4
 
-# Once, at the end, on the frozen test split.
+# Once, at the end, on the frozen test split. <run> is the run the matrix
+# nominated (printed by `experiment train`); any other is refused.
 python -m slotify_rank.cli evaluation compare \
     --labels ../data/labels/labels_full-v2.jsonl \
     --model ../artifacts/training/<run>/best_checkpoint.pt \
@@ -167,11 +168,36 @@ python -m slotify_rank.cli evaluation compare \
     --require-publishable
 ```
 
-`evaluation compare` refuses to publish a headline unless the ground truth is
-human, the model was trained on human labels, the baseline is the canonical one,
-the split is `test`, no evaluation episode was trained on, and this project's
-NDCG agrees with `sklearn.metrics.ndcg_score`. Each refusal is written into the
-artifact with its reason.
+`evaluation compare` enforces the protocol rather than only recording it:
+
+- **Only the nominated run.** With `--experiment-config`, it reads
+  `artifacts/experiments/<experiment_version>-training-matrix.json` (or
+  `--training-matrix`) and refuses any `--model` whose `run_id` is not the run
+  the matrix nominated — the median seed of the headline variant, from a matrix
+  with no blocking reason. `--allow-unnominated` evaluates another checkpoint
+  anyway; that is recorded under `protocol.nomination` and the headline is not
+  publishable.
+- **Only the frozen labels.** Before anything is scored, the label export is
+  verified against the frozen snapshot the experiment names
+  (`data/labels/label_snapshot_<snapshot_version>.json`, or `--label-snapshot`):
+  the export's bytes, and the candidate, feature and split manifests the
+  snapshot recorded. A missing snapshot or any mismatch is a refusal. A
+  comparison with no snapshot named at all (no `--experiment-config`, no
+  `--label-snapshot`) runs, but is recorded as unverified and is not
+  publishable.
+- **A verdict, not a description.** The report carries `claim.verdict`: **PASS**
+  only when the headline is publishable *and* the relative improvement is at
+  least the experiment's `minimum_relative_improvement_percent` (18 %);
+  otherwise **FAIL**, with every reason. The bootstrap interval is reported
+  next to it.
+
+It refuses to publish a headline unless the ground truth is human, the model was
+trained on human labels, the baseline is the canonical one, the split is `test`,
+no evaluation episode was trained on, the protocol above was followed, the
+evaluated features were built under the same feature spec and pipeline versions
+the model was trained on, and this project's NDCG agrees with
+`sklearn.metrics.ndcg_score`. Each refusal is written into the artifact with its
+reason.
 
 ---
 
@@ -201,12 +227,19 @@ it.
 
 ## Uncertainty
 
-NDCG@3 is macro-averaged over episodes and a test split holds a few dozen of
-them, so the point estimate has real spread. `evaluation compare` bootstraps
-over **episodes** — the unit the average is taken over — resampling both systems
+NDCG@3 is macro-averaged over episodes, and the test split is small: the
+committed split v4 (`artifacts/dataset/split_statistics.json`) holds **7 test
+episodes from 3 series**. Episodes of one show are correlated — that is why the
+split groups on series — so they are not 7 independent observations.
+`evaluation compare` therefore runs a **cluster bootstrap over series**: series
+are resampled with replacement, every episode of a drawn series is kept, and the
+macro-average is taken over the resulting episodes. Both systems are resampled
 on the same draw, because the two scores are paired observations of one episode.
-The interval on the *improvement* is the one that matters: an improvement whose
-interval spans zero is not a result, and the comparison says so in its caveats.
+With 3 series there are only 10 distinct resamples, so the interval is coarse,
+and the report says how many series it rests on; a test partition of 3 or fewer
+series also carries an explicit caveat. The interval on the *improvement* is the
+one that matters: an improvement whose interval spans zero is not a result, and
+the comparison says so in its caveats.
 
 ---
 

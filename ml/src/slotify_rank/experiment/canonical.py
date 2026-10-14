@@ -44,6 +44,7 @@ from slotify_rank.config.versions import (
 from slotify_rank.data.checksum import atomic_write_bytes, sha256_file, sha256_text
 
 __all__ = [
+    "CANONICAL_SPLIT_VERSION",
     "EXPERIMENT_CONFIG_SCHEMA_VERSION",
     "ExperimentConfigError",
     "ExperimentConfig",
@@ -55,6 +56,14 @@ __all__ = [
 ]
 
 EXPERIMENT_CONFIG_SCHEMA_VERSION = "experiment-config-v1.0.0"
+
+#: The split every command defaults to: the one ``ml/configs/experiment_v2.yaml``
+#: commits to (``split.version``). One constant, because `training`, `evaluation`
+#: and `experiment` once defaulted to v1, v2 and v4 respectively -- so a model
+#: trained with the defaults was evaluated against a different partition than
+#: the one it was selected on, and nothing said so. A test asserts this matches
+#: the committed experiment definition.
+CANONICAL_SPLIT_VERSION = "v4"
 
 
 class ExperimentConfigError(ValueError):
@@ -242,15 +251,22 @@ def resolve_manifest(
 
     from slotify_rank.data.splits import read_split_manifest
 
+    from slotify_rank.training.reporting import repo_relative
+
     root = Path(repo_root)
     blocking: list[str] = []
     warnings: list[str] = []
 
+    def shown(path: Path) -> str:
+        # The resolved manifest is committed: record where things are relative
+        # to the repository, never the operator's home directory.
+        return repo_relative(path, root)
+
     split_path = paths.split_manifest(config.split_version)
-    split_summary: dict[str, Any] = {"manifest_path": str(split_path)}
+    split_summary: dict[str, Any] = {"manifest_path": shown(split_path)}
     if not split_path.is_file():
         blocking.append(
-            f"split manifest {split_path} does not exist; run `dataset split "
+            f"split manifest {shown(split_path)} does not exist; run `dataset split "
             f"--config {config.split['config']}` first"
         )
     else:
@@ -308,8 +324,8 @@ def resolve_manifest(
     )
     label_summary: dict[str, Any] = {
         "snapshot_version": config.labels["snapshot_version"],
-        "snapshot_path": str(snapshot_path),
-        "export_path": str(label_export),
+        "snapshot_path": shown(snapshot_path),
+        "export_path": shown(label_export),
         "minimum_human_labels": config.minimum_human_labels,
         "human_label_count": human_label_count,
         "allowed_label_sources": list(config.labels["allowed_label_sources"]),
@@ -326,7 +342,7 @@ def resolve_manifest(
         )
     if not snapshot_path.is_file():
         warnings.append(
-            f"no frozen label snapshot at {snapshot_path}; freeze one with "
+            f"no frozen label snapshot at {shown(snapshot_path)}; freeze one with "
             "`experiment freeze` before evaluating"
         )
 
@@ -375,13 +391,13 @@ def resolve_manifest(
         blocking.append(
             f"the labelling queue config declared at "
             f"{config.labels['queue_config']} does not exist, so the manifest "
-            f"cannot pin it (looked in {root / str(config.labels['queue_config'])})"
+            f"cannot pin it (looked in {shown(root / str(config.labels['queue_config']))})"
         )
     if artifact_hashes["labelling_queue"] is None:
         blocking.append(
             f"the labelling queue declared at {config.labels['queue_artifact']} "
             f"does not exist, so the manifest cannot pin the candidates shown to "
-            f"annotators (looked in {queue_path})"
+            f"annotators (looked in {shown(queue_path)})"
         )
 
     feature_schema = {
@@ -404,7 +420,7 @@ def resolve_manifest(
         )
     else:
         blocking.append(
-            f"no feature manifest at {paths.features_manifest}; run the feature "
+            f"no feature manifest at {shown(paths.features_manifest)}; run the feature "
             "pipeline before resolving the experiment"
         )
 

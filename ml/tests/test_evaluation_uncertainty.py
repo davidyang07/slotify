@@ -5,8 +5,8 @@ and a metric verified only against itself is not verified. These cover the parts
 of the comparison that exist to stop a plausible number being mistaken for a
 solid one:
 
-* the bootstrap interval, and that it resamples *episodes* rather than
-  candidates;
+* the bootstrap interval, and that it resamples *series* -- the unit episodes
+  are correlated within -- rather than episodes or candidates;
 * the cohort counts, so a reader can see how much data the number rests on;
 * the independent metric cross-check, whose failure blocks publication;
 * the classical comparison point, reported alongside and never as the
@@ -54,7 +54,7 @@ def _many_episodes(count: int = 12):
 # --------------------------------------------------------------------------
 
 
-def test_the_bootstrap_resamples_episodes_not_candidates():
+def test_without_a_series_mapping_the_unit_is_the_episode_and_says_so():
     per_episode_baseline = {f"ep-{i}": 0.5 for i in range(10)}
     per_episode_model = {f"ep-{i}": 0.7 for i in range(10)}
     result = bootstrap_interval(
@@ -63,6 +63,58 @@ def test_the_bootstrap_resamples_episodes_not_candidates():
     assert result["measured"] is True
     assert result["episode_count"] == 10
     assert result["config"]["unit"] == "episode"
+
+
+def test_the_bootstrap_resamples_series_not_episodes():
+    """Two shows, five episodes each, the model better on one and worse on the
+    other. Ten "independent" episodes give a tight interval around no change;
+    two series -- which is what the data actually holds -- cannot rule out a
+    large effect either way, and the cluster interval must say so."""
+    series = {f"a-{i}": "show-a" for i in range(5)} | {f"b-{i}": "show-b" for i in range(5)}
+    baseline = {f"a-{i}": 0.5 for i in range(5)} | {f"b-{i}": 0.9 for i in range(5)}
+    model = {f"a-{i}": 0.9 for i in range(5)} | {f"b-{i}": 0.5 for i in range(5)}
+    config = BootstrapConfig(resamples=1000, seed=3)
+
+    clustered = bootstrap_interval(baseline, model, config, series_by_episode=series)
+    naive = bootstrap_interval(baseline, model, config)
+
+    assert clustered["config"]["unit"] == "series"
+    assert clustered["series_count"] == 2
+    assert clustered["episode_count"] == 10
+    assert clustered["distinct_resamples_possible"] == 3
+
+    def width(result):
+        block = result["relative_improvement_percent"]
+        return block["high"] - block["low"]
+
+    assert width(clustered) > width(naive)
+
+
+def test_a_drawn_series_contributes_every_one_of_its_episodes():
+    """One series of one episode scoring 0, one of three scoring 1. The only
+    resamples are {A,A}, {A,B} and {B,B}, whose episode macro-averages are 0,
+    3/4 and 1 -- an episode bootstrap could also produce 1/4 or 1/2."""
+    series = {"a-0": "a", "b-0": "b", "b-1": "b", "b-2": "b"}
+    model = {"a-0": 0.0, "b-0": 1.0, "b-1": 1.0, "b-2": 1.0}
+    baseline = dict.fromkeys(model, 0.5)
+    result = bootstrap_interval(
+        baseline, model, BootstrapConfig(resamples=500, seed=1), series_by_episode=series
+    )
+    interval = result["model_ndcg_at_3"]
+    assert interval["low"] in (0.0, 0.75, 1.0)
+    assert interval["high"] in (0.0, 0.75, 1.0)
+    assert interval["low"] < interval["high"]
+
+
+def test_a_single_series_cannot_be_bootstrapped_and_says_so():
+    one_show = {f"ep-{i}": "only-show" for i in range(4)}
+    scores = {f"ep-{i}": 0.5 for i in range(4)}
+    result = bootstrap_interval(
+        scores, dict(scores), BootstrapConfig(), series_by_episode=one_show
+    )
+    assert result["measured"] is False
+    assert "at least two" in result["reason"]
+    assert "series" in result["reason"]
 
 
 def test_a_single_episode_cannot_be_bootstrapped_and_says_so():
@@ -85,13 +137,17 @@ def test_the_two_systems_are_resampled_on_the_same_episode_draw():
 
     Identical per-episode scores must give an improvement interval of exactly
     zero. Resampling the two independently would produce a spread instead, which
-    is the bug this pairing exists to avoid.
+    is the bug this pairing exists to avoid. Holds for the series draw too.
     """
     scores = {f"ep-{i}": 0.2 + 0.07 * i for i in range(10)}
-    result = bootstrap_interval(scores, dict(scores), BootstrapConfig(resamples=400))
-    interval = result["relative_improvement_percent"]
-    assert interval["low"] == pytest.approx(0.0)
-    assert interval["high"] == pytest.approx(0.0)
+    series = {f"ep-{i}": f"show-{i % 3}" for i in range(10)}
+    for mapping in (None, series):
+        result = bootstrap_interval(
+            scores, dict(scores), BootstrapConfig(resamples=400), series_by_episode=mapping
+        )
+        interval = result["relative_improvement_percent"]
+        assert interval["low"] == pytest.approx(0.0)
+        assert interval["high"] == pytest.approx(0.0)
 
 
 def test_an_interval_spanning_zero_is_reported_as_a_caveat():
@@ -329,9 +385,25 @@ def test_a_single_series_test_partition_is_called_out():
     assert any("one show's quirks" in warning for warning in result.warnings)
 
 
-def test_a_broad_test_partition_raises_no_series_caveat():
+def test_three_series_is_still_called_out():
+    """The committed test split is 7 episodes from exactly 3 series. A caveat
+    that fired only below 3 would stay silent on the one split that exists."""
     examples, baseline, model = three_episodes()
-    many = {f"ep-{i}": f"series-{i}" for i in range(3)}
+    three = {f"ep-{i}": f"series-{i}" for i in range(3)}
+    result = compare(
+        examples=examples,
+        baseline_scores=baseline,
+        model_scores=model,
+        inputs=inputs(),
+        evaluation_id="eval-three-series",
+        series_by_episode=three,
+    )
+    assert any("3 series" in warning for warning in result.warnings)
+
+
+def test_a_broad_test_partition_raises_no_series_caveat():
+    examples, baseline, model = _many_episodes(count=8)
+    many = {f"ep-{i}": f"series-{i % 4}" for i in range(8)}
     result = compare(
         examples=examples,
         baseline_scores=baseline,
@@ -341,3 +413,5 @@ def test_a_broad_test_partition_raises_no_series_caveat():
         series_by_episode=many,
     )
     assert not any("series (" in warning for warning in result.warnings)
+    assert result.bootstrap["config"]["unit"] == "series"
+    assert result.bootstrap["series_count"] == 4

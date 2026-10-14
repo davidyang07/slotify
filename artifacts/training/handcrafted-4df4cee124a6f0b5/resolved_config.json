@@ -11,7 +11,7 @@
     }
   },
   "smoke": false,
-  "label_source": "human",
+  "label_source": "synthetic",
   "synthetic_data": true,
   "training": {
     "optimizer": "adamw",

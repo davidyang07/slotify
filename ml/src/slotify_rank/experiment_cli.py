@@ -20,10 +20,30 @@ from slotify_rank.data import manifests
 from slotify_rank.data.checksum import sha256_file
 from slotify_rank.data.paths import DataPaths
 from slotify_rank.datasets.labels import AggregatedLabel, aggregate_labels
+from slotify_rank.experiment.canonical import CANONICAL_SPLIT_VERSION
 from slotify_rank.labelling.database import DEFAULT_ACCEPTABLE_THRESHOLD, LabelDatabase
 from slotify_rank.labelling.export import build_export_rows
 
 __all__ = ["register"]
+
+
+def _recorded_fingerprint(run_dir: Path) -> str | None:
+    """The dataset fingerprint a finished cell trained against, if recorded.
+
+    ``training_summary.json`` carries it from this version on; older runs carry
+    it only in ``resolved_config.json``, which every run has written.
+    """
+    for name in ("training_summary.json", "resolved_config.json"):
+        path = run_dir / name
+        if not path.is_file():
+            continue
+        try:
+            value = json.loads(path.read_text(encoding="utf-8")).get("dataset_fingerprint")
+        except (json.JSONDecodeError, OSError):
+            continue
+        if value:
+            return str(value)
+    return None
 
 
 def _paths(args: argparse.Namespace) -> DataPaths:
@@ -242,11 +262,13 @@ def _cmd_train(args: argparse.Namespace) -> int:
         load_experiment_config,
     )
     from slotify_rank.experiment.matrix import (
+        RunOutcome,
         plan_runs,
         read_outcome,
         summarise_matrix,
         write_matrix_summary,
     )
+    from slotify_rank.training.prepare import dataset_fingerprint
     from slotify_rank.training_cli import _cmd_run
 
     paths = _paths(args)
@@ -270,15 +292,29 @@ def _cmd_train(args: argparse.Namespace) -> int:
     print(f"  labels : {args.labels}")
     print(f"  output : {output_root}")
 
+    # What every cell is about to train against. A finished cell is reused only
+    # when it trained against exactly this: same feature manifest bytes, same
+    # label export bytes. Otherwise a matrix re-run after new labels arrived
+    # would quietly report runs trained on the old ones.
+    expected_fingerprint = dataset_fingerprint(paths.features_manifest, Path(args.labels))
+
     outcomes = []
     for index, run in enumerate(runs, start=1):
         print()
         print(f"[{index}/{len(runs)}] {run.name}")
         print("-" * 72)
         if run.run_dir.joinpath("training_summary.json").is_file() and not args.force:
-            print("  already trained; reading its summary (pass --force to retrain)")
-            outcomes.append(read_outcome(run, 0))
-            continue
+            recorded = _recorded_fingerprint(run.run_dir)
+            if recorded == expected_fingerprint:
+                print("  already trained on this data; reading its summary "
+                      "(pass --force to retrain)")
+                outcomes.append(read_outcome(run, 0))
+                continue
+            print(
+                "  a previous run exists but trained on different data (dataset "
+                f"fingerprint {str(recorded)[:16]} != {expected_fingerprint[:16]}); "
+                "retraining"
+            )
         # The same namespace `training run` would build. Label source is left
         # unset on purpose: this experiment trains on human labels only, and the
         # loader's default allowlist is human-only, so a weak export fails here
@@ -309,7 +345,22 @@ def _cmd_train(args: argparse.Namespace) -> int:
         except Exception as error:  # noqa: BLE001 - recorded, not swallowed
             code = 1
             print(f"  run raised: {type(error).__name__}: {error}")
-        outcomes.append(read_outcome(run, code))
+        outcome = read_outcome(run, code)
+        if code != 0 and _recorded_fingerprint(run.run_dir) != expected_fingerprint:
+            # Whatever summary sits in the directory belongs to an earlier run on
+            # other data; reporting its metrics next to this failure would
+            # attribute them to a run that never finished.
+            outcome = RunOutcome(
+                variant=run.variant,
+                seed=run.seed,
+                run_dir=outcome.run_dir,
+                exit_code=code,
+                error=(
+                    "the run failed; the summary left in its directory is from an "
+                    "earlier run on different data and is not reported"
+                ),
+            )
+        outcomes.append(outcome)
 
     summary = summarise_matrix(
         experiment_version=config.experiment_version,
@@ -385,7 +436,18 @@ def _cmd_freeze(args: argparse.Namespace) -> int:
     for cid in sorted(unusable & set(aggregated)):
         excluded.append({"candidate_id": cid, "reason": "marked_unusable"})
 
-    label_export = paths.labels_dir / f"labels_{args.dataset_version}.jsonl"
+    # The export a snapshot pins is the one `label export --dataset-version`
+    # wrote under the same name, so by default the snapshot version names it.
+    dataset_version = args.dataset_version or args.snapshot_version
+    label_export = paths.labels_dir / f"labels_{dataset_version}.jsonl"
+    if not label_export.is_file():
+        print(
+            f"error: no label export at {label_export}. Run `label export "
+            f"--dataset-version {dataset_version}` first: a snapshot that pins no "
+            "export cannot be verified by `evaluation compare`.",
+            file=sys.stderr,
+        )
+        return 1
     queue_hash = (
         sha256_file(Path(args.queue)) if args.queue and Path(args.queue).is_file() else None
     )
@@ -428,7 +490,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     readiness.add_argument("--data-root", default=None)
     readiness.add_argument("--queue", default=None, help="Assigned queue artifact.")
-    readiness.add_argument("--split-version", default="v4")
+    readiness.add_argument("--split-version", default=CANONICAL_SPLIT_VERSION)
     readiness.add_argument(
         "--experiment-config",
         default=None,
@@ -490,7 +552,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     train.add_argument(
         "--training-config", default=None, dest="training_config"
     )
-    train.add_argument("--split-version", default="v4", dest="split_version")
+    train.add_argument(
+        "--split-version", default=CANONICAL_SPLIT_VERSION, dest="split_version"
+    )
     train.add_argument(
         "--output-root",
         default=None,
@@ -512,7 +576,9 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     train.add_argument(
         "--force",
         action="store_true",
-        help="Retrain cells that already have a training_summary.json.",
+        help="Retrain cells that already have a training_summary.json. Without "
+        "it, a cell is reused only when it trained on the same dataset "
+        "fingerprint (feature manifest + label export bytes).",
     )
     train.set_defaults(func=_cmd_train)
 
@@ -521,8 +587,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     freeze.add_argument("--data-root", default=None)
     freeze.add_argument("--queue", default=None)
-    freeze.add_argument("--split-version", default="v4")
-    freeze.add_argument("--dataset-version", default="v1")
+    freeze.add_argument("--split-version", default=CANONICAL_SPLIT_VERSION)
+    freeze.add_argument(
+        "--dataset-version",
+        default=None,
+        help="Which labels_<version>.jsonl export the snapshot pins (default: the "
+        "snapshot version, matching `label export --dataset-version`).",
+    )
     freeze.add_argument("--snapshot-version", default="v1")
     freeze.add_argument("--output", default=None)
     freeze.add_argument(
