@@ -348,19 +348,34 @@ function App() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
 
+    // Colours come from the DESIGN.md tokens in index.css, so the canvas and
+    // the CSS around it cannot drift apart.
+    const tokens = getComputedStyle(document.documentElement);
+    const token = (name: string, fallback: string) =>
+      tokens.getPropertyValue(name).trim() || fallback;
+    const colors = {
+      well: token("--canvas", "#010102"),
+      wave: token("--wave", "#8a8f98"),
+      marker: token("--wave-marker", "#62666d"),
+      selected: token("--accent", "#c8a84a"),
+      cursor: token("--ink", "#f7f8f8"),
+      label: token("--ink-subtle", "#8a8f98"),
+      font: token("--font-sans", "sans-serif"),
+    };
+
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = colors.well;
     ctx.fillRect(0, 0, width, height);
 
     const peaks = waveformPeaks;
     if (!peaks || peaks.length === 0) {
-      ctx.fillStyle = "rgba(10, 10, 10, 0.45)";
-      ctx.font = "12px 'Source Serif 4', serif";
+      ctx.fillStyle = colors.label;
+      ctx.font = `12px ${colors.font}`;
       ctx.fillText("Upload a base audio file to render waveform.", 12, height / 2);
       return;
     }
 
-    ctx.strokeStyle = "rgba(13, 102, 92, 0.9)";
+    ctx.strokeStyle = colors.wave;
     ctx.lineWidth = 1;
     const mid = height / 2;
     const step = width / peaks.length;
@@ -385,8 +400,8 @@ function App() {
         const x = clamped * (width - 1) + 0.5;
         if (Number.isFinite(x)) {
           ctx.strokeStyle = selectedSlotIds.includes(slot.id)
-            ? "rgba(79, 181, 120, 0.85)"
-            : "rgba(255, 193, 7, 0.75)";
+            ? colors.selected
+            : colors.marker;
           ctx.beginPath();
           ctx.moveTo(x, 8);
           ctx.lineTo(x, height - 8);
@@ -406,7 +421,7 @@ function App() {
         const clamped = Math.max(0, Math.min(1, ratio));
         const x = clamped * (width - 1) + 0.5;
         if (Number.isFinite(x)) {
-          ctx.strokeStyle = "rgba(245, 157, 0, 0.95)";
+          ctx.strokeStyle = colors.cursor;
           ctx.beginPath();
           ctx.moveTo(x, 4);
           ctx.lineTo(x, height - 4);
@@ -990,7 +1005,7 @@ function App() {
           <SoundwaveIcon size="md" variant={activePage === "landing" ? "light" : "light"} />
           <SlotifyLogo size="md" variant={activePage === "landing" ? "light" : "light"} />
         </a>
-        <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
+        <div className="topbar-actions">
           <div className="nav-steps">
             {timelineSteps.map((step) => (
               <button
@@ -1052,14 +1067,17 @@ function App() {
         <section className="page">
           <div className="upload-flow">
             {timelineSteps.map((step, index) => (
-              <div key={step.id} className="flow-step">
+              <div
+                key={step.id}
+                className={`flow-step${index === 0 ? " active" : ""}`}
+                aria-current={index === 0 ? "step" : undefined}
+              >
                 <div
                   className={`flow-dot${
                     index === 0 ? " active" : ""
                   }`}
-                >
-                  {index === 0 ? "↑" : index === 1 ? "✦" : index === 2 ? "▶" : "↓"}
-                </div>
+                  aria-hidden="true"
+                />
                 <span>{step.label}</span>
               </div>
             ))}
@@ -1201,13 +1219,20 @@ function App() {
               const isActive = step.id === "analyze";
               const isComplete = index === 0;
               return (
-                <div key={step.id} className="task-step">
+                <div
+                  key={step.id}
+                  className={`task-step${isActive ? " active" : ""}${
+                    isComplete ? " complete" : ""
+                  }`}
+                  aria-current={isActive ? "step" : undefined}
+                >
                   <div
                     className={`task-dot${isActive ? " active" : ""}${
                       isComplete ? " complete" : ""
                     }`}
+                    aria-hidden="true"
                   >
-                    {isComplete ? "✓" : index === 1 ? "✦" : index === 2 ? "▶" : "↓"}
+                    {isComplete ? "✓" : null}
                   </div>
                   <span>{step.label}</span>
                 </div>
@@ -1329,7 +1354,7 @@ function App() {
                   </div>
                   <button
                     type="button"
-                    className="primary"
+                    className="secondary"
                     onClick={() => {
                       const minutes = parseInt(newSlotMinutes) || 0;
                       const seconds = parseInt(newSlotSeconds) || 0;
@@ -1458,8 +1483,22 @@ function App() {
                               className={`note-icon ${
                                 signal.kind === "supporting" ? "up" : "down"
                               }`}
+                              aria-hidden="true"
                             >
-                              {signal.kind === "supporting" ? "OK" : "!"}
+                              {signal.kind === "supporting" ? (
+                                <svg viewBox="0 0 12 12" width="12" height="12">
+                                  <path
+                                    d="M2.5 6.2 4.9 8.5 9.5 3.5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.6"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              ) : (
+                                "!"
+                              )}
                             </span>
                             {signal.label}
                           </div>
@@ -1471,7 +1510,7 @@ function App() {
                       <div className="slot-preview-actions">
                         <button
                           type="button"
-                          className="ghost"
+                          className="secondary"
                           onClick={() => {
                             setSelectedSlotIds((prev) =>
                               prev.includes(slot.id) ? prev : [...prev, slot.id],
@@ -1486,11 +1525,30 @@ function App() {
                         </button>
                         <button
                           type="button"
-                          className={`primary select-slot${
+                          className={`secondary select-slot${
                             selectedSlotIds.includes(slot.id) ? " selected" : ""
                           }`}
+                          aria-pressed={selectedSlotIds.includes(slot.id)}
                           onClick={() => toggleSlotSelection(slot.id)}
                         >
+                          {selectedSlotIds.includes(slot.id) && (
+                            <svg
+                              className="select-slot-check"
+                              viewBox="0 0 12 12"
+                              width="12"
+                              height="12"
+                              aria-hidden="true"
+                            >
+                              <path
+                                d="M2.5 6.2 4.9 8.5 9.5 3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          )}
                           {selectedSlotIds.includes(slot.id)
                             ? "Selected"
                             : "Select Slot"}
@@ -1589,7 +1647,7 @@ function App() {
               </div>
               <button
                 type="button"
-                className="ghost"
+                className="secondary"
                 onClick={() => setActivePage("landing")}
               >
                 Back to start
@@ -1604,11 +1662,13 @@ function App() {
                 </div>
                 <div className="summary-item">
                   <span>Placement score</span>
-                  <strong>{selectedPlacementScore}</strong>
+                  <strong className="summary-mono">{selectedPlacementScore}</strong>
                 </div>
                 <div className="summary-item">
                   <span>Ranked by</span>
-                  <strong>{describeSource(placement?.provenance ?? null)}</strong>
+                  <strong className="summary-mono">
+                    {describeSource(placement?.provenance ?? null)}
+                  </strong>
                 </div>
                 <div className="summary-item">
                   <span>Sponsor</span>
@@ -1616,9 +1676,11 @@ function App() {
                     {selectedSponsorName || "Add sponsor name"}
                   </strong>
                 </div>
+                {/* One amber control per screen: once there is output to
+                    download, Download is the primary and re-rendering is not. */}
                 <button
                   type="button"
-                  className="primary"
+                  className={audioUrl && !isRendering ? "secondary" : "primary"}
                   onClick={() => requestGeneration("render", selectedSlotIds)}
                   disabled={isRendering || Boolean(generationBlocked)}
                   title={generationBlocked ?? undefined}
@@ -1636,16 +1698,16 @@ function App() {
                 
                 {/* Preview and Download section - shown after rendering */}
                 {audioUrl && !isRendering && (
-                  <div style={{ marginTop: "24px", paddingTop: "24px", borderTop: "1px solid #e0e0e0" }}>
-                    <div style={{ marginBottom: "16px" }}>
-                      <h3 style={{ margin: "0 0 12px 0", fontSize: "16px", fontWeight: "600" }}>
+                  <div className="export-output">
+                    <div className="export-output-preview">
+                      <h3 className="export-output-title">
                         Final Audio Preview
                       </h3>
-                      <audio 
-                        ref={audioRef} 
-                        controls 
+                      <audio
+                        ref={audioRef}
+                        controls
                         src={audioUrl}
-                        style={{ width: "100%", marginBottom: "16px" }}
+                        className="export-output-audio"
                       />
                     </div>
                     <button
@@ -1673,7 +1735,7 @@ function App() {
                   script or selecting a new slot.
                 </p>
                 {audioUrl && !isRendering && (
-                  <p style={{ marginTop: "12px", color: "#666" }}>
+                  <p className="export-note-hint">
                     Preview the full audio above and download when ready.
                   </p>
                 )}
@@ -1692,16 +1754,19 @@ function App() {
 
       {(isCloningVoice || isAnalyzing) && (
         <div className="processing-screen" aria-live="polite" aria-label="Processing audio">
-          <div className="processing-waveform">
+          <div className="processing-waveform" aria-hidden="true">
             {WAVEFORM_BARS.map((h, i) => (
               <div
                 key={i}
                 className="processing-bar"
                 style={
                   {
+                    // Custom properties rather than animationDelay/Duration,
+                    // which would also override the active-bar sweep.
                     "--peak-h": `${h}px`,
-                    animationDelay: `${(i * 0.038) % 0.95}s`,
-                    animationDuration: `${0.55 + (i % 7) * 0.06}s`,
+                    "--bar-delay": `${(i * 0.038) % 0.95}s`,
+                    "--bar-dur": `${0.55 + (i % 7) * 0.06}s`,
+                    "--bar-index": i,
                   } as CSSProperties
                 }
               />
@@ -1716,14 +1781,9 @@ function App() {
                 ? "Analyzing vocal characteristics from your audio"
                 : "Scanning the timeline for optimal placement windows"}
             </p>
-            <div className="processing-dots">
-              <div className="processing-dot" />
-              <div className="processing-dot" />
-              <div className="processing-dot" />
-            </div>
             <button
               type="button"
-              className="ghost small processing-cancel"
+              className="secondary processing-cancel"
               onClick={cancelProcessing}
             >
               Cancel

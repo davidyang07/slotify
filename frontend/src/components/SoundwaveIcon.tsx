@@ -23,7 +23,7 @@ const SoundwaveIcon: React.FC<SoundwaveIconProps> = ({
       borderRadius: "0.06em",
     },
     md: {
-      iconSize: "1.5rem", // ~24px base
+      iconSize: "1.125rem", // 18px, matches the nav wordmark
       barHeight: "1.1em",
       sideBarHeight: "0.5em",
       barWidth: "0.12em",
@@ -43,7 +43,9 @@ const SoundwaveIcon: React.FC<SoundwaveIconProps> = ({
   };
 
   const config = sizeConfig[size];
-  const textColor = variant === "light" ? "#f6efe6" : "#231f1a";
+  // DESIGN.md: the brand mark is amber on the dark surfaces. The bars fill
+  // with currentColor, so the colour is set once on the wrapper below.
+  const markColor = variant === "light" ? "var(--accent)" : "var(--on-accent)";
 
   // Calculate positions: center bar with side bars flanking it
   const centerBarLeft = `calc(${config.sideBarWidth} + ${config.gap})`;
@@ -63,6 +65,7 @@ const SoundwaveIcon: React.FC<SoundwaveIconProps> = ({
         alignItems: "center",
         fontSize: config.iconSize,
         lineHeight: 1,
+        color: markColor,
         transform: "translateY(-0.1em)",
       }}
     >
@@ -92,7 +95,7 @@ const SoundwaveIcon: React.FC<SoundwaveIconProps> = ({
             height="100%"
             rx={config.borderRadius}
             ry={config.borderRadius}
-            fill={textColor}
+            fill="currentColor"
           />
         </svg>
 
@@ -114,7 +117,7 @@ const SoundwaveIcon: React.FC<SoundwaveIconProps> = ({
             height="100%"
             rx={config.borderRadius}
             ry={config.borderRadius}
-            fill={textColor}
+            fill="currentColor"
           />
         </svg>
 
@@ -136,7 +139,7 @@ const SoundwaveIcon: React.FC<SoundwaveIconProps> = ({
             height="100%"
             rx={config.borderRadius}
             ry={config.borderRadius}
-            fill={textColor}
+            fill="currentColor"
           />
         </svg>
       </span>

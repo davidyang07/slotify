@@ -1,89 +1,119 @@
 /* ─────────────────────────────────────────────────
-   Slotify — Global Base
-   "Polished Obsidian" aesthetic
+   Slotify — global base and design tokens.
+
+   Tokens mirror DESIGN.md (YAML front matter) one-to-one; the prose rules
+   there say where each one may be used. Inter and JetBrains Mono are loaded
+   once, in index.html.
    ───────────────────────────────────────────────── */
 
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap');
-
-/* ── Design Tokens ───────────────────────────────── */
 :root {
-  /* Backgrounds */
-  --bg-void:    #060509;
-  --bg-deep:    #0d0a12;
-  --bg-surface: rgba(255, 255, 255, 0.032);
-  --bg-card:    rgba(255, 255, 255, 0.052);
-  --bg-elevated:rgba(255, 255, 255, 0.082);
+  color-scheme: dark;
 
-  /* Gold palette — polished brass */
-  --gold:             #C8A84A;
-  --gold-bright:      #E2C876;
-  --gold-dim:         rgba(200, 168, 74, 0.38);
-  --gold-glow:        rgba(200, 168, 74, 0.18);
-  --gold-border:      rgba(200, 168, 74, 0.22);
-  --gold-border-active: rgba(200, 168, 74, 0.72);
-
-  /* Copper — primary CTA */
-  --copper:       #BE6135;
-  --copper-bright:#CF734A;
-  --copper-glow:  rgba(190, 97, 53, 0.32);
-
-  /* Semantic */
-  --success:      #3DD68C;
-  --success-dim:  rgba(61, 214, 140, 0.18);
-  --success-border: rgba(61, 214, 140, 0.42);
-  --error:        #E05050;
+  /* Accent: brand mark, primary action, focus, selection. Nothing else. */
+  --accent: #c8a84a;
+  --accent-hover: #e2c876;
+  --accent-pressed: #b39236;
+  --on-accent: #010102;
+  --accent-line: rgba(200, 168, 74, 0.55);
+  /* Solid amber: at 50% alpha the ring measured ~2.9:1 on the dark surfaces,
+     under the 3:1 WCAG asks of a focus indicator; solid is ~9:1. */
+  --focus-ring: #c8a84a;
 
   /* Text */
-  --text:         #ECE4D8;
-  --text-muted:   rgba(236, 228, 216, 0.56);
-  --text-dim:     rgba(236, 228, 216, 0.3);
-  --text-inverse: #0a0810;
+  --ink: #f7f8f8;
+  --ink-muted: #d0d6e0;
+  --ink-subtle: #8a8f98;
+  --ink-tertiary: #62666d; /* disabled and non-essential only (~3.3:1) */
 
-  /* Borders */
-  --border:       rgba(255, 255, 255, 0.068);
-  --border-warm:  rgba(200, 168, 74, 0.14);
+  /* Surface ladder */
+  --canvas: #010102;
+  --surface-1: #0f1011;
+  --surface-2: #141516;
+  --surface-3: #18191a;
+  --surface-4: #191a1b;
+  --hairline: #23252a;
+  --hairline-strong: #34343a;
+  --hairline-tertiary: #3e3e44;
+  --edge-highlight: rgba(255, 255, 255, 0.04);
+  --scrim: rgba(0, 0, 0, 0.72);
+  /* processing-overlay: canvas at 94% */
+  --overlay: rgba(1, 1, 2, 0.94);
 
-  /* Typography */
-  --font-display: 'Syne', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono:    'DM Mono', 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
-  --font-body:    'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* Semantic */
+  --success: #27a644;
+  --danger: #e5484d;
+
+  /* Waveform */
+  --wave: #8a8f98;
+  --wave-strong: #d0d6e0;
+  --wave-marker: #62666d;
 
   /* Radii */
-  --r-xs:   8px;
-  --r-sm:   12px;
-  --r-md:   16px;
-  --r-lg:   22px;
-  --r-xl:   28px;
-  --r-full: 999px;
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-pill: 9999px;
 
-  /* Shadows */
-  --shadow-card:   0 4px 24px rgba(0,0,0,0.5), 0 1px 4px rgba(0,0,0,0.35);
-  --shadow-gold:   0 0 40px rgba(200,168,74,0.14), 0 16px 48px rgba(0,0,0,0.55);
-  --shadow-copper: 0 6px 24px rgba(190,97,53,0.35);
+  /* Spacing (4px base) */
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+  --space-section: 96px;
 
-  /* Easing */
-  --ease-out:    cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --transition:  all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Layout */
+  --content-max: 1120px;
+  --gutter: var(--space-lg);
+  --nav-height: 56px;
+
+  /* Type */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code",
+    Menlo, Consolas, monospace;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 120ms;
 }
 
-/* ── Base Reset ──────────────────────────────────── */
+@media (max-width: 639px) {
+  :root {
+    --gutter: var(--space-md);
+  }
+}
 
-*, *::before, *::after {
+/* ── Base reset ──────────────────────────────────── */
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+
+html {
+  background: var(--canvas);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--bg-void);
-  color: var(--text);
-  font-family: var(--font-body);
-  font-size: 16px;
-  line-height: 1.5;
-  font-weight: 400;
-  overflow-x: hidden;
   width: 100%;
+  overflow-x: hidden;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: -0.05px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -94,45 +124,75 @@ body {
 
 /* ── Typography ──────────────────────────────────── */
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-display);
-  font-weight: 700;
-  line-height: 1.2;
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+p {
+  margin: 0;
 }
 
 a {
+  color: inherit;
   text-decoration: none;
+}
+
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--font-mono);
+}
+
+/* ── Controls ────────────────────────────────────── */
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  letter-spacing: inherit;
   color: inherit;
 }
 
-/* ── Buttons ─────────────────────────────────────── */
-
 button {
-  font-family: var(--font-body);
   cursor: pointer;
 }
 
-input, textarea, select, button {
-  transition: transform 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out);
+button,
+input,
+textarea,
+select,
+a {
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
 
-button:hover:not(:disabled) {
-  transform: translateY(-1px);
+/* Focus: one 2px amber ring, 2px out, on every focusable control. */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
-/* Landing and app-level hover suppression for ghost buttons */
-.app.page-landing button:hover:not(:disabled),
-.app.page-upload button:hover:not(:disabled),
-.app.page-analyze button:hover:not(:disabled),
-.app.page-export button:hover:not(:disabled) {
-  /* Handled per-button */
+:focus:not(:focus-visible) {
+  outline: none;
 }
 
 /* ── Scrollbar ───────────────────────────────────── */
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -140,17 +200,29 @@ button:hover:not(:disabled) {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.1);
-  border-radius: 3px;
+  background: var(--hairline-strong);
+  border-radius: var(--r-pill);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(200,168,74,0.3);
+  background: var(--hairline-tertiary);
 }
 
 /* ── Selection ───────────────────────────────────── */
 
 ::selection {
-  background: rgba(200,168,74,0.25);
-  color: var(--text);
+  background: var(--accent-line);
+  color: var(--ink);
+}
+
+/* ── Motion ──────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

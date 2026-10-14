@@ -14,18 +14,23 @@ const SlotifyLogo: React.FC<SlotifyLogoProps> = ({
   // Size mappings for font-size
   const sizeConfig = {
     sm: {
-      fontSize: "0.875rem", // ~14px base
+      fontSize: "0.875rem", // 14px, inline in body copy
+      letterSpacing: "-0.01em",
     },
     md: {
-      fontSize: "1.5rem", // ~24px base
+      fontSize: "1.125rem", // 18px, the top nav
+      letterSpacing: "-0.02em",
     },
     lg: {
-      fontSize: "3rem", // ~48px base
+      fontSize: "3rem", // 48px
+      letterSpacing: "-0.035em",
     },
   };
 
   const config = sizeConfig[size];
-  const textColor = variant === "light" ? "#f6efe6" : "#231f1a";
+  // DESIGN.md: the wordmark is ink on the dark surfaces, never gradient text.
+  // "dark" is for the rare light/amber background, where text is on-accent.
+  const textColor = variant === "light" ? "var(--ink)" : "var(--on-accent)";
 
   return (
     <span
@@ -34,11 +39,11 @@ const SlotifyLogo: React.FC<SlotifyLogoProps> = ({
       style={{
         display: "inline-flex",
         alignItems: "center",
-        fontFamily: '"Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        fontFamily: "var(--font-sans)",
         fontSize: config.fontSize,
         fontWeight: 600,
         color: textColor,
-        letterSpacing: "0.02em",
+        letterSpacing: config.letterSpacing,
         lineHeight: 1,
       }}
     >

@@ -39,7 +39,7 @@ const LandingHero = ({
         <div className="landing-hero-actions">
           <button
             type="button"
-            className="landing-hero-cta landing-hero-primary"
+            className="primary landing-hero-cta landing-hero-primary"
             onMouseEnter={() => setIsButtonHover(true)}
             onMouseLeave={() => setIsButtonHover(false)}
             onClick={onPrimaryAction}
@@ -48,7 +48,7 @@ const LandingHero = ({
           </button>
           <button
             type="button"
-            className="landing-hero-cta landing-hero-secondary"
+            className="secondary landing-hero-cta landing-hero-secondary"
             onClick={onSecondaryAction}
           >
             View Demo

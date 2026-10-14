@@ -9,7 +9,7 @@ colors:
   accent-pressed: "#b39236"
   on-accent: "#010102"
   accent-line: "rgba(200, 168, 74, 0.55)"
-  focus-ring: "rgba(200, 168, 74, 0.5)"
+  focus-ring: "#c8a84a"
   ink: "#f7f8f8"
   ink-muted: "#d0d6e0"
   ink-subtle: "#8a8f98"
@@ -273,8 +273,9 @@ tracking and 400 for body. **JetBrains Mono** carries the numbers an editor
 checks — timestamps, placement scores, durations, file names and provenance
 labels — so they align and read as data.
 
-The landing page keeps one cinematic element: the soundwave video, dimmed
-behind the hero. Everywhere else the product's own surfaces — the waveform and
+The landing page keeps one cinematic element: the soundwave video, rendered
+grayscale (its blue would be a second accent) and dimmed so the lead text keeps
+4.5:1 over its brightest frames. Everywhere else the product's own surfaces — the waveform and
 the slot list — are the visual.
 
 **Key Characteristics:**
@@ -290,7 +291,7 @@ the slot list — are the visual.
 - **Amber** (`{colors.accent}`): brand mark, primary CTA, current step, selected slot border, chosen-break marker on the waveform, link emphasis.
 - **Amber Hover** (`{colors.accent-hover}`) and **Amber Pressed** (`{colors.accent-pressed}`): states of the primary CTA only.
 - **Accent Line** (`{colors.accent-line}`): the 1px border of a selected card or an active dropzone.
-- **Focus Ring** (`{colors.focus-ring}`): 2px outline on any focused control.
+- **Focus Ring** (`{colors.focus-ring}`): 2px solid amber outline on any focused control. Solid, not translucent: amber at 50% alpha measures about 2.9:1 on these surfaces, under the 3:1 a focus indicator needs.
 
 ### Surface
 - **Canvas** (`{colors.canvas}`): page background and the waveform well.
@@ -394,7 +395,8 @@ No drop shadows on dark surfaces, no coloured glows, no blur-heavy glass.
 current step is **`nav-link-active`** (surface-2, ink).
 
 **Step indicator** — three small labelled dots; completed steps ink-subtle with
-a check, the current step ink with an amber dot, future steps ink-tertiary.
+a check, the current step ink with an amber dot, future steps an ink-tertiary
+dot with an ink-subtle label (labels must stay readable at 4.5:1).
 
 ### Buttons
 - **`button-primary`** — amber fill, near-black label, 8px radius. One per screen: Try Slotify, Analyze, Confirm selections, Render & export.
@@ -450,7 +452,7 @@ words — colour is never the only signal.
 |---|---|
 | ≥1024px | Slot cards 3-up; panels pad 32px |
 | 640–1023px | Slot cards 2-up |
-| <768px | Nav step links collapse to the step indicator; panels pad 24px |
+| <768px | Nav step links stay as compact buttons (the export screen has no other way back); panels pad 24px |
 | <640px | Slot cards 1-up; landing wordmark scales 80px → 44px; 16px side gutters |
 
 - Buttons stay ≥36px tall (≥44px for the wide primary); inputs ≥40px.
