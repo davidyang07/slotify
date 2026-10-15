@@ -1,10 +1,17 @@
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { Router } from "express";
-import { getElevenLabs, buildSponsorBlock, ttsModelFor } from "../services/elevenlabs";
+import {
+  buildSponsorBlock,
+  checkTtsBudget,
+  getElevenLabs,
+  MAX_TTS_PAUSE_MS,
+  ttsModelFor,
+  voiceRegistry,
+} from "../services/elevenlabs";
 import { generateBrandStatement } from "../services/openai";
-import { failureBody } from "../lib/errors";
-import { asyncHandler, clientAbortSignal } from "../lib/http";
+import { sendFailure } from "../lib/errors";
+import { asyncHandler, clientAbortSignal, throwIfClientGone } from "../lib/http";
 import {
   optionalEnum,
   optionalNumber,
@@ -43,30 +50,57 @@ ttsRouter.post("/api/tts", asyncHandler(async (req, res) => {
     return;
   }
 
-  if (statements.length === 0) {
-    // Only copy the server writes takes the tone and language; a statement the
-    // user supplied is read verbatim.
-    const generated = await generateBrandStatement({ name, productDesc, tone, language });
-    if (generated) {
-      statements = [generated];
-    }
+  if (pauseMs !== undefined && (pauseMs < 0 || pauseMs > MAX_TTS_PAUSE_MS)) {
+    res.status(400).json({ error: `pauseMs must be between 0 and ${MAX_TTS_PAUSE_MS}.` });
+    return;
   }
 
-  if (statements.length === 0) {
-    res.status(400).json({ error: "text is required." });
+  // Every statement is a paid ElevenLabs call: the budget is checked before
+  // the first one, and before OpenAI is asked to write anything.
+  checkTtsBudget(statements, { pauseMs: pauseMs ?? 150 });
+
+  if (voiceRegistry.wasReleased(voiceId)) {
+    res.status(410).json({
+      error: "This voice clone has expired and was deleted; clone the voice again.",
+    });
     return;
   }
 
   const signal = clientAbortSignal(req, res);
   let cleanup: (() => Promise<void>) | null = null;
   try {
-    console.log("TTS statements:", { count: statements.length, statements });
+    if (statements.length === 0) {
+      // Only copy the server writes takes the tone and language; a statement the
+      // user supplied is read verbatim.
+      const generated = await generateBrandStatement({ name, productDesc, tone, language });
+      if (generated) {
+        statements = [generated];
+      }
+    }
+
+    if (statements.length === 0) {
+      res.status(400).json({ error: "text is required." });
+      return;
+    }
+
+    // Keeps a registry voice from expiring while it is in use.
+    voiceRegistry.touch(voiceId);
+    // Counts and lengths only: statement text is the customer's ad copy.
+    console.log("TTS request:", {
+      count: statements.length,
+      lengths: statements.map((statement) => statement.length),
+    });
     if (statements.length === 1) {
-      const audio = await getElevenLabs().textToSpeech.convert(voiceId, {
-        text: statements[0],
-        ...ttsModelFor(modelId, language),
-        outputFormat: (outputFormat ?? "mp3_44100_128") as any,
-      });
+      throwIfClientGone(signal, "Text-to-speech");
+      const audio = await getElevenLabs().textToSpeech.convert(
+        voiceId,
+        {
+          text: statements[0],
+          ...ttsModelFor(modelId, language),
+          outputFormat: (outputFormat ?? "mp3_44100_128") as any,
+        },
+        { abortSignal: signal },
+      );
       res.setHeader("Content-Type", "audio/mpeg");
       // pipeline, not pipe: a mid-stream ElevenLabs failure rejects here
       // instead of surfacing as an unhandled 'error' event.
@@ -86,12 +120,7 @@ ttsRouter.post("/api/tts", asyncHandler(async (req, res) => {
     cleanup = sponsorBlock.cleanup;
     await sendAudioFile(res, sponsorBlock.outputPath);
   } catch (error) {
-    const body = failureBody("TTS failed.", error);
-    if (!res.headersSent) {
-      res.status(500).json(body);
-    } else {
-      res.destroy();
-    }
+    sendFailure(res, "TTS failed.", error, { signal });
   } finally {
     await cleanup?.();
   }

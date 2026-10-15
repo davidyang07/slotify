@@ -1,10 +1,14 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
-import { runFfmpeg, getAudioDuration } from "./ffmpeg";
+import { ElevenLabsClient, ElevenLabsError } from "@elevenlabs/elevenlabs-js";
+import { ttsMaxChars, ttsMaxStatements } from "../config";
+import { HttpError, throwIfClientGone } from "../lib/http";
+import { onShutdown } from "../lib/lifecycle";
 import { streamToBuffer } from "../lib/stream";
 import type { SponsorLanguage } from "../lib/sponsor-options";
+import { runFfmpeg, getAudioDuration } from "./ffmpeg";
+import { createVoiceRegistry } from "./voice-registry";
 
 /**
  * The ElevenLabs client, built on first use.
@@ -17,11 +21,18 @@ import type { SponsorLanguage } from "../lib/sponsor-options";
  * require the paid API, with a message saying so.
  */
 let client: ElevenLabsClient | null = null;
+let testClient: ElevenLabsClient | null = null;
+
+/** Tests substitute a fake client; null restores the real one. */
+export const setElevenLabsClientForTests = (fake: unknown): void => {
+  testClient = fake as ElevenLabsClient | null;
+};
 
 export const isElevenLabsConfigured = (): boolean =>
-  Boolean(process.env.ELEVENLABS_API_KEY);
+  testClient !== null || Boolean(process.env.ELEVENLABS_API_KEY);
 
 export const getElevenLabs = (): ElevenLabsClient => {
+  if (testClient) return testClient;
   if (!isElevenLabsConfigured()) {
     throw new Error(
       "ELEVENLABS_API_KEY is not set, so voice cloning and text-to-speech are " +
@@ -34,7 +45,80 @@ export const getElevenLabs = (): ElevenLabsClient => {
   return client;
 };
 
+/**
+ * Delete a cloned voice. Already gone (404) counts as deleted: a pipeline that
+ * cloned through /api/clone may have deleted its own voice directly.
+ */
+const deleteVoice = async (voiceId: string): Promise<void> => {
+  if (!isElevenLabsConfigured()) return;
+  try {
+    await getElevenLabs().voices.delete(voiceId);
+  } catch (error) {
+    if (error instanceof ElevenLabsError && error.statusCode === 404) return;
+    throw error;
+  }
+};
+
+/** The voices this process cloned; see services/voice-registry.ts. */
+export const voiceRegistry = createVoiceRegistry(deleteVoice);
+voiceRegistry.start();
+onShutdown(() => voiceRegistry.releaseAll());
+
 export const DEFAULT_TTS_MODEL = "eleven_multilingual_v2";
+
+/** The longest sponsor block /api/tts renders from several statements. */
+export const MAX_SPONSOR_BLOCK_SECONDS = 20;
+/** Bounded like /api/merge's `pause`: a typo must not ask for minutes of silence. */
+export const MAX_TTS_PAUSE_MS = 5_000;
+
+// Faster than anyone reads an ad (conversational English is ~14 characters a
+// second), so the estimate is a lower bound: it refuses only what is certain
+// to be too long, before it is paid for. CJK and Hangul carry about three
+// Latin characters' worth of speech each.
+const FAST_SPEECH_CHARS_PER_SECOND = 20;
+const DENSE_SCRIPT = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]/gu;
+
+/** A lower bound on how long `statements` take to say, with pauses between. */
+export const estimateSpeechSeconds = (statements: string[], pauseMs: number): number => {
+  const weighted = statements.reduce((total, statement) => {
+    const dense = statement.match(DENSE_SCRIPT)?.length ?? 0;
+    return total + statement.length + dense * 2;
+  }, 0);
+  return weighted / FAST_SPEECH_CHARS_PER_SECOND + (Math.max(0, statements.length - 1) * pauseMs) / 1000;
+};
+
+/**
+ * Refuse a /api/tts request that would spend too much, before any call is
+ * made: each statement is a separate paid ElevenLabs request.
+ */
+export const checkTtsBudget = (
+  statements: string[],
+  { pauseMs = 150, maxStatements = ttsMaxStatements, maxChars = ttsMaxChars } = {},
+): void => {
+  if (statements.length > maxStatements) {
+    throw new HttpError(
+      400,
+      `At most ${maxStatements} statements per request (see SLOTIFY_TTS_MAX_STATEMENTS); got ${statements.length}.`,
+    );
+  }
+  const total = statements.reduce((sum, statement) => sum + statement.length, 0);
+  if (total > maxChars) {
+    throw new HttpError(
+      400,
+      `At most ${maxChars} characters of text per request (see SLOTIFY_TTS_MAX_CHARS); got ${total}.`,
+    );
+  }
+  if (statements.length > 1) {
+    const estimate = estimateSpeechSeconds(statements, pauseMs);
+    if (estimate > MAX_SPONSOR_BLOCK_SECONDS) {
+      throw new HttpError(
+        400,
+        `These statements take at least ${Math.round(estimate)} s to read; a sponsor block is at most ` +
+          `${MAX_SPONSOR_BLOCK_SECONDS} s. Shorten them or send fewer.`,
+      );
+    }
+  }
+};
 
 // English-only models would read Spanish copy with English phonetics.
 const ENGLISH_ONLY_MODELS = new Set(["eleven_monolingual_v1", "eleven_turbo_v2", "eleven_flash_v2"]);
@@ -82,9 +166,12 @@ export const buildSponsorBlock = async ({
   outputFormat?: string;
   pauseMs?: number;
   language?: SponsorLanguage;
-  /** Stops ffmpeg when aborted (the client went away). */
+  /** Stops the ElevenLabs calls and ffmpeg when aborted (the client went away). */
   signal?: AbortSignal;
 }): Promise<SponsorBlock> => {
+  // Callers check first; this is for any that do not.
+  checkTtsBudget(statements, { pauseMs: pauseMs ?? 150 });
+  throwIfClientGone(signal, "Text-to-speech");
   const tempDir = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "sponsor-block-"),
   );
@@ -97,11 +184,18 @@ export const buildSponsorBlock = async ({
   try {
     for (let index = 0; index < statements.length; index += 1) {
       const statement = statements[index];
-      const audio = await getElevenLabs().textToSpeech.convert(voiceId, {
-        text: statement,
-        ...ttsModelFor(modelId, language),
-        outputFormat: (outputFormat ?? "mp3_44100_128") as any,
-      });
+      // Each call is paid: none is started for a client that has gone, and
+      // the one in flight is cancelled with it.
+      throwIfClientGone(signal, "Text-to-speech");
+      const audio = await getElevenLabs().textToSpeech.convert(
+        voiceId,
+        {
+          text: statement,
+          ...ttsModelFor(modelId, language),
+          outputFormat: (outputFormat ?? "mp3_44100_128") as any,
+        },
+        { abortSignal: signal },
+      );
       const buffer = await streamToBuffer(audio);
       const statementPath = path.join(tempDir, `statement-${index}.mp3`);
       await fs.promises.writeFile(statementPath, buffer);
@@ -169,8 +263,11 @@ export const buildSponsorBlock = async ({
     }
 
     const duration = await getAudioDuration(outputPath, { signal });
-    if (duration !== null && duration > 20) {
-      throw new Error("Sponsor block exceeds 20s limit.");
+    if (duration !== null && duration > MAX_SPONSOR_BLOCK_SECONDS) {
+      throw new HttpError(
+        422,
+        `The sponsor block is ${Math.round(duration)} s long; the limit is ${MAX_SPONSOR_BLOCK_SECONDS} s.`,
+      );
     }
 
     return { tempDir, outputPath, duration, cleanup };

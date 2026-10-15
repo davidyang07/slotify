@@ -16,10 +16,9 @@
  */
 
 import fs from "node:fs";
-import path from "node:path";
 import { Router } from "express";
-import { upload } from "../middleware/upload";
-import { getAudioDuration } from "../services/ffmpeg";
+import { claimWorkDir, inspectUploads, upload } from "../middleware/upload";
+import { maxSongSeconds } from "../config";
 import { runPythonAnalyze } from "../services/python";
 import {
   generateBrandStatement,
@@ -37,7 +36,8 @@ import {
   dedupeByMs,
 } from "../lib/placement";
 import { asText, endsWithSentenceBoundary, parseJsonField } from "../lib/text";
-import { failureBody, logFailure } from "../lib/errors";
+import { leaseHeavyJob, refuseWhenBusy } from "../lib/concurrency";
+import { logFailure, sendFailure } from "../lib/errors";
 import { asyncHandler, clientAbortSignal, HttpError } from "../lib/http";
 import {
   fieldOf,
@@ -51,7 +51,8 @@ import {
   SPONSOR_TONES,
   type SponsorCopyOptions,
 } from "../lib/sponsor-options";
-import { makeTempDir, removeTempDir } from "../lib/temp";
+import { removeTempDir } from "../lib/temp";
+import { SubprocessError } from "../lib/subprocess";
 import type {
   Candidate,
   InsertionMode,
@@ -118,6 +119,9 @@ const parseSponsorRequests = (body: unknown): SponsorRequest[] => {
   }
   const statements =
     optionalStatements(body, "statements") ?? optionalStatements(body, "statement") ?? [];
+  if (statements.length > MAX_SPONSORS) {
+    throw new HttpError(400, `At most ${MAX_SPONSORS} sponsor statements per request.`);
+  }
   return statements.map((statement, index) => ({
     id: `sponsor-${index + 1}`,
     name: "",
@@ -166,13 +170,14 @@ const unrankedProvenance = () => ({
  * failure here narrows the candidate pool, it never fabricates one.
  */
 const transcriptCandidates = async (
-  buffer: Buffer,
+  audioPath: string,
   filename: string,
   durationSeconds: number | null,
 ): Promise<Candidate[]> => {
   if (!process.env.OPENAI_API_KEY) return [];
   try {
-    const response = await requestTranscription(buffer, filename);
+    // A file-backed Blob: the upload is streamed to OpenAI, never buffered.
+    const response = await requestTranscription(await fs.openAsBlob(audioPath), filename);
     if (!response.ok) return [];
     const transcript = (await response.json()) as any;
     const segments = Array.isArray(transcript?.segments) ? transcript.segments : [];
@@ -198,12 +203,37 @@ const transcriptCandidates = async (
   }
 };
 
+const UNAVAILABLE = { placementStatus: "unavailable", slots: [], points: [] } as const;
+
+/**
+ * Song mode's own cap (SLOTIFY_MAX_SONG_MINUTES): beat tracking holds the
+ * decoded song in memory. A song whose length cannot be read cannot be
+ * checked, so it is refused rather than analysed blind.
+ */
+const checkSongLength = (seconds: number | null): void => {
+  const limitMinutes = Math.round((maxSongSeconds / 60) * 10) / 10;
+  if (seconds === null) {
+    throw new HttpError(
+      422,
+      "Song analysis needs a file whose duration can be read; convert it to mp3 or wav and try again.",
+    );
+  }
+  if (seconds > maxSongSeconds) {
+    throw new HttpError(
+      413,
+      `Song analysis is limited to ${limitMinutes} minutes (see SLOTIFY_MAX_SONG_MINUTES); ` +
+        `this upload is ${Math.round((seconds / 60) * 10) / 10} minutes.`,
+    );
+  }
+};
+
 insertSectionsRouter.post(
   "/api/insert-sections",
-  upload.single("audio"),
+  refuseWhenBusy({ extra: UNAVAILABLE }),
+  upload.single("audio", { dirPrefix: "insert-sections-" }),
   asyncHandler(async (req, res) => {
     const rejected = (status: number, error: string) =>
-      res.status(status).json({ placementStatus: "unavailable", error, slots: [], points: [] });
+      res.status(status).json({ ...UNAVAILABLE, error });
 
     const audioFile = req.file;
     if (!audioFile) {
@@ -235,19 +265,25 @@ insertSectionsRouter.post(
 
     const signal = clientAbortSignal(req, res);
     let tempDir: string | null = null;
+    let releaseJob: (() => void) | null = null;
     try {
-      tempDir = await makeTempDir("insert-sections-");
-      const audioPath = path.join(
-        tempDir,
-        `${Date.now()}-${path.basename(audioFile.originalname || "audio.mp3")}`,
-      );
-      await fs.promises.writeFile(audioPath, audioFile.buffer);
-      const probedDuration = await getAudioDuration(audioPath, { signal }).catch(() => null);
+      // The upload is already in this request's own dir, under a fixed name;
+      // the analyser works there too and the whole dir goes in `finally`.
+      tempDir = await claimWorkDir(req, "insert-sections-");
+      const [audio] = await inspectUploads(req, { signal });
+      const audioPath = audio.path;
+      const probedDuration = audio.probe.durationSeconds;
+      if (mode === "song") checkSongLength(probedDuration);
+
+      // One slot from analysis through ranking: both decode the whole upload.
+      releaseJob = await leaseHeavyJob(req, { signal });
 
       let analysis: any;
       try {
-        analysis = await runPythonAnalyze(audioPath, mode, { signal });
+        analysis = await runPythonAnalyze(audioPath, mode, { signal, workDir: tempDir });
       } catch (error) {
+        // Stopped for a shutdown: a 503 to retry, not a failed analysis.
+        if (error instanceof SubprocessError && error.reason === "shutdown") throw error;
         // The analyser's stderr is a Python traceback. The whole thing goes to
         // the server log; the client gets the final line, which is the actual
         // error, without the repository's internal paths.
@@ -301,8 +337,8 @@ insertSectionsRouter.post(
           ? signalCandidates.filter((entry) => entry.ms <= maxMs)
           : signalCandidates;
       const extra = await transcriptCandidates(
-        audioFile.buffer,
-        audioFile.originalname || "audio.mp3",
+        audioPath,
+        `audio.${audio.probe.extension}`,
         durationSeconds,
       );
       const candidates = mergeCandidates(bounded, extra);
@@ -334,6 +370,8 @@ insertSectionsRouter.post(
         count,
         signal,
       });
+
+      releaseJob();
 
       const clamped = ranking.ranked.map((entry) => ({
         ...entry,
@@ -418,11 +456,9 @@ insertSectionsRouter.post(
         warning: ranking.warnings.length ? ranking.warnings.join(" ") : null,
       });
     } catch (error) {
-      const body = failureBody("Insert analysis failed.", error);
-      if (!res.headersSent && !signal.aborted) {
-        res.status(500).json({ placementStatus: "unavailable", slots: [], points: [], ...body });
-      }
+      sendFailure(res, "Insert analysis failed.", error, { signal, extra: UNAVAILABLE });
     } finally {
+      releaseJob?.();
       await removeTempDir(tempDir);
     }
   }),

@@ -1,15 +1,16 @@
+import fs from "node:fs";
 import { Router } from "express";
-import { upload } from "../middleware/upload";
+import { inspectUploads, upload } from "../middleware/upload";
 import { requestTranscription } from "../services/openai";
-import { failureBody } from "../lib/errors";
-import { asyncHandler } from "../lib/http";
+import { ProviderError, sendFailure } from "../lib/errors";
+import { asyncHandler, clientAbortSignal } from "../lib/http";
 import { asText } from "../lib/text";
 
 export const relatedProductsRouter = Router();
 
 relatedProductsRouter.post(
   "/api/related-products",
-  upload.single("audio"),
+  upload.single("audio", { dirPrefix: "related-products-" }),
   asyncHandler(async (req, res) => {
     const audioFile = req.file;
     if (!audioFile) {
@@ -33,18 +34,19 @@ relatedProductsRouter.post(
       return;
     }
 
+    const signal = clientAbortSignal(req, res);
     try {
-      // The upload goes to Whisper straight from memory; nothing touches disk.
+      // Streamed to Whisper from the upload's temp file, which the upload
+      // middleware removes when the response closes.
+      const [audio] = await inspectUploads(req, { signal });
       const transcriptResponse = await requestTranscription(
-        audioFile.buffer,
-        audioFile.originalname || "audio.mp3",
+        await fs.openAsBlob(audio.path),
+        `audio.${audio.probe.extension}`,
       );
 
+      // Provider bodies go to the log only (see ProviderError).
       if (!transcriptResponse.ok) {
-        const detail = await transcriptResponse.text();
-        throw new Error(
-          `Transcription failed: ${transcriptResponse.status} ${detail}`,
-        );
+        throw new ProviderError("openai", transcriptResponse.status, await transcriptResponse.text());
       }
 
       const transcript = (await transcriptResponse.json()) as any;
@@ -87,10 +89,7 @@ relatedProductsRouter.post(
       );
 
       if (!completionResponse.ok) {
-        const detail = await completionResponse.text();
-        throw new Error(
-          `OpenAI selection failed: ${completionResponse.status} ${detail}`,
-        );
+        throw new ProviderError("openai", completionResponse.status, await completionResponse.text());
       }
 
       const completion = (await completionResponse.json()) as any;
@@ -124,10 +123,7 @@ relatedProductsRouter.post(
           `https://serpapi.com/search.json?${params.toString()}`,
         );
         if (!serpResponse.ok) {
-          const detail = await serpResponse.text();
-          throw new Error(
-            `SerpAPI search failed: ${serpResponse.status} ${detail}`,
-          );
+          throw new ProviderError("serpapi", serpResponse.status, await serpResponse.text());
         }
         const serpJson = (await serpResponse.json()) as any;
         const items = Array.isArray(serpJson.shopping_results)
@@ -147,7 +143,7 @@ relatedProductsRouter.post(
         results,
       });
     } catch (error) {
-      res.status(500).json(failureBody("Related products failed.", error));
+      sendFailure(res, "Related products failed.", error, { signal });
     }
   }),
 );

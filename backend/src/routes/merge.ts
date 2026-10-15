@@ -1,14 +1,14 @@
-import fs from "node:fs";
 import path from "node:path";
 import { Router } from "express";
-import { upload } from "../middleware/upload";
+import { claimWorkDir, inspectUploads, upload, type InspectedUpload } from "../middleware/upload";
 import { runFfmpeg, getAudioDuration } from "../services/ffmpeg";
+import { leaseHeavyJob, refuseWhenBusy } from "../lib/concurrency";
 import { buildMergeFilter } from "../lib/merge-filter";
-import { failureBody } from "../lib/errors";
+import { sendFailure } from "../lib/errors";
 import { asyncHandler, clientAbortSignal } from "../lib/http";
 import { optionalNumber, optionalString } from "../lib/request-fields";
 import { sendAudioFile } from "../lib/stream";
-import { makeTempDir, removeTempDir } from "../lib/temp";
+import { removeTempDir } from "../lib/temp";
 
 export const mergeRouter = Router();
 
@@ -18,10 +18,14 @@ const MAX_PAUSE_SECONDS = 10;
 
 mergeRouter.post(
   "/api/merge",
-  upload.fields([
-    { name: "audio", maxCount: 1 },
-    { name: "insert", maxCount: 1 },
-  ]),
+  refuseWhenBusy(),
+  upload.fields(
+    [
+      { name: "audio", maxCount: 1 },
+      { name: "insert", maxCount: 1 },
+    ],
+    { dirPrefix: "voice-merge-" },
+  ),
   asyncHandler(async (req, res) => {
     const filesMap = req.files as
       | Record<string, Express.Multer.File[]>
@@ -68,17 +72,19 @@ mergeRouter.post(
 
     const signal = clientAbortSignal(req, res);
     let tempDir: string | null = null;
+    let releaseJob: (() => void) | null = null;
     try {
-      tempDir = await makeTempDir("voice-merge-");
-      const basePath = path.join(tempDir, "base.mp3");
-      const insertPath = path.join(tempDir, "insert.mp3");
+      tempDir = await claimWorkDir(req, "voice-merge-");
+      await inspectUploads(req, { signal });
+      // Renamed by inspectUploads to fixed names with their real extensions.
+      const basePath = audioFile.path;
+      const insertPath = insertFile.path;
       const outPath = path.join(tempDir, "merged.mp3");
-      await fs.promises.writeFile(basePath, audioFile.buffer);
-      await fs.promises.writeFile(insertPath, insertFile.buffer);
+      releaseJob = await leaseHeavyJob(req, { signal });
 
-      // Get main audio duration to validate and clamp insertAt
-      const mainDuration = await getAudioDuration(basePath, { signal });
-      const adDuration = await getAudioDuration(insertPath, { signal });
+      // Durations come from the inspection's ffprobe; used to clamp insertAt.
+      const mainDuration = (audioFile as InspectedUpload).probe.durationSeconds;
+      const adDuration = (insertFile as InspectedUpload).probe.durationSeconds;
 
       // Validate and clamp insertAt
       let clampedInsertAt = insertAt;
@@ -163,15 +169,13 @@ mergeRouter.post(
         });
       }
 
+      // The slot is for the ffmpeg work, not for a slow client's download.
+      releaseJob();
       await sendAudioFile(res, outPath);
     } catch (error) {
-      const body = failureBody("Merge failed.", error);
-      if (!res.headersSent) {
-        res.status(500).json(body);
-      } else {
-        res.destroy();
-      }
+      sendFailure(res, "Merge failed.", error, { signal });
     } finally {
+      releaseJob?.();
       await removeTempDir(tempDir);
     }
   }),

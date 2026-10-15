@@ -13,7 +13,13 @@ import { after, afterEach, before, describe, test } from "node:test";
 import { rankCandidates, type RankRequest } from "./ranker";
 import { LearnedRankerError } from "./learned-ranker";
 
-const ENV_KEYS = ["RANKER_MODE", "SLOTIFY_RANKER_CHECKPOINT", "SLOTIFY_ML_PYTHON", "SLOTIFY_RANKER_NORMALIZER"];
+const ENV_KEYS = [
+  "RANKER_MODE",
+  "SLOTIFY_RANKER_CHECKPOINT",
+  "SLOTIFY_ML_PYTHON",
+  "SLOTIFY_RANKER_NORMALIZER",
+  "SLOTIFY_RANKER_WORKER",
+];
 const saved = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 
 let dir: string;
@@ -78,6 +84,9 @@ describe("rankCandidates", { skip: process.platform === "win32" && "uses a /bin/
     fs.writeFileSync(path.join(dir, "normalizer.json"), "{}");
     process.env.SLOTIFY_RANKER_CHECKPOINT = path.join(dir, "best_checkpoint.pt");
     delete process.env.SLOTIFY_RANKER_NORMALIZER;
+    // The stand-in answers one request and exits, like `infer rank`; this
+    // suite is about what a ranking reports, not how the worker is kept.
+    process.env.SLOTIFY_RANKER_WORKER = "0";
   });
   afterEach(() => {
     process.env.RANKER_MODE = saved.RANKER_MODE;

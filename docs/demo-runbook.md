@@ -70,10 +70,20 @@ whether or not you set them, at the defaults below — generous for one presente
 
 | Variable | Where | Effect |
 | --- | --- | --- |
-| `SLOTIFY_API_TOKEN` | `backend/.env` | Every route except health and capabilities requires `Authorization: Bearer <token>` |
+| `SLOTIFY_API_TOKEN` | `backend/.env` | Every route except health and capabilities (GET or HEAD) requires `Authorization: Bearer <token>` |
 | `VITE_API_TOKEN` | `frontend/.env.local` | The token the UI sends. Must match `SLOTIFY_API_TOKEN`, or every call is refused. It is compiled into the page, so it keeps out passers-by, not anyone who can load the UI |
 | `SLOTIFY_RATE_LIMIT_COMPUTE_PER_MIN` | `backend/.env` | Requests per client IP per minute to the compute-heavy routes, analysis included (default 30; `0` disables) |
 | `SLOTIFY_RATE_LIMIT_PAID_PER_MIN` | `backend/.env` | Requests per client IP per minute to the routes that spend OpenAI or ElevenLabs credit (default 10; `0` disables) |
+| `SLOTIFY_MAX_CONCURRENT_JOBS` | `backend/.env` | Analyses, pipelines and merges running at once (default half the CPUs, at least 1). More wait in a queue of `SLOTIFY_MAX_QUEUED_JOBS` (default 8); past that the API answers 503 with `Retry-After` |
+| `SLOTIFY_MAX_AUDIO_MINUTES` | `backend/.env` | Longest upload accepted (default 180); longer is a 413 |
+| `SLOTIFY_MAX_SONG_MINUTES` | `backend/.env` | Longest upload song mode analyses (default 10); its beat tracking needs ~180 MB of memory per minute |
+| `SLOTIFY_VOICE_TTL_MIN` | `backend/.env` | A cloned voice idle this long is deleted from the ElevenLabs account (default 30). The UI also releases its voice when the file is replaced or the page is closed |
+| `SLOTIFY_MAX_LIVE_VOICES` | `backend/.env` | Cloned voices kept at once, least recently used deleted first (default 3) |
+| `SLOTIFY_TTS_MAX_STATEMENTS`, `SLOTIFY_TTS_MAX_CHARS` | `backend/.env` | Per-request text-to-speech caps, checked before ElevenLabs is called (defaults 8 and 1,500) |
+| `SLOTIFY_MAX_CLONE_SAMPLES`, `SLOTIFY_MAX_CLONE_SAMPLE_MB` | `backend/.env` | Voice-clone upload caps (defaults 3 files, each up to `SLOTIFY_MAX_UPLOAD_MB`) |
+| `SLOTIFY_CLONE_SAMPLE_SECONDS` | `backend/.env` | How much of each clone sample is sent to ElevenLabs (default 180 s, skipping the first 30 s of a long file) |
+| `SLOTIFY_OPENAI_MODELS` | `backend/.env` | OpenAI models `/ad/insert` may be asked for (default `gpt-4o-mini`) |
+| `SLOTIFY_KILL_GRACE_MS` | `backend/.env` | Grace between SIGTERM and SIGKILL for a stopped child process (default 5000) |
 
 Restart `npm run demo` after changing any of them; Vite reads `VITE_*` only at
 startup.

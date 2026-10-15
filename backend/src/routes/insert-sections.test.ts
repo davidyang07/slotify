@@ -20,7 +20,12 @@ import path from "node:path";
 import { after, before, describe, test } from "node:test";
 import type { Server } from "node:http";
 
-import { BACKEND_DIR } from "../config";
+// One heavy job at a time and no queue, so the test below can fill it.
+// Read at config load, so set before anything imports config.
+process.env.SLOTIFY_MAX_CONCURRENT_JOBS = "1";
+process.env.SLOTIFY_MAX_QUEUED_JOBS = "0";
+
+const { BACKEND_DIR } = await import("../config");
 
 const REPO_ROOT = path.resolve(BACKEND_DIR, "..");
 const SAMPLE_AUDIO = path.join(BACKEND_DIR, "audio_tests", "ryan-test1.mp3");
@@ -145,20 +150,50 @@ describe("POST /api/insert-sections", { skip }, () => {
     assert.notDeepEqual(scores.slice(0, 3), [92, 85, 78]);
   });
 
-  test("undecodable audio is a 502 that reports the failure", async () => {
+  test("undecodable audio is a 415 that reports the failure, before the analyser runs", async () => {
     const form = new FormData();
     form.append("audio", new Blob([Buffer.from("this is not audio")]), "broken.mp3");
     const { status, body } = await post(form);
 
-    assert.equal(status, 502);
+    assert.equal(status, 415);
     assert.equal(body.placementStatus, "unavailable");
     assert.deepEqual(body.slots, []);
     assert.deepEqual(body.points, []);
-    assert.ok(body.error.includes("no insertion points"));
-    // The client gets the failure, not the repository's internal paths.
-    assert.ok(!String(body.detail).includes("Traceback"));
-    assert.ok(!String(body.detail).includes(os.tmpdir()), body.detail);
-    assert.ok(!String(body.detail).includes(REPO_ROOT), body.detail);
+    assert.match(body.error, /not a supported audio file/);
+    // The client gets the failure, not the server's internal paths.
+    assert.ok(!JSON.stringify(body).includes("Traceback"));
+    assert.ok(!JSON.stringify(body).includes(os.tmpdir()), body.error);
+    assert.ok(!JSON.stringify(body).includes(REPO_ROOT), body.error);
+  });
+
+  test("an HLS playlist dressed as an mp3 is a 415", async () => {
+    const playlist = `#EXTM3U\n#EXT-X-TARGETDURATION:10\n#EXTINF:10,\n${SAMPLE_AUDIO}\n#EXT-X-ENDLIST\n`;
+    const form = new FormData();
+    form.append("audio", new Blob([Buffer.from(playlist)], { type: "audio/mpeg" }), "episode.mp3");
+    const { status, body } = await post(form);
+    assert.equal(status, 415);
+    assert.equal(body.placementStatus, "unavailable");
+  });
+
+  test("with every job slot taken and no queue, a new analysis is a 503 with Retry-After", async () => {
+    const { heavyJobs } = await import("../lib/concurrency");
+    const first = post(audioForm(SAMPLE_AUDIO));
+    const deadline = Date.now() + 10_000;
+    while (heavyJobs.running === 0 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(heavyJobs.running, 1);
+
+    const response = await fetch(`${baseUrl}/api/insert-sections`, {
+      method: "POST",
+      body: audioForm(SAMPLE_AUDIO),
+    });
+    assert.equal(response.status, 503);
+    assert.ok(Number(response.headers.get("retry-after")) > 0);
+    const body = (await response.json()) as any;
+    assert.equal(body.placementStatus, "unavailable");
+    assert.match(body.error, /busy/);
+
+    assert.equal((await first).status, 200);
+    assert.equal(heavyJobs.running, 0);
   });
 
   test("a request with no audio is rejected before anything runs", async () => {

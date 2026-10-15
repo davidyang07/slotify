@@ -43,13 +43,20 @@ const postForm = (path: string, fields: Record<string, string>, files: Record<st
 const expectJsonError = async (response: Response, status: number) => {
   assert.equal(response.status, status, `expected ${status}, got ${response.status}`);
   assert.match(response.headers.get("content-type") ?? "", /application\/json/);
-  const body = (await response.json()) as { error?: unknown };
+  const body = (await response.json()) as { error?: unknown; requestId?: unknown };
   assert.equal(typeof body.error, "string");
+  // Every error from the app, whichever layer sent it, can be found in the
+  // log by its id. (The bare app in the asyncHandler test has no ids.)
+  if (response.headers.has("x-request-id")) {
+    assert.equal(body.requestId, response.headers.get("x-request-id"));
+  }
   return body as { error: string };
 };
 
+// Liveness, not readiness: /api/health also checks ffmpeg and the analyser,
+// which this suite does not need.
 const assertStillServing = async () => {
-  const response = await fetch(`${baseUrl}/api/health`);
+  const response = await fetch(`${baseUrl}/api/capabilities`);
   assert.equal(response.status, 200);
 };
 
@@ -182,8 +189,9 @@ describe("uploads", () => {
   });
 
   test("more clone samples than allowed is a 400", async () => {
+    const { MAX_CLONE_SAMPLES } = await import("./middleware/upload");
     const form = new FormData();
-    for (let index = 0; index < 11; index += 1) form.append("files", audio(), `s${index}.wav`);
+    for (let index = 0; index <= MAX_CLONE_SAMPLES; index += 1) form.append("files", audio(), `s${index}.wav`);
     const response = await fetch(`${baseUrl}/api/clone`, { method: "POST", body: form });
     await expectJsonError(response, 400);
   });
@@ -224,7 +232,14 @@ describe("SLOTIFY_API_TOKEN", () => {
     process.env.SLOTIFY_API_TOKEN = "s3cret";
     const capabilities = (await (await fetch(`${baseUrl}/api/capabilities`)).json()) as any;
     assert.equal(capabilities.authRequired, true);
-    assert.equal((await fetch(`${baseUrl}/api/health`)).status, 200);
+    // Public for GET and HEAD alike (a load balancer's probe is often HEAD);
+    // 200 or 503 is readiness, never 401.
+    for (const method of ["GET", "HEAD"]) {
+      const health = await fetch(`${baseUrl}/api/health`, { method });
+      assert.ok([200, 503].includes(health.status), `${method} /api/health: ${health.status}`);
+      const caps = await fetch(`${baseUrl}/api/capabilities`, { method });
+      assert.equal(caps.status, 200, `${method} /api/capabilities`);
+    }
 
     const missing = await expectJsonError(await postJson("/api/tts", {}), 401);
     assert.match(missing.error, /Bearer/);
@@ -270,5 +285,19 @@ describe("asyncHandler", () => {
     } finally {
       local.close();
     }
+  });
+});
+
+describe("request ids", () => {
+  test("a client's X-Request-Id is echoed, and put on error bodies", async () => {
+    const response = await postJson("/api/tts", {}, { "X-Request-Id": "client-trace-7" });
+    assert.equal(response.headers.get("x-request-id"), "client-trace-7");
+    const body = (await response.json()) as { requestId: string };
+    assert.equal(body.requestId, "client-trace-7");
+  });
+
+  test("without one, the server assigns an id", async () => {
+    const response = await fetch(`${baseUrl}/api/capabilities`);
+    assert.match(response.headers.get("x-request-id") ?? "", /^[0-9a-f-]{36}$/);
   });
 });

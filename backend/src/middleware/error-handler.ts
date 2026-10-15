@@ -1,5 +1,6 @@
 import type { ErrorRequestHandler } from "express";
 import multer from "multer";
+import { describeFailure, providerOf } from "../lib/errors";
 import { HttpError } from "../lib/http";
 
 /** Raised by the CORS origin check; becomes a 403 rather than a 500. */
@@ -21,8 +22,9 @@ const MULTER_MESSAGES: Partial<Record<multer.ErrorCode, string>> = {
 };
 
 /**
- * The last middleware. Every error becomes JSON `{ error }`; nothing reaches
- * the client as an HTML page, a stack trace or a server path.
+ * The last middleware. Every error becomes JSON `{ error, requestId }`
+ * (requestId is added by lib/request-context.ts); nothing reaches the client
+ * as an HTML page, a stack trace, a server path or a provider's response.
  */
 export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
   if (res.headersSent) {
@@ -36,7 +38,13 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
     return;
   }
   if (error instanceof HttpError) {
+    for (const [name, value] of Object.entries(error.headers)) res.setHeader(name, value);
     res.status(error.status).json({ error: error.message });
+    return;
+  }
+  if (providerOf(error)) {
+    const failure = describeFailure("Request failed.", error);
+    res.status(failure.status).json(failure.body);
     return;
   }
   if (error instanceof multer.MulterError) {

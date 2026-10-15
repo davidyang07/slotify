@@ -273,13 +273,15 @@ export const enhanceSlotsWithOpenAI = async ({
  * Response so callers can decide how to handle non-OK statuses.
  */
 export const requestTranscription = (
-  buffer: Buffer,
+  audio: Blob,
   filename: string,
 ): Promise<Response> => {
   const form = new FormData();
   form.append("model", "whisper-1");
   form.append("response_format", "verbose_json");
-  form.append("file", new Blob([buffer]), filename);
+  // `filename` is ours (audio.<detected extension>): Whisper picks the decoder
+  // from it, and the client's own name has no business reaching a provider.
+  form.append("file", audio, filename);
 
   return fetch(OPENAI_TRANSCRIPTION_URL, {
     method: "POST",

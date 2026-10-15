@@ -1,5 +1,11 @@
 import type { DragEvent } from "react";
 import { useState } from "react";
+import {
+  AUDIO_ACCEPT,
+  SUPPORTED_AUDIO_LABEL,
+  isSupportedAudioFile,
+  unsupportedAudioMessage,
+} from "../lib/audio-formats";
 import SoundwaveBackground from "./SoundwaveBackground";
 import { UploadIcon } from "./icons";
 import "./EmptyState.css";
@@ -19,10 +25,18 @@ type EmptyStateProps = {
  */
 const EmptyState = ({ onFile, problems }: EmptyStateProps) => {
   const [dragActive, setDragActive] = useState(false);
+  /** A dropped file the API would refuse; said here instead of as a 415. */
+  const [refused, setRefused] = useState<string | null>(null);
 
   const take = (files: FileList | null | undefined) => {
     const file = files?.[0];
-    if (file) onFile(file);
+    if (!file) return;
+    if (!isSupportedAudioFile(file)) {
+      setRefused(unsupportedAudioMessage(file.name));
+      return;
+    }
+    setRefused(null);
+    onFile(file);
   };
 
   const onDragOver = (event: DragEvent<HTMLElement>) => {
@@ -59,7 +73,7 @@ const EmptyState = ({ onFile, problems }: EmptyStateProps) => {
               Enter or Space opens the file picker; the ring shows on the label. */}
           <input
             type="file"
-            accept="audio/*"
+            accept={AUDIO_ACCEPT}
             className="dropzone-input"
             onChange={(event) => {
               take(event.target.files);
@@ -71,10 +85,10 @@ const EmptyState = ({ onFile, problems }: EmptyStateProps) => {
             Drop an audio file here, or <span className="dropzone-link">choose one</span>
           </span>
           <span className="dropzone-caption">
-            MP3, WAV, M4A, FLAC or OGG · up to 200 MB · analysis needs no API keys
+            {SUPPORTED_AUDIO_LABEL} · up to 200 MB · analysis needs no API keys
           </span>
         </label>
-        {problems.map((problem) => (
+        {[...(refused ? [refused] : []), ...problems].map((problem) => (
           <p key={problem} className="status-error empty-state-problem" role="alert">
             {problem}
           </p>

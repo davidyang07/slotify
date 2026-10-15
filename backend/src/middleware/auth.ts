@@ -2,8 +2,15 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import type { Request, RequestHandler } from "express";
 import { configuredApiToken, internalToken } from "../config";
 
-// Readable without a token so the UI can say what is wrong before it fails.
-const PUBLIC_ROUTES = new Set(["GET /api/health", "GET /api/capabilities"]);
+// Readable without a token so the UI can say what is wrong before it fails,
+// and so a load balancer's probe (often HEAD) needs no credential. Express
+// answers HEAD with the GET route, so both are listed.
+const PUBLIC_ROUTES = new Set([
+  "GET /api/health",
+  "HEAD /api/health",
+  "GET /api/capabilities",
+  "HEAD /api/capabilities",
+]);
 
 /** Express matches routes case-insensitively and ignores a trailing slash. */
 export const routeKey = (req: Request): string =>

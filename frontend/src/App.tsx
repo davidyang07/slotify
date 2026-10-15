@@ -33,6 +33,7 @@ import {
   type Slot,
 } from "./lib/recommendations";
 import { TaskScope, type ScopedTask } from "./lib/tasks";
+import { releaseVoice } from "./lib/voice";
 import {
   MAX_SPONSORS,
   renderBlockedReason,
@@ -73,6 +74,8 @@ function App() {
 
   const [baseAudio, setBaseAudio] = useState<File | null>(null);
   const [voiceId, setVoiceId] = useState("");
+  /** The voice to release on `pagehide`, which must not read stale state. */
+  const voiceIdRef = useRef("");
   const [isCloningVoice, setIsCloningVoice] = useState(false);
   const [voiceCloneError, setVoiceCloneError] = useState("");
   const [analysisNotice, setAnalysisNotice] = useState<AnalysisNotice | null>(null);
@@ -128,6 +131,25 @@ function App() {
   const hasSponsorName = sponsors.some((entry) => entry.name.trim());
   /** Generation needs a sponsor to read out; analysis does not. */
   const isSponsorReady = Boolean(baseAudio && hasSponsorName);
+
+  useEffect(() => {
+    voiceIdRef.current = voiceId;
+  }, [voiceId]);
+
+  // Closing or leaving the page releases its cloned voice, so it does not sit
+  // in the ElevenLabs account until the server's idle timeout. A page restored
+  // from the back/forward cache then clones again when it next needs to.
+  useEffect(() => {
+    const onPageHide = () => {
+      const current = voiceIdRef.current;
+      if (!current) return;
+      voiceIdRef.current = "";
+      setVoiceId("");
+      void releaseVoice(apiFetch, current);
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, []);
 
   // Each generated file is released when it is replaced or the file changes.
   useEffect(() => {
@@ -407,6 +429,9 @@ function App() {
   const startFile = (file: File) => {
     if (file === baseAudio) return;
     fileTasks().reset();
+    // The previous file's clone is of no use to this one.
+    if (voiceIdRef.current) void releaseVoice(apiFetch, voiceIdRef.current);
+    voiceIdRef.current = "";
     setBaseAudio(file);
     setAudioDuration(null);
     setWaveformPeaks(null);
@@ -512,7 +537,9 @@ function App() {
       }
       const data = (await response.json()) as { voiceId?: string };
       if (!data.voiceId) throw new Error("Voice clone response missing voiceId.");
-      // A clone of the previous file must never become this file's voice.
+      // A clone of the previous file must never become this file's voice; the
+      // server may delete it now rather than at its idle timeout.
+      if (!task.isCurrent()) void releaseVoice(apiFetch, data.voiceId);
       task.signal.throwIfAborted();
       setVoiceId(data.voiceId);
       return data.voiceId;
@@ -648,6 +675,9 @@ function App() {
         });
 
         if (!response.ok) {
+          // 410: the server released this clone (idle too long); forget it so
+          // the next attempt clones again instead of failing the same way.
+          if (response.status === 410) setVoiceId("");
           throw new Error(await readApiError(response, "TTS request failed."));
         }
 

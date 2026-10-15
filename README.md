@@ -140,12 +140,30 @@ own machine:
 
 | Variable | Effect |
 | --- | --- |
-| `SLOTIFY_API_TOKEN` | When set, every route except `GET /api/health` and `GET /api/capabilities` requires `Authorization: Bearer <token>` |
+| `SLOTIFY_API_TOKEN` | When set, every route except `GET`/`HEAD` `/api/health` and `/api/capabilities` requires `Authorization: Bearer <token>`. No child process ever receives it |
 | `VITE_API_TOKEN` (frontend) | The token the UI sends. It is compiled into the bundle, so anyone who can load the page can read it: it keeps out clients that don't have the page, not users who do |
 | `SLOTIFY_RATE_LIMIT_PAID_PER_MIN` | Per-IP limit on routes that call OpenAI or ElevenLabs (default 10; `0` disables) |
 | `SLOTIFY_RATE_LIMIT_COMPUTE_PER_MIN` | Per-IP limit on analysis and merge (default 30) |
-| `SLOTIFY_MAX_UPLOAD_MB` | Upload size cap (default 200) |
-| `SLOTIFY_FFMPEG_TIMEOUT_MS`, `SLOTIFY_ANALYSER_TIMEOUT_MS`, `SLOTIFY_PIPELINE_TIMEOUT_MS` | Kill a stuck child process (defaults 2, 5 and 10 minutes) |
+| `SLOTIFY_MAX_UPLOAD_MB` | Upload size cap (default 200). Uploads stream to a per-request temp dir, not memory |
+| `SLOTIFY_MAX_AUDIO_MINUTES` | Longest upload, by duration, any route processes (default 180; longer is a 413) |
+| `SLOTIFY_MAX_SONG_MINUTES` | Longest upload song-mode analysis accepts (default 10): beat tracking needs ~180 MB of memory per minute |
+| `SLOTIFY_MAX_CONCURRENT_JOBS` | Analyses, rankings, ad pipelines and merges running at once (default half the CPUs, at least 1) |
+| `SLOTIFY_MAX_QUEUED_JOBS` | Heavy jobs allowed to wait for a slot (default 8); beyond that, 503 with `Retry-After` |
+| `SLOTIFY_TTS_MAX_STATEMENTS`, `SLOTIFY_TTS_MAX_CHARS` | Per-request `/api/tts` caps, checked before any ElevenLabs call (defaults 8 statements, 1,500 characters) |
+| `SLOTIFY_MAX_CLONE_SAMPLES`, `SLOTIFY_MAX_CLONE_SAMPLE_MB` | Voice-clone upload caps (defaults 3 files, each up to `SLOTIFY_MAX_UPLOAD_MB`) |
+| `SLOTIFY_CLONE_SAMPLE_SECONDS` | Seconds of each clone sample sent to ElevenLabs (default 180), past the first 30 s when the file is long enough, as mono MP3 |
+| `SLOTIFY_VOICE_TTL_MIN` | Cloned voices idle this long are deleted from the ElevenLabs account (default 30) |
+| `SLOTIFY_MAX_LIVE_VOICES` | Cloned voices kept at once; the least recently used is deleted first (default 3) |
+| `SLOTIFY_OPENAI_MODELS` | Comma-separated OpenAI models `/ad/insert` clients may request as `llmModel` (default `gpt-4o-mini`) |
+| `SLOTIFY_FFMPEG_TIMEOUT_MS`, `SLOTIFY_ANALYSER_TIMEOUT_MS`, `SLOTIFY_PIPELINE_TIMEOUT_MS` | Stop a stuck child process (defaults 2, 5 and 10 minutes) |
+| `SLOTIFY_KILL_GRACE_MS` | How long a stopped child gets between SIGTERM and SIGKILL to clean up (default 5000) |
+
+`GET /api/health` is a readiness check: 503, naming the failed check, when
+ffmpeg, ffprobe or the analyser's Python imports are unusable. Every response
+carries an `X-Request-Id` (yours, if you send one), error bodies repeat it as
+`requestId`, and every log line for the request is prefixed with it. On
+SIGTERM or SIGINT the API stops taking connections, stops its child processes,
+deletes the voices it cloned and exits.
 
 Rate limits key on the client IP Express sees; behind a reverse proxy, that is
 the proxy's unless Express's `trust proxy` is configured.

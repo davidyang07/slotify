@@ -5,6 +5,7 @@ import { allowedOrigins, rateLimitsFromEnv } from "./config";
 import { requireApiToken } from "./middleware/auth";
 import { CorsRejectedError, errorHandler } from "./middleware/error-handler";
 import { createRateLimiter } from "./middleware/rate-limit";
+import { installRequestLogPrefix, requestIdMiddleware } from "./lib/request-context";
 import { healthRouter } from "./routes/health";
 import { capabilitiesRouter } from "./routes/capabilities";
 import { cloneRouter } from "./routes/clone";
@@ -17,8 +18,11 @@ import { adInsertRouter } from "./routes/ad-insert";
 
 /** The API without a listener, so tests can drive the real middleware stack. */
 export const createApp = () => {
+  installRequestLogPrefix();
   const app = express();
 
+  // First, so every response -- a CORS refusal included -- carries the id.
+  app.use(requestIdMiddleware);
   app.use(
     cors({
       origin(origin, callback) {
@@ -28,6 +32,7 @@ export const createApp = () => {
         }
         callback(new CorsRejectedError());
       },
+      exposedHeaders: ["X-Request-Id", "Retry-After"],
     }),
   );
   // Auth and rate limits run before any body is parsed or buffered.

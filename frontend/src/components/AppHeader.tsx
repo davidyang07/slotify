@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { AUDIO_ACCEPT } from "../lib/audio-formats";
 import { describeFile } from "../lib/format";
 import SlotifyLogo from "./SlotifyLogo";
 import SoundwaveIcon from "./SoundwaveIcon";
@@ -35,7 +36,7 @@ const FileBar = ({ file, durationSeconds, onReplace }: FileBarProps) => {
       <input
         ref={inputRef}
         type="file"
-        accept="audio/*"
+        accept={AUDIO_ACCEPT}
         className="file-bar-input"
         tabIndex={-1}
         aria-hidden="true"
