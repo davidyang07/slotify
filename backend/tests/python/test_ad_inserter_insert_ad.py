@@ -1,4 +1,4 @@
-"""insert_ad.py: per-mode voice resolution and cleanup of cloned voices."""
+"""insert_ad.py: per-mode voice resolution, cleanup of cloned voices, caps."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import pytest
 from pydub import AudioSegment
 from pydub.generators import Sine
 
-from ad_inserter import analysis, insert_ad, tts
+from ad_inserter import analysis, insert_ad, llm, tts
 
 pytestmark = pytest.mark.ffmpeg  # the run exports its result as MP3
 
@@ -212,3 +212,110 @@ def test_clone_callback_carries_the_internal_token(
     (request,) = fake_api.requests
     assert request.headers["authorization"] == "Bearer internal-token"
     assert b'name="name"\r\n\r\nSpeaker A Clone\r\n' in request.body
+
+
+def test_a_model_off_the_allow_list_is_refused_up_front(
+    monkeypatch: pytest.MonkeyPatch,
+    conversation: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def refuse(_path: Path) -> AudioSegment:
+        raise AssertionError("the run started")
+
+    monkeypatch.setattr(analysis, "load_audio", refuse)
+    monkeypatch.setenv("SLOTIFY_OPENAI_MODELS", "gpt-4o-mini, gpt-4.1-mini")
+
+    with pytest.raises(SystemExit) as refused:
+        _run(
+            monkeypatch,
+            conversation,
+            "--ad-mode",
+            "A_ONLY",
+            "--llm-provider",
+            "openai",
+            "--llm-model",
+            "o1-pro",
+        )
+
+    assert refused.value.code == 2
+    assert "permits: gpt-4o-mini, gpt-4.1-mini" in capsys.readouterr().err
+
+
+def test_cloning_without_the_elevenlabs_key_is_refused_up_front(
+    monkeypatch: pytest.MonkeyPatch,
+    conversation: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _diarized(monkeypatch)
+
+    def refuse(*_args: object) -> str:
+        raise AssertionError("a voice was cloned that could not be deleted")
+
+    monkeypatch.setattr(insert_ad, "_clone_voice", refuse)
+
+    with pytest.raises(SystemExit) as refused:
+        _run(monkeypatch, conversation, "--ad-mode", "A_ONLY", "--clone-voices")
+
+    assert refused.value.code == 2
+    assert "ELEVENLABS_API_KEY" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("ad_mode", ["A_ONLY", "DUO"])
+def test_fallback_script_with_a_huge_blurb_is_capped(
+    monkeypatch: pytest.MonkeyPatch, conversation: Path, ad_mode: str
+) -> None:
+    _diarized(monkeypatch)
+    monkeypatch.setattr(analysis, "check_ffmpeg", lambda: None)
+    texts: List[str] = []
+
+    def fake_tts(request: tts.TTSRequest) -> AudioSegment:
+        texts.append(request.text)
+        return Sine(440).to_audio_segment(duration=1_200, volume=-10)
+
+    monkeypatch.setattr(tts, "synthesize_audio", fake_tts)
+    # The LLM returns nothing usable, so the script falls back to the blurb.
+    monkeypatch.setattr(
+        llm,
+        "generate_ad_script",
+        lambda **_kwargs: llm.AdScriptResult(segments=[], prompt="", raw_text=""),
+    )
+    argv_blurb = "a calmer note-taking app " * 400
+
+    _run(
+        monkeypatch,
+        conversation,
+        "--ad-mode",
+        ad_mode,
+        "--voice-id-a",
+        "voice-a",
+        "--voice-id-b",
+        "voice-b",
+        "--product-blurb",
+        argv_blurb,
+    )
+
+    assert texts
+    assert sum(len(text) for text in texts) <= llm.MAX_SCRIPT_CHARS
+    assert len(texts) <= llm.MAX_AD_SEGMENTS
+
+
+def test_voice_deletes_use_a_short_timeout_once_stopping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ad_inserter import http_client, runtime
+
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
+    timeouts: List[float] = []
+    monkeypatch.setattr(
+        http_client, "send", lambda *_a, timeout_s, **_k: timeouts.append(timeout_s) or b""
+    )
+
+    insert_ad._delete_cloned_voice("voice-1")
+    monkeypatch.setattr(runtime, "termination_requested", lambda: True)
+    insert_ad._delete_cloned_voice("voice-2")
+
+    assert timeouts == [
+        insert_ad.VOICE_DELETE_TIMEOUT_S,
+        insert_ad.VOICE_DELETE_SHUTDOWN_TIMEOUT_S,
+    ]
+    assert 2 * insert_ad.VOICE_DELETE_SHUTDOWN_TIMEOUT_S < 5.0  # Node's grace period

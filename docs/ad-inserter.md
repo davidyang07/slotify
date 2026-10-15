@@ -15,11 +15,12 @@ purpose — mixing has nothing to learn, and ranking has nothing to render.
 
 ## Ad Inserter backend module
 - `__init__.py` exposes the package modules (analysis, llm, mix, tts, insert_ad) and version
-- `analysis.py` handles audio analysis: ffmpeg check, loading/standardizing audio, silence-based candidate detection for podcasts, beat/RMS analysis for songs, optional Whisper transcription, and building candidate payloads
+- `analysis.py` handles audio analysis: ffmpeg check, loading/standardizing audio, the reduced analysis decode (see [Memory](#memory)), silence-based candidate detection for podcasts, beat/RMS analysis for songs, optional Whisper transcription, and building candidate payloads
 - `analyze_cli.py` exposes a CLI helper that runs analysis and returns JSON for the Node API (`POST /api/insert-sections`)
+- `runtime.py` is the process contract every CLI shares: `--work-dir`, the private temp dir, and the SIGTERM/SIGINT handlers (see [Running under the Node API](#running-under-the-node-api))
 - `cli.py` provides the single-speaker CLI workflow: parse args, pick candidates, call LLM to write promo/choose insertion, loudness match + room tone, then hand the splice to the API's `/api/merge` (plus debug artifacts)
 - `insert_ad.py` handles two-speaker insertion (A/B/DUO), optional diarization, and optional voice cloning; it splices the ad in locally with `mix.insert_with_crossfade`
-- `llm.py` builds the prompt and calls OpenAI to generate promo text and choose insertion index; parses JSON response into `LLMResult`. A malformed reply (not JSON, not an object, missing `promo_text`/`chosen_index`, a non-integer or out-of-range index) falls back to the product name and the heuristic insertion point instead of crashing
+- `llm.py` builds the prompt and calls OpenAI to generate promo text and choose insertion index; parses JSON response into `LLMResult`. A malformed reply (not JSON, not an object, missing `promo_text`/`chosen_index`, a non-integer or out-of-range index) falls back to the product name and the heuristic insertion point instead of crashing. It also enforces the model allow-list and the output caps (see [LLM configuration](#llm-configuration))
 - `mix.py` does audio mixing utilities: LUFS measurement, loudness matching, looping room tone, splice insertion with crossfaded joins, and context window extraction
 - `tts.py` requests sponsor reads from the API's `/api/tts` (ElevenLabs behind it)
 - `http_client.py` is the one place the pipeline makes HTTP requests: it adds the callback credential and timeout (see [Callbacks to the API](#callbacks-to-the-api)) and encodes multipart bodies
@@ -94,7 +95,7 @@ This feature inserts an AI-written ad into a two-person conversation. It can spe
 
 ### Required env vars
 - `OPENAI_API_KEY` for ad script generation (unless `--llm-provider none`)
-- `ELEVENLABS_API_KEY` for TTS, and for deleting cloned voices
+- `ELEVENLABS_API_KEY` with `--clone-voices`, to delete the voices the run clones; the run refuses to start (exit 2) without it. TTS itself goes through the API's `/api/tts`, so the pipeline needs no ElevenLabs key for it
 - A voice for each speaker the ad mode uses: `--voice-id-a`/`ELEVENLABS_VOICE_ID_A` for A, `--voice-id-b`/`ELEVENLABS_VOICE_ID_B` for B, or `ELEVENLABS_DEFAULT_VOICE_ID` as a fallback. `A_ONLY` needs only A, `B_ONLY` only B, `DUO` both
 
 Optional diarization (enables DUO mode and voice cloning):
@@ -144,8 +145,88 @@ curl -X POST http://localhost:3001/ad/insert \
 ```
 
 ## LLM configuration
-- `--llm-provider openai` (default `openai`)
+- `--llm-provider openai` (default `openai`); `none` skips the LLM (product name / blurb, heuristic insertion point)
 - Set `OPENAI_API_KEY` in your environment
+- `--llm-model` must be in the allow-list `SLOTIFY_OPENAI_MODELS`: a comma-separated list, entries trimmed, empty entries dropped, exact match; unset or empty means `gpt-4o-mini`. It is the variable and parsing the Node API enforces on `/ad/insert`; the pipeline checks it again before decoding anything, and `cli.py`/`insert_ad.py` exit 2 with `OpenAI model '<name>' is not allowed; SLOTIFY_OPENAI_MODELS permits: ...`. Without `--llm-model` the model is `gpt-4o-mini` if allowed, else the first allowed one
+- Every OpenAI call sends `max_tokens=400` (`llm.OPENAI_MAX_TOKENS`); the JSON around a ~20 s read is well under 200 tokens. A reply cut off at the limit is malformed and takes the usual fallback. Allow only chat models that accept `max_tokens` (o-series models do not)
+- Each script segment becomes one TTS callback carrying the internal token, so the script is capped before any TTS: at most 6 segments (`MAX_AD_SEGMENTS`) and 400 characters in all (`MAX_SCRIPT_CHARS`, a ~20 s read with headroom), cut on a word boundary; segments past the budget are dropped. The same 400-character cap applies to the single-voice promo and to the fallback scripts built from `--product-name`/`--product-blurb`
+
+## Running under the Node API
+The Node API spawns one CLI per request (`cwd` = `backend/`) and passes each
+one `--work-dir=<dir>`, a directory it creates and removes. Every CLI
+(`analyze_cli`, `cli`, `insert_ad`) shares this contract (`ad_inserter/runtime.py`):
+
+- **`--work-dir`** must name an existing directory (exit 2 otherwise). The run
+  creates one private directory inside it, points `tempfile` and `TMPDIR` at
+  it, and removes it on the way out, so *every* temp file -- the pipeline's own
+  (Whisper snippet WAVs, the decoded analysis PCM, the promo MP3 uploaded to
+  `/api/merge`, the speaker samples for cloning) and the libraries' (pydub's
+  MP3 export temp files) -- lands under `--work-dir` and nothing is written to
+  the system temp dir. Without `--work-dir` the private directory is created in
+  the system temp dir instead, and is removed the same way. Size the work dir's
+  filesystem for the staged audio: about 115 MB of PCM per hour of upload for
+  podcast analysis, 635 MB per hour for song analysis, and pydub's temp WAV of
+  the whole mix when `insert_ad` exports.
+- **SIGTERM and SIGINT** raise `SystemExit`: exit code **143** for SIGTERM, 130
+  for SIGINT. `finally` blocks and `with` exits run, so temp files are removed
+  and `insert_ad` deletes the voices it cloned. Only the first signal acts;
+  later ones are ignored so they cannot cut that cleanup short. The blocking
+  calls (ffmpeg subprocess waits, HTTP callbacks with their timeout) return to
+  the interpreter on a signal. The analysis decoder kills its ffmpeg child when
+  its wait is interrupted; pydub's ffmpeg children (full-quality decode, MP3
+  export) are not killed by the pipeline, so signal the whole process group, as
+  Node does. Two steps finish before the exit: a `/api/clone` request in
+  flight (so its voice ID is known and the voice can be deleted) and the voice
+  deletes, which use a 2 s timeout each once a signal has arrived so two of them
+  fit in Node's 5 s grace period before SIGKILL. A SIGKILL skips all cleanup;
+  the work dir is then Node's to remove. Long numeric steps inside a single
+  C call (librosa's beat tracking on a long song) react only when they return.
+
+### Environment each CLI reads
+Nothing else is read; in particular no CLI reads `API_BASE_URL` (callback URLs
+come from `--tts-url`/`--merge-url`/`--clone-url`) or needs `SLOTIFY_API_TOKEN`.
+
+| Variable | `analyze_cli` | `cli` | `insert_ad` | Effect |
+| --- | --- | --- | --- | --- |
+| `PATH` | required | required | required | Must find `ffmpeg` and `ffprobe`; the run fails up front if `ffmpeg` is missing. |
+| `TMPDIR` | optional | optional | optional | System temp dir, used only without `--work-dir`. The run overrides it for its own children. |
+| `HOME` / `XDG_CACHE_HOME` | optional | optional | optional | Whisper's model cache (`$XDG_CACHE_HOME/whisper`, default `~/.cache/whisper`) when `openai-whisper` is installed; a missing model is downloaded on first use. |
+| `OPENAI_API_KEY` | -- | required* | required* | *With `--llm-provider openai` (the default). The OpenAI SDK also honours `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`. |
+| `SLOTIFY_OPENAI_MODELS` | -- | optional | optional | Model allow-list, default `gpt-4o-mini` (see [LLM configuration](#llm-configuration)). |
+| `SLOTIFY_INTERNAL_TOKEN` | -- | required* | required* | *When the API authenticates callbacks: `/api/tts` and `/api/merge` (`cli`), `/api/tts` and `/api/clone` (`insert_ad`). See [Callbacks to the API](#callbacks-to-the-api). |
+| `SLOTIFY_API_TOKEN` | -- | optional | optional | Fallback callback credential for hand runs; Node does not pass it. |
+| `SLOTIFY_CALLBACK_TIMEOUT_S` | -- | optional | optional | Callback timeout, default 300 s. |
+| `ELEVENLABS_API_KEY` | -- | -- | required with `--clone-voices` | Deletes the cloned voices; the run exits 2 without it. |
+| `ELEVENLABS_VOICE_ID_A` / `_B`, `ELEVENLABS_DEFAULT_VOICE_ID` | -- | -- | optional | Voices for speakers without `--voice-id-a`/`-b` (or a usable clone); a needed speaker with none fails with `Missing ElevenLabs voice ID for speaker A`. |
+| `HUGGINGFACE_TOKEN` / `PYANNOTE_TOKEN` / `HF_TOKEN` | -- | -- | optional | Diarization with `pyannote.audio`. Without it `DUO` and `--clone-voices` fail with an error that names these variables. |
+
+## Memory
+Analysis never holds the upload at full quality. `analysis.load_analysis_audio`
+has ffmpeg decode it straight to mono 16-bit 16 kHz PCM (the format Whisper
+transcribes), staged in the private temp dir and read back in one allocation:
+about 115 MB per hour of audio, where the old 44.1 kHz stereo decode held about
+635 MB plus transient copies. Silence thresholds are relative to the clip's own
+dBFS and the downmix is the channel mean, so detection is unchanged: on
+`audio_tests/` the podcast output is identical for `ryan-test1.mp3` and
+`ryan-rap.mp3`, and for the 48 kHz `catsvdogs.mp3` and `convo.mp3` (resampled
+differently than before) a silence midpoint moves by at most 1 ms and a length
+by at most 2 ms. Measured on a 14 MB, 1-hour 44.1 kHz stereo MP3
+(`analyze_cli --mode podcast`): peak RSS 1853 MB before, 143 MB after, wall time
+206 s before, 59 s after, with identical candidates.
+
+Song mode (`analysis.load_song_samples`) decodes to mono float32 but keeps
+44.1 kHz: librosa's beat tracker works in frames of a fixed number of samples,
+and at 22.05 kHz the `audio_tests/` tempos and beats change. Its output on
+`audio_tests/` is byte-identical to before. Its peak is librosa's beat tracking,
+about 180 MB per minute of audio (2.9 GB for a 15-minute file, 3.2 GB before),
+so long uploads should not be analysed in song mode.
+
+Where the full-quality audio is needed it is decoded only as far as needed:
+`cli.py` takes candidates and snippets from the analysis copy and decodes just
+the 8 s around the insertion point at 44.1 kHz stereo for the loudness context
+and room tone (`analysis.load_audio_window`), since `/api/merge` splices the
+original file. `insert_ad.py` splices locally, so it still decodes the whole
+upload at full quality.
 
 ## Callbacks to the API
 `cli.py` and `insert_ad.py` call back into the Node API (`/api/tts`,
@@ -154,7 +235,7 @@ curl -X POST http://localhost:3001/ad/insert \
 
 | Variable | Effect |
 | --- | --- |
-| `SLOTIFY_INTERNAL_TOKEN` | Sent as `Authorization: Bearer <token>`. The Node API sets it in the environment of every Python child it spawns. |
+| `SLOTIFY_INTERNAL_TOKEN` | Sent as `Authorization: Bearer <token>`. The Node API sets it in the environment of the pipelines that call back (`cli`, `insert_ad`). |
 | `SLOTIFY_API_TOKEN` | Fallback credential when `SLOTIFY_INTERNAL_TOKEN` is unset (e.g. running a CLI by hand against a deployment that sets one). With neither set, no `Authorization` header is sent. |
 | `SLOTIFY_CALLBACK_TIMEOUT_S` | Per-request timeout in seconds, default `300`. A slow or hung API now fails the run with `... request timed out` instead of hanging it. |
 
@@ -166,5 +247,10 @@ cleanup uses only `xi-api-key`.
 python -m pytest backend/tests/python -q   # from the repository root
 ```
 They need `backend/requirements.txt` and `pytest`; no network, API keys or
-Whisper. Tests that encode or decode MP3 are skipped when `ffmpeg` is not on
-`PATH`.
+Whisper. Tests that decode through ffmpeg (all analysis does, WAV included) or
+encode MP3 are skipped when `ffmpeg` is not on `PATH`.
+`test_ad_inserter_runtime.py` runs each CLI as a subprocess, as Node does,
+blocks it in a stub (Whisper, a hung ffmpeg, a hung `/api/merge` or `/api/tts`
+on a loopback server), sends SIGTERM to it or its process group, and checks the
+exit code 143, that the work dir and the system temp dir are left empty, and
+that `insert_ad` deleted both voices it cloned.

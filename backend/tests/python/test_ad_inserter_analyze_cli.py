@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import types
 from pathlib import Path
 from typing import Dict, List
 
@@ -123,6 +124,7 @@ def test_cli_defaults_come_from_the_heuristic_config() -> None:
     )
 
 
+@pytest.mark.ffmpeg  # analysis decodes through ffmpeg
 def test_cli_keeps_the_longest_and_its_output_shape(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -150,3 +152,68 @@ def test_cli_keeps_the_longest_and_its_output_shape(
     assert mids == pytest.approx(expected_mids, abs=50)
     for entry in payload["candidates"]:
         assert set(entry) == {"start_ms", "end_ms", "mid_ms", "silence_ms"}
+
+
+@pytest.mark.ffmpeg
+@pytest.mark.parametrize("mode", ["podcast", "song"])
+def test_cli_never_decodes_the_upload_at_full_quality(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mode: str,
+) -> None:
+    audio_path = tmp_path / "episode.wav"
+    _speechlike_clip(LONG_GAPS).export(audio_path, format="wav")
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("analysis decoded the upload at full quality")
+
+    monkeypatch.setattr(analysis, "load_audio", refuse)
+    monkeypatch.setattr(analysis, "standardize_audio", refuse)
+    if mode == "song":
+        monkeypatch.setattr(
+            analysis,
+            "analyze_song",
+            lambda _path: analysis.SongAnalysis(candidates_ms=[], tempo=None, beat_times_ms=[]),
+        )
+
+    payload = _run_cli(monkeypatch, capsys, audio_path, f"--mode={mode}")
+
+    assert payload["duration_ms"] == pytest.approx(CLIP_SECONDS * 1000, abs=1)
+    if mode == "podcast":
+        assert len(payload["candidates"]) == len(LONG_GAPS)
+
+
+@pytest.mark.ffmpeg
+def test_cli_work_dir_holds_the_snippet_files_and_is_left_empty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    audio_path = tmp_path / "episode.wav"
+    _speechlike_clip(LONG_GAPS).export(audio_path, format="wav")
+    work_dir = tmp_path / "work"
+    work_dir.mkdir()
+    snippet_dirs: List[Path] = []
+
+    class FakeModel:
+        def transcribe(self, path: str, fp16: bool = False) -> dict:
+            snippet_dirs.append(Path(path).parent.parent)
+            return {"text": "and that's the news."}
+
+    fake = types.ModuleType("whisper")
+    fake.load_model = lambda _name: FakeModel()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "whisper", fake)
+    monkeypatch.setattr(analysis, "_WHISPER_MODELS", {})
+    monkeypatch.setattr(analysis, "check_ffmpeg", lambda: None)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["analyze_cli", f"--audio={audio_path}", "--snippet-count=2", f"--work-dir={work_dir}"],
+    )
+
+    analyze_cli.run()
+
+    assert len(json.loads(capsys.readouterr().out)["snippets"]) == 2
+    assert snippet_dirs == [work_dir, work_dir]
+    assert list(work_dir.iterdir()) == []

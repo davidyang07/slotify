@@ -4,8 +4,8 @@ Every request the pipeline makes to the API (TTS, merge, clone) goes through
 :func:`send`, so they all carry the same internal credential and timeout:
 
 ``SLOTIFY_INTERNAL_TOKEN``
-    Set by the Node API in the environment of every Python child. Sent as
-    ``Authorization: Bearer <token>``.
+    Set by the Node API in the environment of the pipelines that call back
+    (``cli``, ``insert_ad``). Sent as ``Authorization: Bearer <token>``.
 
 ``SLOTIFY_API_TOKEN``
     Fallback credential when the internal token is absent (for example when

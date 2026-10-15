@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 import numpy as np
 from pydub import AudioSegment
@@ -20,6 +22,16 @@ from pydub.utils import which
 # as too close to another or the scorer would penalise as too near an edge.
 SONG_VALLEY_MIN_SEPARATION_MS = 6000.0
 SONG_VALLEY_EDGE_GUARD_MS = 5000.0
+
+# Analysis -- silence detection, Whisper snippets, the duration -- runs on a
+# mono 16 kHz copy, the format Whisper itself transcribes. Silence thresholds
+# are relative to the clip's own dBFS, so they behave the same on it. Rendering
+# keeps the full-quality ``standardize_audio`` format.
+ANALYSIS_FRAME_RATE = 16000
+# Song analysis is mono too, but keeps 44.1 kHz: librosa's beat tracker works
+# in frames of a fixed number of samples, and at 22.05 kHz the tempo and beats
+# of the audio_tests clips change (one goes from 123 to 191 BPM).
+SONG_FRAME_RATE = 44100
 
 # Whisper models take seconds and hundreds of MB to load; each process loads a
 # given model once and reuses it for every snippet.
@@ -48,6 +60,7 @@ def check_ffmpeg() -> None:
 
 
 def load_audio(path: Path) -> AudioSegment:
+    """Decode all of ``path`` at its own rate and channels (for rendering)."""
     if not path.exists():
         raise FileNotFoundError(f"Audio file not found: {path}")
     return AudioSegment.from_file(path)
@@ -55,6 +68,87 @@ def load_audio(path: Path) -> AudioSegment:
 
 def standardize_audio(audio: AudioSegment) -> AudioSegment:
     return audio.set_frame_rate(44100).set_channels(2)
+
+
+@contextmanager
+def _decoded_mono(path: Path, frame_rate: int, sample_format: str) -> Iterator[Path]:
+    """Decode ``path`` to raw mono PCM in a temp file; yield the file's path.
+
+    ffmpeg downmixes and resamples while it decodes, and the caller reads the
+    file back in one allocation of exactly its size, so the process never
+    holds a full-rate or stereo copy, nor the transient second copy that
+    collecting a pipe's output costs. ``sample_format`` is ``s16le`` or
+    ``f32le``. The downmix is the channel mean, as librosa's: without
+    ``rematrix_maxval`` ffmpeg mixes stereo to float mono at +3 dB. The file
+    is removed on exit.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"Audio file not found: {path}")
+    # tempfile honours the CLI session's private dir (inside --work-dir).
+    fd, raw_name = tempfile.mkstemp(suffix=f".{sample_format}")
+    os.close(fd)
+    raw_path = Path(raw_name)
+    try:
+        command = [
+            "ffmpeg", "-nostdin", "-v", "error", "-y",
+            "-i", str(path),
+            "-vn", "-ac", "1", "-ar", str(frame_rate), "-rematrix_maxval", "1.0",
+            "-acodec", f"pcm_{sample_format}", "-f", sample_format,
+            str(raw_path),
+        ]
+        result = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode != 0:
+            detail = result.stderr.decode("utf-8", errors="ignore").strip()
+            raise RuntimeError(
+                f"Could not decode {path.name} (ffmpeg exited "
+                f"{result.returncode}): {detail[-2000:]}"
+            )
+        yield raw_path
+    finally:
+        raw_path.unlink(missing_ok=True)
+
+
+def load_analysis_audio(path: Path) -> AudioSegment:
+    """Decode ``path`` to mono 16-bit PCM at ``ANALYSIS_FRAME_RATE``, for analysis.
+
+    About 115 MB per hour of audio, held once; ``standardize_audio(load_audio())``
+    holds about 635 MB per hour at 44.1 kHz stereo, plus transient copies.
+    """
+    with _decoded_mono(path, ANALYSIS_FRAME_RATE, "s16le") as raw_path:
+        data = raw_path.read_bytes()
+    # An odd byte count can only be a truncated trailing sample.
+    data = data[: len(data) - len(data) % 2]
+    return AudioSegment(
+        data=data, sample_width=2, frame_rate=ANALYSIS_FRAME_RATE, channels=1
+    )
+
+
+def load_song_samples(path: Path) -> np.ndarray:
+    """Decode ``path`` to mono float32 samples at ``SONG_FRAME_RATE``, for analysis."""
+    with _decoded_mono(path, SONG_FRAME_RATE, "f32le") as raw_path:
+        return np.fromfile(raw_path, dtype="<f4")
+
+
+def load_audio_window(path: Path, start_ms: int, end_ms: int) -> AudioSegment:
+    """Decode only ``[start_ms, end_ms)`` of ``path``, in the rendering format.
+
+    For paths that need a few seconds at full quality (loudness context, room
+    tone) without decoding the whole upload at 44.1 kHz stereo.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"Audio file not found: {path}")
+    start_ms = max(0, int(start_ms))
+    end_ms = max(start_ms, int(end_ms))
+    window = AudioSegment.from_file(
+        path, start_second=start_ms / 1000.0, duration=(end_ms - start_ms) / 1000.0
+    )
+    return standardize_audio(window)
 
 
 def detect_podcast_candidates(audio: AudioSegment) -> List[int]:
@@ -131,7 +225,11 @@ def _rms_minima_times(
 def analyze_song(path: Path) -> SongAnalysis:
     import librosa
 
-    y, sr = librosa.load(path, sr=44100, mono=True)
+    # Replaces librosa.load(path, sr=44100, mono=True) without its full-rate,
+    # all-channel float copy: a WAV gives identical samples, and the
+    # audio_tests MP3s the same tempo, beats and candidates.
+    sr = SONG_FRAME_RATE
+    y = load_song_samples(path)
     if y.size == 0:
         return SongAnalysis(candidates_ms=[], tempo=None, beat_times_ms=[])
 
@@ -186,6 +284,7 @@ def transcribe_snippet(
     if len(snippet) == 0:
         return ""
 
+    # tempfile honours the CLI session's private dir (inside --work-dir).
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         tmp_path = Path(tmp.name)
     try:

@@ -14,14 +14,16 @@ from urllib.parse import quote
 
 from pydub import AudioSegment
 
-from ad_inserter import analysis, http_client, llm, mix, tts
+from ad_inserter import analysis, http_client, llm, mix, runtime, tts
 
 ELEVENLABS_VOICES_URL = "https://api.elevenlabs.io/v1/voices"
 VOICE_DELETE_TIMEOUT_S = 30.0
-
-
-def _default_model(provider: str) -> str:
-    return "gpt-4o-mini"
+# Once a stop signal has arrived the deletes must fit in the caller's grace
+# period before SIGKILL (5 s by default), two voices included.
+VOICE_DELETE_SHUTDOWN_TIMEOUT_S = 2.0
+DIARIZATION_HINT = (
+    "install pyannote.audio and set HUGGINGFACE_TOKEN, PYANNOTE_TOKEN or HF_TOKEN"
+)
 
 
 def _ensure_debug_dir(path: Path) -> None:
@@ -77,7 +79,11 @@ def _delete_cloned_voice(voice_id: str) -> None:
             headers={"xi-api-key": api_key},
             method="DELETE",
             internal_auth=False,
-            timeout_s=VOICE_DELETE_TIMEOUT_S,
+            timeout_s=(
+                VOICE_DELETE_SHUTDOWN_TIMEOUT_S
+                if runtime.termination_requested()
+                else VOICE_DELETE_TIMEOUT_S
+            ),
         )
     except Exception as error:  # noqa: BLE001 - cleanup must not fail the run
         print(
@@ -174,18 +180,35 @@ def run() -> None:
     parser.add_argument("--end-buffer-ms", type=int, default=15000)
     parser.add_argument("--crossfade-ms", type=int, default=250)
     parser.add_argument("--debug-dir", type=Path)
+    runtime.add_work_dir_argument(parser)
 
     args = parser.parse_args()
+    try:
+        args.llm_model = llm.resolve_model(args.llm_provider, args.llm_model)
+    except llm.ModelNotAllowed as error:
+        parser.error(str(error))
+    if args.clone_voices and not os.getenv("ELEVENLABS_API_KEY", "").strip():
+        # Without it the permanent voices this run clones could not be deleted.
+        parser.error(
+            "--clone-voices requires ELEVENLABS_API_KEY to delete the cloned voices."
+        )
 
+    with runtime.cli_session(args.work_dir):
+        _run(args)
+
+
+def _run(args: argparse.Namespace) -> None:
     analysis.check_ffmpeg()
 
+    # Full quality: this copy is what the ad is spliced into.
     main_audio = analysis.standardize_audio(analysis.load_audio(args.input))
     diarization = analysis.diarize_speakers(args.input)
     diarization_available = bool(diarization)
 
     if not diarization_available and args.ad_mode == "DUO":
         raise RuntimeError(
-            "Speaker diarization unavailable; DUO mode requires diarization."
+            "Speaker diarization unavailable; DUO mode requires diarization "
+            f"({DIARIZATION_HINT})."
         )
 
     candidates = analysis.detect_podcast_candidates(main_audio)
@@ -210,7 +233,7 @@ def run() -> None:
 
     llm_choice = llm.generate_promo_and_choice(
         provider=args.llm_provider,
-        model=args.llm_model or _default_model(args.llm_provider),
+        model=args.llm_model,
         product_name=args.product_name,
         product_desc=args.product_blurb,
         product_url=None,
@@ -232,7 +255,7 @@ def run() -> None:
 
     ad_script = llm.generate_ad_script(
         provider=args.llm_provider,
-        model=args.llm_model or _default_model(args.llm_provider),
+        model=args.llm_model,
         product_name=args.product_name,
         product_blurb=args.product_blurb,
         ad_style=args.ad_style,
@@ -255,6 +278,8 @@ def run() -> None:
                 llm.AdSegment(speaker="A", text=f"Quick shout-out to {args.product_name}."),
                 llm.AdSegment(speaker="B", text=args.product_blurb),
             ]
+    # The fallbacks above carry the product text, which is not length-capped.
+    segments = llm.cap_segments(segments)
 
     # Only the speakers the ad mode actually voices need a voice (A_ONLY must
     # not fail for want of a speaker B voice), and only they are cloned.
@@ -268,7 +293,10 @@ def run() -> None:
     try:
         if args.clone_voices:
             if not diarization_available or not diarization:
-                raise RuntimeError("Voice cloning requires speaker diarization.")
+                raise RuntimeError(
+                    f"Voice cloning requires speaker diarization ({DIARIZATION_HINT})."
+                )
+            # tempfile honours the CLI session's private dir (inside --work-dir).
             with tempfile.TemporaryDirectory() as tmp_dir:
                 tmp_path = Path(tmp_dir)
                 for speaker in needed_speakers:
@@ -279,12 +307,15 @@ def run() -> None:
                         continue
                     sample_path = tmp_path / f"speaker_{speaker.lower()}.wav"
                     sample_audio.export(sample_path, format="wav")
-                    cloned = _clone_voice(
-                        args.clone_url, f"Speaker {speaker} Clone", [sample_path]
-                    )
-                    if cloned:
-                        created_voice_ids.append(cloned)
-                        voice_map[speaker] = cloned
+                    # Shielded: a stop signal during the request waits for its
+                    # voice ID, so the voice is recorded and deleted below.
+                    with runtime.shielded():
+                        cloned = _clone_voice(
+                            args.clone_url, f"Speaker {speaker} Clone", [sample_path]
+                        )
+                        if cloned:
+                            created_voice_ids.append(cloned)
+                            voice_map[speaker] = cloned
 
         # Speakers not cloned (cloning off, or no usable sample) use the
         # configured voices.
@@ -305,8 +336,10 @@ def run() -> None:
             tts_output_format=args.tts_output_format,
         )
     finally:
-        for voice_id in created_voice_ids:
-            _delete_cloned_voice(voice_id)
+        # Shielded: a stop signal must not cut the deletes short.
+        with runtime.shielded():
+            for voice_id in created_voice_ids:
+                _delete_cloned_voice(voice_id)
 
     if len(ad_audio) > 25000:
         raise RuntimeError("Ad audio is longer than 25 seconds; shorten the script.")

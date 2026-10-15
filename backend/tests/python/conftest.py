@@ -49,6 +49,8 @@ def _isolated_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "ELEVENLABS_DEFAULT_VOICE_ID",
         "ELEVENLABS_VOICE_ID_A",
         "ELEVENLABS_VOICE_ID_B",
+        "SLOTIFY_OPENAI_MODELS",
+        "OPENAI_API_KEY",
     ):
         monkeypatch.delenv(name, raising=False)
     # The fake API below is plain HTTP on loopback; never route it via a proxy.

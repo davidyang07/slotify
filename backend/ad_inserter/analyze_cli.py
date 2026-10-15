@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 from pydub import AudioSegment
 from pydub.silence import detect_silence
 
-from ad_inserter import analysis, heuristic_config
+from ad_inserter import analysis, heuristic_config, runtime
 
 
 def _detect_podcast_silences(audio: AudioSegment) -> List[Dict[str, int]]:
@@ -76,10 +76,18 @@ def run() -> None:
     parser.add_argument("--mode", choices=["podcast", "song"], default="podcast")
     parser.add_argument("--max-candidates", type=int, default=default_max_candidates)
     parser.add_argument("--snippet-count", type=int, default=default_snippet_count)
+    runtime.add_work_dir_argument(parser)
     args = parser.parse_args()
 
+    with runtime.cli_session(args.work_dir):
+        _run(args)
+
+
+def _run(args: argparse.Namespace) -> None:
     analysis.check_ffmpeg()
-    audio = analysis.standardize_audio(analysis.load_audio(args.audio))
+    # Mono 16 kHz: analysis only, nothing here is rendered.
+    audio = analysis.load_analysis_audio(args.audio)
+    duration_ms = int(len(audio))
 
     candidates: List[Dict[str, int]] = []
     snippets: Dict[int, str] = {}
@@ -91,6 +99,8 @@ def run() -> None:
         candidates = _longest_silences(silences, args.max_candidates)
         snippets = _build_snippets(audio, candidates, args.snippet_count)
     else:
+        # Song analysis decodes on its own; do not hold this copy meanwhile.
+        del audio
         song = analysis.analyze_song(args.audio)
         tempo = song.tempo
         beat_times_ms = song.beat_times_ms
@@ -101,7 +111,7 @@ def run() -> None:
 
     payload = {
         "mode": args.mode,
-        "duration_ms": int(len(audio)),
+        "duration_ms": duration_ms,
         "candidates": candidates,
         "snippets": {str(key): value for key, value in snippets.items()},
         "tempo": tempo,

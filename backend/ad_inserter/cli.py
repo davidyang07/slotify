@@ -8,11 +8,7 @@ from typing import Dict, List, Optional
 
 from pydub import AudioSegment
 
-from ad_inserter import analysis, http_client, llm, mix, tts
-
-
-def _default_model(provider: str) -> str:
-    return "gpt-4o-mini"
+from ad_inserter import analysis, http_client, llm, mix, runtime, tts
 
 
 def _ensure_debug_dir(path: Path) -> None:
@@ -28,6 +24,7 @@ def _merge_with_api(
     pause: float,
     out_path: Path,
 ) -> None:
+    # tempfile honours the CLI session's private dir (inside --work-dir).
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
         tmp_path = Path(tmp.name)
     try:
@@ -83,14 +80,28 @@ def run() -> None:
     parser.add_argument("--merge-url", default="http://localhost:3001/api/merge")
     parser.add_argument("--merge-crossfade", type=float, default=0.08)
     parser.add_argument("--merge-pause", type=float, default=0.2)
+    runtime.add_work_dir_argument(parser)
 
     args = parser.parse_args()
     if not args.voice_id and not args.voice_ids:
         parser.error("--voice-id or --voice-ids is required")
+    try:
+        args.llm_model = llm.resolve_model(args.llm_provider, args.llm_model)
+    except llm.ModelNotAllowed as error:
+        parser.error(str(error))
 
+    with runtime.cli_session(args.work_dir):
+        _run(args)
+
+
+def _run(args: argparse.Namespace) -> None:
     analysis.check_ffmpeg()
 
-    main_audio = analysis.standardize_audio(analysis.load_audio(args.main))
+    # Candidates, snippets and the duration come from the mono 16 kHz analysis
+    # copy. The upload is never decoded whole at full quality: the merge
+    # endpoint gets the original file, and the few seconds that are measured
+    # for loudness or rendered as room tone are decoded on their own below.
+    analysis_audio = analysis.load_analysis_audio(args.main)
 
     candidates: List[int] = []
     candidates_for_prompt: List[int] = []
@@ -99,7 +110,7 @@ def run() -> None:
     snippets: Dict[int, str] = {}
 
     if args.mode == "podcast":
-        candidates = analysis.detect_podcast_candidates(main_audio)
+        candidates = analysis.detect_podcast_candidates(analysis_audio)
     else:
         song = analysis.analyze_song(args.main)
         candidates = song.candidates_ms
@@ -110,7 +121,7 @@ def run() -> None:
     end_buffer_ms = 15000
     candidates_for_prompt = analysis.filter_candidates(
         candidates,
-        audio_len_ms=len(main_audio),
+        audio_len_ms=len(analysis_audio),
         min_offset_ms=min_insert_ms,
         end_buffer_ms=end_buffer_ms,
     )
@@ -119,13 +130,13 @@ def run() -> None:
 
     if args.mode == "podcast":
         if analysis.whisper_available() and candidates_for_prompt:
-            snippets = analysis.build_snippets(main_audio, candidates_for_prompt)
+            snippets = analysis.build_snippets(analysis_audio, candidates_for_prompt)
 
     chosen_ms = analysis.choose_default_insertion(
         candidates_for_prompt, min_offset_ms=min_insert_ms
     )
-    if len(main_audio) > 0:
-        chosen_ms = min(chosen_ms, len(main_audio) - 1)
+    if len(analysis_audio) > 0:
+        chosen_ms = min(chosen_ms, len(analysis_audio) - 1)
     voice_ids = []
     if args.voice_ids:
         voice_ids = [value.strip() for value in args.voice_ids.split(",") if value.strip()]
@@ -134,7 +145,7 @@ def run() -> None:
 
     llm_result = llm.generate_promo_and_choice(
         provider=args.llm_provider,
-        model=args.llm_model or _default_model(args.llm_provider),
+        model=args.llm_model,
         product_name=args.product_name,
         product_desc=args.product_desc,
         product_url=args.product_url,
@@ -145,7 +156,7 @@ def run() -> None:
     if len(voice_ids) > 1:
         script = llm.generate_ad_script(
             provider=args.llm_provider,
-            model=args.llm_model or _default_model(args.llm_provider),
+            model=args.llm_model,
             product_name=args.product_name,
             product_blurb=args.product_desc,
             ad_style="CONVERSATIONAL",
@@ -193,7 +204,7 @@ def run() -> None:
                 chosen_ms = analysis.choose_default_insertion(
                     candidates_for_prompt, min_offset_ms=min_insert_ms
                 )
-            max_allowed = max(0, len(main_audio) - end_buffer_ms)
+            max_allowed = max(0, len(analysis_audio) - end_buffer_ms)
             if chosen_ms > max_allowed:
                 chosen_ms = analysis.choose_default_insertion(
                     candidates_for_prompt, min_offset_ms=min_insert_ms
@@ -204,12 +215,16 @@ def run() -> None:
     transcript_before = snippets.get(chosen_ms, "")
     if analysis.whisper_available() and not transcript_before and args.mode == "podcast":
         transcript_before = analysis.transcribe_snippet(
-            main_audio, chosen_ms - 15000, chosen_ms
+            analysis_audio, chosen_ms - 15000, chosen_ms
         )
     if not transcript_before:
         transcript_before = "TRANSCRIPT_UNAVAILABLE"
 
-    context_audio = mix.context_window(main_audio, chosen_ms, window_ms=4000)
+    # Full quality, but only the 8 s around the insertion point.
+    window_start = max(0, chosen_ms - 4000)
+    window_audio = analysis.load_audio_window(args.main, window_start, chosen_ms + 4000)
+    window_chosen_ms = chosen_ms - window_start
+    context_audio = mix.context_window(window_audio, window_chosen_ms, window_ms=4000)
     target_lufs = mix.measure_lufs(context_audio)
     loudness_match = mix.match_loudness(promo_audio, target_lufs)
 
@@ -217,8 +232,8 @@ def run() -> None:
 
     room_tone: Optional[AudioSegment] = None
     if args.mode == "podcast":
-        tone_start = max(0, chosen_ms - 600)
-        room_tone = main_audio[tone_start:chosen_ms]
+        tone_start = max(0, window_chosen_ms - 600)
+        room_tone = window_audio[tone_start:window_chosen_ms]
 
     promo_processed = mix.apply_room_tone(promo_processed, room_tone)
 
@@ -271,10 +286,8 @@ def run() -> None:
     )
 
     if args.debug_dir:
-        merged_audio = analysis.standardize_audio(analysis.load_audio(args.out))
         preview_start = max(0, chosen_ms - 5000)
-        preview_end = min(len(merged_audio), chosen_ms + 5000)
-        merged_audio[preview_start:preview_end].export(
+        analysis.load_audio_window(args.out, preview_start, chosen_ms + 5000).export(
             args.debug_dir / "merged_preview.wav", format="wav"
         )
 

@@ -1,9 +1,97 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+
+# OpenAI models this pipeline may call: the comma-separated list in
+# SLOTIFY_OPENAI_MODELS (the same variable and default the Node API enforces),
+# checked again here as defence in depth.
+OPENAI_MODELS_ENV = "SLOTIFY_OPENAI_MODELS"
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+
+# Completion budget for every OpenAI call: the JSON around a ~20 s read is well
+# under 200 tokens. A reply cut off at the limit is malformed JSON and takes the
+# usual fallback.
+OPENAI_MAX_TOKENS = 400
+
+# Every script segment becomes one TTS callback that carries the internal token
+# and is not rate-limited, so a reply can ask for only so many, and only so much
+# speech: MAX_SCRIPT_CHARS is a ~20 s read (about 50 words) with headroom, for
+# the whole script and for the single-voice promo. Product text that ends up in
+# a fallback script is capped the same way.
+MAX_AD_SEGMENTS = 6
+MAX_SCRIPT_CHARS = 400
+
+
+class ModelNotAllowed(ValueError):
+    """The requested OpenAI model is not in ``SLOTIFY_OPENAI_MODELS``."""
+
+
+def allowed_openai_models() -> List[str]:
+    """The ``SLOTIFY_OPENAI_MODELS`` allow-list; ``[DEFAULT_OPENAI_MODEL]`` if unset."""
+    raw = os.getenv(OPENAI_MODELS_ENV, "")
+    models = [name.strip() for name in raw.split(",") if name.strip()]
+    return models or [DEFAULT_OPENAI_MODEL]
+
+
+def default_openai_model() -> str:
+    """``DEFAULT_OPENAI_MODEL`` if allowed, else the first allowed model."""
+    allowed = allowed_openai_models()
+    return DEFAULT_OPENAI_MODEL if DEFAULT_OPENAI_MODEL in allowed else allowed[0]
+
+
+def check_openai_model(model: str) -> str:
+    """Return ``model``; raise ``ModelNotAllowed`` unless it is allowed."""
+    allowed = allowed_openai_models()
+    if model not in allowed:
+        raise ModelNotAllowed(
+            f"OpenAI model {model!r} is not allowed; {OPENAI_MODELS_ENV} "
+            f"permits: {', '.join(allowed)}."
+        )
+    return model
+
+
+def resolve_model(provider: str, requested: Optional[str]) -> str:
+    """The model a CLI run uses: ``requested`` or the default, checked for OpenAI."""
+    model = requested or default_openai_model()
+    if provider == "openai":
+        check_openai_model(model)
+    return model
+
+
+def clip_text(text: str, limit: int = MAX_SCRIPT_CHARS) -> str:
+    """``text`` stripped and cut to ``limit`` characters, on a word boundary if any."""
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    if limit <= 0:
+        return ""
+    cut = text[:limit]
+    if not text[limit].isspace():
+        # Drop the word the limit splits, unless it is the only one.
+        cut = re.sub(r"\s+\S*$", "", cut) or cut
+    return cut.rstrip()
+
+
+def _chat_completion(model: str, system: str, prompt: str) -> str:
+    """One capped OpenAI chat completion; returns the reply text."""
+    check_openai_model(model)
+    from openai import OpenAI
+
+    client = OpenAI()
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.7,
+        max_tokens=OPENAI_MAX_TOKENS,
+    )
+    return response.choices[0].message.content or ""
 
 
 @dataclass
@@ -70,6 +158,7 @@ def _build_prompt(
         candidate_block,
         "",
         "Respond ONLY in JSON with keys: promo_text, chosen_index, rationale.",
+        "Keep the rationale to one short sentence.",
     ]
     return "\n".join(prompt_lines)
 
@@ -150,7 +239,7 @@ def generate_promo_and_choice(
 
     if provider == "none":
         return LLMResult(
-            promo_text=product_name,
+            promo_text=clip_text(product_name),
             chosen_index=None,
             rationale="LLM disabled; using heuristic insertion and product name only.",
             prompt=prompt,
@@ -158,21 +247,9 @@ def generate_promo_and_choice(
         )
 
     if provider == "openai":
-        from openai import OpenAI
-
-        client = OpenAI()
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a careful audio editor and ad writer.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.7,
+        raw_text = _chat_completion(
+            model, "You are a careful audio editor and ad writer.", prompt
         )
-        raw_text = response.choices[0].message.content or ""
     else:
         raise ValueError(f"Unknown LLM provider: {provider}")
 
@@ -195,7 +272,7 @@ def generate_promo_and_choice(
         )
 
     return LLMResult(
-        promo_text=promo_text,
+        promo_text=clip_text(promo_text),
         chosen_index=chosen_index,
         rationale=rationale,
         prompt=prompt,
@@ -224,8 +301,26 @@ def _build_ad_script_prompt(
         "- speaker must be A or B only.\n"
         "- If ad_mode is A_ONLY or B_ONLY, include only that speaker.\n"
         "- If ad_mode is DUO, use a short back-and-forth (2-4 segments).\n"
+        f"- Never more than {MAX_AD_SEGMENTS} segments.\n"
         "- Avoid emojis and hashtags.\n"
     )
+
+
+def cap_segments(segments: List[AdSegment]) -> List[AdSegment]:
+    """At most ``MAX_AD_SEGMENTS`` segments and ``MAX_SCRIPT_CHARS`` characters in all.
+
+    Text past the budget is cut on a word boundary; segments that no longer
+    fit are dropped.
+    """
+    capped: List[AdSegment] = []
+    remaining = MAX_SCRIPT_CHARS
+    for segment in segments[:MAX_AD_SEGMENTS]:
+        text = clip_text(segment.text, remaining)
+        if not text:
+            break
+        capped.append(AdSegment(speaker=segment.speaker, text=text))
+        remaining -= len(text)
+    return capped
 
 
 def _parse_ad_segments(raw_text: str) -> List[AdSegment]:
@@ -269,24 +364,14 @@ def generate_ad_script(
             ]
         else:
             segments = [AdSegment(speaker="A", text=f"{product_name} {product_blurb}")]
-        return AdScriptResult(segments=segments, prompt=prompt, raw_text="")
+        return AdScriptResult(
+            segments=cap_segments(segments), prompt=prompt, raw_text=""
+        )
 
     if provider == "openai":
-        from openai import OpenAI
-
-        client = OpenAI()
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You write short, structured ad scripts.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.7,
+        raw_text = _chat_completion(
+            model, "You write short, structured ad scripts.", prompt
         )
-        raw_text = response.choices[0].message.content or ""
     else:
         raise ValueError(f"Unknown LLM provider: {provider}")
 
@@ -307,4 +392,6 @@ def generate_ad_script(
         else:
             segments = [AdSegment(speaker="A", text=f"{product_name} {product_blurb}")]
 
-    return AdScriptResult(segments=segments, prompt=prompt, raw_text=raw_text)
+    return AdScriptResult(
+        segments=cap_segments(segments), prompt=prompt, raw_text=raw_text
+    )

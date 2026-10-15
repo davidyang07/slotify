@@ -1,8 +1,9 @@
-"""analysis.py: Whisper model reuse and song-mode valley picking."""
+"""analysis.py: Whisper model reuse, song-mode valley picking, analysis decoding."""
 
 from __future__ import annotations
 
 import sys
+import tempfile
 import types
 from itertools import combinations
 from pathlib import Path
@@ -103,6 +104,7 @@ def test_valleys_fall_back_when_the_clip_is_shorter_than_the_guards() -> None:
     assert all(b - a >= 6.0 for a, b in combinations(times, 2))
 
 
+@pytest.mark.ffmpeg  # song analysis decodes through ffmpeg
 def test_analyze_song_spreads_candidates_and_snaps_them_to_beats(tmp_path: Path) -> None:
     duration_s = 60.0
     path = tmp_path / "song.wav"
@@ -134,3 +136,87 @@ def test_transcribe_snippet_without_whisper_reports_unavailable(
         analysis.transcribe_snippet(AudioSegment.silent(2_000), 0, 1_000)
         == "TRANSCRIPT_UNAVAILABLE"
     )
+
+
+def _stereo_upload(path: Path, gaps: List[tuple[int, int]], seconds: int = 30) -> Path:
+    """A 44.1 kHz stereo tone with silent gaps, the format of a typical upload."""
+    tone = Sine(500, sample_rate=44100).to_audio_segment(duration=seconds * 1000, volume=-12)
+    audio = tone.set_channels(2)
+    for start_s, length_ms in gaps:
+        start = start_s * 1000
+        gap = AudioSegment.silent(length_ms, 44100).set_channels(2)
+        audio = audio[:start] + gap + audio[start + length_ms :]
+    audio.export(path, format="wav")
+    return path
+
+
+UPLOAD_GAPS = [(5, 800), (12, 1500), (21, 2400)]
+
+
+@pytest.mark.ffmpeg
+def test_analysis_audio_is_small_and_finds_the_same_silences(tmp_path: Path) -> None:
+    path = _stereo_upload(tmp_path / "upload.wav", UPLOAD_GAPS)
+    full = analysis.standardize_audio(analysis.load_audio(path))
+
+    reduced = analysis.load_analysis_audio(path)
+
+    assert (reduced.channels, reduced.frame_rate, reduced.sample_width) == (1, 16000, 2)
+    assert abs(len(reduced) - len(full)) <= 1
+    assert len(reduced.raw_data) * 5 < len(full.raw_data)
+    # Thresholds are relative to the clip's dBFS, which the downmix keeps.
+    assert reduced.dBFS == pytest.approx(full.dBFS, abs=0.1)
+    full_silences = analyze_cli._detect_podcast_silences(full)
+    reduced_silences = analyze_cli._detect_podcast_silences(reduced)
+    assert len(reduced_silences) == len(full_silences) == len(UPLOAD_GAPS)
+    for ours, theirs in zip(reduced_silences, full_silences):
+        for key in ("start_ms", "end_ms", "mid_ms"):
+            assert ours[key] == pytest.approx(theirs[key], abs=2)
+    assert analysis.detect_podcast_candidates(reduced) == pytest.approx(
+        analysis.detect_podcast_candidates(full), abs=2
+    )
+
+
+@pytest.mark.ffmpeg
+def test_analysis_decode_failure_is_reported_and_leaves_no_temp_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    not_audio = tmp_path / "upload.mp3"
+    not_audio.write_bytes(b"this is not audio")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(scratch))
+
+    with pytest.raises(RuntimeError, match="Could not decode upload.mp3"):
+        analysis.load_analysis_audio(not_audio)
+
+    assert list(scratch.iterdir()) == []
+
+
+@pytest.mark.ffmpeg
+@pytest.mark.parametrize("fmt", ["wav", "mp3"])
+def test_audio_window_matches_the_slice_of_a_full_decode(tmp_path: Path, fmt: str) -> None:
+    source = _stereo_upload(tmp_path / "upload.wav", UPLOAD_GAPS, seconds=12)
+    path = source if fmt == "wav" else tmp_path / "upload.mp3"
+    if fmt == "mp3":
+        AudioSegment.from_file(source).export(path, format="mp3")
+
+    window = analysis.load_audio_window(path, 3_000, 7_000)
+
+    full = analysis.standardize_audio(analysis.load_audio(path))
+    assert (window.frame_rate, window.channels) == (44100, 2)
+    assert window.raw_data == full[3_000:7_000].raw_data
+
+
+@pytest.mark.ffmpeg
+def test_song_samples_are_the_ones_librosa_load_gave(tmp_path: Path) -> None:
+    import librosa
+
+    left = _song_like(8.0, [4.0])
+    path = tmp_path / "song.wav"
+    sf.write(path, np.stack([left, 0.5 * left], axis=1), 44100, subtype="PCM_16")
+
+    ours = analysis.load_song_samples(path)
+
+    theirs, _ = librosa.load(path, sr=analysis.SONG_FRAME_RATE, mono=True)
+    assert ours.dtype == np.float32
+    np.testing.assert_array_equal(ours, theirs)
