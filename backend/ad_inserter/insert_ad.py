@@ -18,9 +18,12 @@ from ad_inserter import analysis, http_client, llm, mix, runtime, tts
 
 ELEVENLABS_VOICES_URL = "https://api.elevenlabs.io/v1/voices"
 VOICE_DELETE_TIMEOUT_S = 30.0
-# Once a stop signal has arrived the deletes must fit in the caller's grace
-# period before SIGKILL (5 s by default), two voices included.
-VOICE_DELETE_SHUTDOWN_TIMEOUT_S = 2.0
+# The API's release endpoint deletes the voice on ElevenLabs before it answers.
+VOICE_RELEASE_TIMEOUT_S = 10.0
+# Once a stop signal has arrived, each cleanup request gets this long, so a
+# release plus its fallback delete for two voices (4 requests) fit in the
+# caller's grace period before SIGKILL (5 s by default).
+VOICE_CLEANUP_SHUTDOWN_TIMEOUT_S = 1.0
 DIARIZATION_HINT = (
     "install pyannote.audio and set HUGGINGFACE_TOKEN, PYANNOTE_TOKEN or HF_TOKEN"
 )
@@ -57,12 +60,46 @@ def _clone_voice(
     return str(voice_id) if voice_id else None
 
 
-def _delete_cloned_voice(voice_id: str) -> None:
-    """Delete a voice this run cloned, so clones do not use up voice slots.
+def _cleanup_timeout(normal_s: float) -> float:
+    if runtime.termination_requested():
+        return min(normal_s, VOICE_CLEANUP_SHUTDOWN_TIMEOUT_S)
+    return normal_s
 
-    ``/api/clone`` creates a permanent ElevenLabs voice, so the cleanup goes to
-    the ElevenLabs API directly with the inherited ``ELEVENLABS_API_KEY``.
-    Failures are logged, never raised: the ad has already been rendered.
+
+def _release_cloned_voice(clone_url: str, voice_id: str) -> None:
+    """Hand a voice this run cloned back to the API, which deletes it.
+
+    ``POST <clone-url>/<voice_id>/release`` (with the internal token) removes
+    the voice from the API's voice registry too, so it stops counting toward
+    the registry's live-voice cap. If the release fails, or the registry does
+    not know the voice (404), the voice is deleted on ElevenLabs directly.
+    Failures are logged, never raised.
+    """
+    url = f"{clone_url.rstrip('/')}/{quote(voice_id, safe='')}/release"
+    try:
+        http_client.send(
+            url,
+            label="Voice release",
+            data=b"",
+            timeout_s=_cleanup_timeout(VOICE_RELEASE_TIMEOUT_S),
+        )
+        return
+    except Exception as error:  # noqa: BLE001 - fall back to a direct delete
+        print(
+            f"warning: could not release cloned voice {voice_id} through the API "
+            f"({error}); deleting it directly.",
+            file=sys.stderr,
+        )
+    _delete_cloned_voice(voice_id)
+
+
+def _delete_cloned_voice(voice_id: str) -> None:
+    """Delete a voice this run cloned directly on ElevenLabs (the fallback).
+
+    ``/api/clone`` creates a permanent ElevenLabs voice; when the API cannot
+    release it, the cleanup goes to the ElevenLabs API with the inherited
+    ``ELEVENLABS_API_KEY``. Failures are logged, never raised: the ad has
+    already been rendered.
     """
     api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
     if not api_key:
@@ -79,11 +116,7 @@ def _delete_cloned_voice(voice_id: str) -> None:
             headers={"xi-api-key": api_key},
             method="DELETE",
             internal_auth=False,
-            timeout_s=(
-                VOICE_DELETE_SHUTDOWN_TIMEOUT_S
-                if runtime.termination_requested()
-                else VOICE_DELETE_TIMEOUT_S
-            ),
+            timeout_s=_cleanup_timeout(VOICE_DELETE_TIMEOUT_S),
         )
     except Exception as error:  # noqa: BLE001 - cleanup must not fail the run
         print(
@@ -188,7 +221,7 @@ def run() -> None:
     except llm.ModelNotAllowed as error:
         parser.error(str(error))
     if args.clone_voices and not os.getenv("ELEVENLABS_API_KEY", "").strip():
-        # Without it the permanent voices this run clones could not be deleted.
+        # Without it a cloned voice the API cannot release could not be deleted.
         parser.error(
             "--clone-voices requires ELEVENLABS_API_KEY to delete the cloned voices."
         )
@@ -336,10 +369,10 @@ def _run(args: argparse.Namespace) -> None:
             tts_output_format=args.tts_output_format,
         )
     finally:
-        # Shielded: a stop signal must not cut the deletes short.
+        # Shielded: a stop signal must not cut the cleanup short.
         with runtime.shielded():
             for voice_id in created_voice_ids:
-                _delete_cloned_voice(voice_id)
+                _release_cloned_voice(args.clone_url, voice_id)
 
     if len(ad_audio) > 25000:
         raise RuntimeError("Ad audio is longer than 25 seconds; shorten the script.")

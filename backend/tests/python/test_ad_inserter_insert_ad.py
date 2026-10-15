@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 import pytest
 from pydub import AudioSegment
@@ -108,16 +108,25 @@ def _diarized(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def test_cloned_voices_are_deleted_after_rendering(
+def _clone_args(fake_api, *extra: str) -> List[str]:
+    return [*extra, "--clone-voices", "--clone-url", f"{fake_api.url}/api/clone"]
+
+
+def _cloning(monkeypatch: pytest.MonkeyPatch, fake_api) -> None:
+    _diarized(monkeypatch)
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
+    monkeypatch.setenv("SLOTIFY_INTERNAL_TOKEN", "internal-token")
+    monkeypatch.setattr(insert_ad, "ELEVENLABS_VOICES_URL", f"{fake_api.url}/v1/voices")
+
+
+def test_cloned_voices_are_released_through_the_api_after_rendering(
     monkeypatch: pytest.MonkeyPatch,
     conversation: Path,
     tts_calls: List[str],
     fake_api,
 ) -> None:
-    _diarized(monkeypatch)
-    monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
-    monkeypatch.setenv("SLOTIFY_INTERNAL_TOKEN", "internal-token")
-    monkeypatch.setattr(insert_ad, "ELEVENLABS_VOICES_URL", f"{fake_api.url}/v1/voices")
+    _cloning(monkeypatch, fake_api)
+    fake_api.respond_with(lambda req: (200, b'{"released": true}'))
     cloned: List[str] = []
 
     def fake_clone(_url: str, name: str, _samples: List[Path]) -> str:
@@ -126,15 +135,17 @@ def test_cloned_voices_are_deleted_after_rendering(
 
     monkeypatch.setattr(insert_ad, "_clone_voice", fake_clone)
 
-    _run(monkeypatch, conversation, "--ad-mode", "DUO", "--clone-voices")
+    _run(monkeypatch, conversation, *_clone_args(fake_api, "--ad-mode", "DUO"))
 
     assert cloned == ["Speaker A Clone", "Speaker B Clone"]
     assert set(tts_calls) == {"clone-1", "clone-2"}
-    deletes = [(req.method, req.path) for req in fake_api.requests]
-    assert deletes == [("DELETE", "/v1/voices/clone-1"), ("DELETE", "/v1/voices/clone-2")]
+    assert [(req.method, req.path) for req in fake_api.requests] == [
+        ("POST", "/api/clone/clone-1/release"),
+        ("POST", "/api/clone/clone-2/release"),
+    ]
     for request in fake_api.requests:
-        assert request.headers["xi-api-key"] == "eleven-key"
-        assert "authorization" not in request.headers
+        assert request.headers["authorization"] == "Bearer internal-token"
+        assert "xi-api-key" not in request.headers
 
 
 def test_only_the_needed_speaker_is_cloned(
@@ -143,26 +154,22 @@ def test_only_the_needed_speaker_is_cloned(
     tts_calls: List[str],
     fake_api,
 ) -> None:
-    _diarized(monkeypatch)
-    monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
-    monkeypatch.setattr(insert_ad, "ELEVENLABS_VOICES_URL", f"{fake_api.url}/v1/voices")
+    _cloning(monkeypatch, fake_api)
     monkeypatch.setattr(insert_ad, "_clone_voice", lambda _u, name, _s: f"clone-{name[8]}")
 
-    _run(monkeypatch, conversation, "--ad-mode", "A_ONLY", "--clone-voices")
+    _run(monkeypatch, conversation, *_clone_args(fake_api, "--ad-mode", "A_ONLY"))
 
     assert tts_calls == ["clone-A"]
-    assert [req.path for req in fake_api.requests] == ["/v1/voices/clone-A"]
+    assert [req.path for req in fake_api.requests] == ["/api/clone/clone-A/release"]
 
 
-def test_cloned_voices_are_deleted_when_rendering_fails(
+def test_cloned_voices_are_released_when_rendering_fails(
     monkeypatch: pytest.MonkeyPatch,
     conversation: Path,
     fake_api,
 ) -> None:
-    _diarized(monkeypatch)
+    _cloning(monkeypatch, fake_api)
     monkeypatch.setattr(analysis, "check_ffmpeg", lambda: None)
-    monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
-    monkeypatch.setattr(insert_ad, "ELEVENLABS_VOICES_URL", f"{fake_api.url}/v1/voices")
     monkeypatch.setattr(insert_ad, "_clone_voice", lambda _u, name, _s: f"clone-{name[8]}")
 
     def failing_tts(_request: tts.TTSRequest) -> AudioSegment:
@@ -171,28 +178,51 @@ def test_cloned_voices_are_deleted_when_rendering_fails(
     monkeypatch.setattr(tts, "synthesize_audio", failing_tts)
 
     with pytest.raises(RuntimeError, match="boom"):
-        _run(monkeypatch, conversation, "--ad-mode", "DUO", "--clone-voices")
+        _run(monkeypatch, conversation, *_clone_args(fake_api, "--ad-mode", "DUO"))
 
     assert [req.path for req in fake_api.requests] == [
-        "/v1/voices/clone-A",
-        "/v1/voices/clone-B",
+        "/api/clone/clone-A/release",
+        "/api/clone/clone-B/release",
     ]
 
 
-def test_failed_voice_delete_is_logged_not_raised(
+@pytest.mark.parametrize("release_status", [404, 500])
+def test_a_voice_the_api_cannot_release_is_deleted_directly(
+    monkeypatch: pytest.MonkeyPatch,
+    conversation: Path,
+    tts_calls: List[str],
+    fake_api,
+    capsys: pytest.CaptureFixture[str],
+    release_status: int,
+) -> None:
+    _cloning(monkeypatch, fake_api)
+    monkeypatch.setattr(insert_ad, "_clone_voice", lambda _u, name, _s: f"clone-{name[8]}")
+    fake_api.respond_with(
+        lambda req: (release_status, b"no") if req.path.endswith("/release") else (200, b"")
+    )
+
+    _run(monkeypatch, conversation, *_clone_args(fake_api, "--ad-mode", "A_ONLY"))
+
+    release, delete = fake_api.requests
+    assert (release.method, release.path) == ("POST", "/api/clone/clone-A/release")
+    assert (delete.method, delete.path) == ("DELETE", "/v1/voices/clone-A")
+    assert delete.headers["xi-api-key"] == "eleven-key"
+    assert "authorization" not in delete.headers
+    assert "could not release cloned voice clone-A" in capsys.readouterr().err
+
+
+def test_failed_voice_cleanup_is_logged_not_raised(
     monkeypatch: pytest.MonkeyPatch,
     conversation: Path,
     tts_calls: List[str],
     fake_api,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    _diarized(monkeypatch)
-    monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
-    monkeypatch.setattr(insert_ad, "ELEVENLABS_VOICES_URL", f"{fake_api.url}/v1/voices")
+    _cloning(monkeypatch, fake_api)
     monkeypatch.setattr(insert_ad, "_clone_voice", lambda _u, name, _s: f"clone-{name[8]}")
     fake_api.respond_with(lambda _req: (500, b"nope"))
 
-    out = _run(monkeypatch, conversation, "--ad-mode", "A_ONLY", "--clone-voices")
+    out = _run(monkeypatch, conversation, *_clone_args(fake_api, "--ad-mode", "A_ONLY"))
 
     assert out.exists()
     assert "failed to delete cloned voice clone-A" in capsys.readouterr().err
@@ -299,23 +329,30 @@ def test_fallback_script_with_a_huge_blurb_is_capped(
     assert len(texts) <= llm.MAX_AD_SEGMENTS
 
 
-def test_voice_deletes_use_a_short_timeout_once_stopping(
+def test_voice_cleanup_uses_short_timeouts_once_stopping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from ad_inserter import http_client, runtime
 
     monkeypatch.setenv("ELEVENLABS_API_KEY", "eleven-key")
-    timeouts: List[float] = []
-    monkeypatch.setattr(
-        http_client, "send", lambda *_a, timeout_s, **_k: timeouts.append(timeout_s) or b""
-    )
+    calls: List[Tuple[str, float]] = []
 
-    insert_ad._delete_cloned_voice("voice-1")
+    def failing_send(_url: str, label: str, *_a: object, timeout_s: float, **_k: object) -> bytes:
+        calls.append((label, timeout_s))
+        raise RuntimeError(f"{label} request failed with status 404: unknown")
+
+    monkeypatch.setattr(http_client, "send", failing_send)
+
+    insert_ad._release_cloned_voice("http://api/api/clone", "voice-1")
     monkeypatch.setattr(runtime, "termination_requested", lambda: True)
-    insert_ad._delete_cloned_voice("voice-2")
+    insert_ad._release_cloned_voice("http://api/api/clone", "voice-2")
 
-    assert timeouts == [
-        insert_ad.VOICE_DELETE_TIMEOUT_S,
-        insert_ad.VOICE_DELETE_SHUTDOWN_TIMEOUT_S,
+    shutdown = insert_ad.VOICE_CLEANUP_SHUTDOWN_TIMEOUT_S
+    assert calls == [
+        ("Voice release", insert_ad.VOICE_RELEASE_TIMEOUT_S),
+        ("Voice delete", insert_ad.VOICE_DELETE_TIMEOUT_S),
+        ("Voice release", shutdown),
+        ("Voice delete", shutdown),
     ]
-    assert 2 * insert_ad.VOICE_DELETE_SHUTDOWN_TIMEOUT_S < 5.0  # Node's grace period
+    # Release + fallback delete for two voices fit in Node's 5 s grace period.
+    assert 4 * shutdown < 5.0

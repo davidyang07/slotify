@@ -1,5 +1,5 @@
 """runtime.py and the CLIs' stop/cleanup contract: SIGTERM exits 143, temp
-files stay in --work-dir and are gone afterwards, cloned voices are deleted.
+files stay in --work-dir and are gone afterwards, cloned voices are released.
 
 The subprocess tests run each CLI the way the Node API does (``cwd`` =
 ``backend/``, a fresh interpreter) with a driver that stubs only what needs a
@@ -376,7 +376,7 @@ insert_ad.run()
 
 
 @pytest.mark.ffmpeg
-def test_sigterm_stops_insert_ad_and_it_still_deletes_its_cloned_voices(
+def test_sigterm_stops_insert_ad_and_it_still_cleans_up_its_cloned_voices(
     tmp_path: Path, fake_api
 ) -> None:
     audio = _tone_with_gaps(tmp_path / "conversation.wav", [3, 7, 11], duration_s=16)
@@ -393,6 +393,8 @@ def test_sigterm_stops_insert_ad_and_it_still_deletes_its_cloned_voices(
             synthesizing.set()
             release.wait(30)
             return 500, b"released"
+        if request.path == "/api/clone/clone-B/release":
+            return 404, b"unknown voice"  # not in the registry: deleted directly
         return 200, b""
 
     fake_api.respond_with(responder)
@@ -421,14 +423,17 @@ def test_sigterm_stops_insert_ad_and_it_still_deletes_its_cloned_voices(
     finally:
         release.set()
 
-    deletes = [request for request in fake_api.requests if request.method == "DELETE"]
-    assert [request.path for request in deletes] == [
-        "/v1/voices/clone-A",
-        "/v1/voices/clone-B",
+    cleanup = [request for request in fake_api.requests if request.path != "/api/clone"]
+    assert [(request.method, request.path) for request in cleanup] == [
+        ("POST", "/api/tts"),
+        ("POST", "/api/clone/clone-A/release"),
+        ("POST", "/api/clone/clone-B/release"),
+        ("DELETE", "/v1/voices/clone-B"),
     ]
-    for request in deletes:
-        assert request.headers["xi-api-key"] == "eleven-key"
-        assert "authorization" not in request.headers
+    for request in cleanup[1:3]:
+        assert request.headers["authorization"] == "Bearer internal-token"
+    assert cleanup[3].headers["xi-api-key"] == "eleven-key"
+    assert "authorization" not in cleanup[3].headers
     assert list(work_dir.iterdir()) == []
     assert list(system_tmp.iterdir()) == []
     assert not out.exists()

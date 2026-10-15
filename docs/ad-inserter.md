@@ -95,12 +95,12 @@ This feature inserts an AI-written ad into a two-person conversation. It can spe
 
 ### Required env vars
 - `OPENAI_API_KEY` for ad script generation (unless `--llm-provider none`)
-- `ELEVENLABS_API_KEY` with `--clone-voices`, to delete the voices the run clones; the run refuses to start (exit 2) without it. TTS itself goes through the API's `/api/tts`, so the pipeline needs no ElevenLabs key for it
+- `ELEVENLABS_API_KEY` with `--clone-voices`, to delete a cloned voice directly when the API cannot release it; the run refuses to start (exit 2) without it. TTS itself goes through the API's `/api/tts`, so the pipeline needs no ElevenLabs key for it
 - A voice for each speaker the ad mode uses: `--voice-id-a`/`ELEVENLABS_VOICE_ID_A` for A, `--voice-id-b`/`ELEVENLABS_VOICE_ID_B` for B, or `ELEVENLABS_DEFAULT_VOICE_ID` as a fallback. `A_ONLY` needs only A, `B_ONLY` only B, `DUO` both
 
 Optional diarization (enables DUO mode and voice cloning):
 - Install `pyannote.audio` separately
-- Set `HUGGINGFACE_TOKEN` (or `PYANNOTE_TOKEN`) for model access
+- Set `HUGGINGFACE_TOKEN` (or `PYANNOTE_TOKEN` / `HF_TOKEN`) for model access; `HF_HOME` / `HF_HUB_CACHE` / `TORCH_HOME` relocate the model caches
 
 ### CLI example
 ```bash
@@ -115,11 +115,16 @@ python -m ad_inserter.insert_ad \
 
 Optional voice cloning (requires diarization + ElevenLabs API key). Only the
 speakers the ad mode uses are cloned, through the API's `/api/clone`, which
-creates a *permanent* ElevenLabs voice. The run deletes every voice it cloned
-once the ad is rendered, and also when rendering fails, with
+creates a *permanent* ElevenLabs voice and records it in the API's voice
+registry. Once the ad is rendered, and also when rendering fails, the run hands
+every voice it cloned back with `POST <--clone-url>/{voice_id}/release`
+(internal token, 10 s timeout); the API deletes the voice and drops it from the
+registry, so it stops counting toward the registry's live-voice cap. Only if
+that release fails or answers 404 (a voice the registry does not know) does the
+run delete the voice itself, with
 `DELETE https://api.elevenlabs.io/v1/voices/{voice_id}` (header `xi-api-key:
-$ELEVENLABS_API_KEY`, 30 s timeout). A failed delete is logged to stderr and does
-not fail the run; check the ElevenLabs voice library for leftover
+$ELEVENLABS_API_KEY`, 30 s timeout). A failed cleanup is logged to stderr and
+does not fail the run; check the ElevenLabs voice library for leftover
 `Speaker A Clone` / `Speaker B Clone` voices if you see that warning. A speaker
 whose diarized sample is empty falls back to the configured voice.
 ```bash
@@ -176,9 +181,10 @@ one `--work-dir=<dir>`, a directory it creates and removes. Every CLI
   its wait is interrupted; pydub's ffmpeg children (full-quality decode, MP3
   export) are not killed by the pipeline, so signal the whole process group, as
   Node does. Two steps finish before the exit: a `/api/clone` request in
-  flight (so its voice ID is known and the voice can be deleted) and the voice
-  deletes, which use a 2 s timeout each once a signal has arrived so two of them
-  fit in Node's 5 s grace period before SIGKILL. A SIGKILL skips all cleanup;
+  flight (so its voice ID is known and the voice can be released) and the voice
+  cleanup (release, then the direct delete if that fails). Once a signal has
+  arrived each of those cleanup requests gets a 1 s timeout, so a release and
+  its fallback for two voices fit in Node's 5 s grace period before SIGKILL. A SIGKILL skips all cleanup;
   the work dir is then Node's to remove. Long numeric steps inside a single
   C call (librosa's beat tracking on a long song) react only when they return.
 
@@ -196,9 +202,11 @@ come from `--tts-url`/`--merge-url`/`--clone-url`) or needs `SLOTIFY_API_TOKEN`.
 | `SLOTIFY_INTERNAL_TOKEN` | -- | required* | required* | *When the API authenticates callbacks: `/api/tts` and `/api/merge` (`cli`), `/api/tts` and `/api/clone` (`insert_ad`). See [Callbacks to the API](#callbacks-to-the-api). |
 | `SLOTIFY_API_TOKEN` | -- | optional | optional | Fallback callback credential for hand runs; Node does not pass it. |
 | `SLOTIFY_CALLBACK_TIMEOUT_S` | -- | optional | optional | Callback timeout, default 300 s. |
-| `ELEVENLABS_API_KEY` | -- | -- | required with `--clone-voices` | Deletes the cloned voices; the run exits 2 without it. |
+| `ELEVENLABS_API_KEY` | -- | -- | required with `--clone-voices` | Deletes a cloned voice directly when `/api/clone/{id}/release` fails or answers 404; the run exits 2 without it. |
 | `ELEVENLABS_VOICE_ID_A` / `_B`, `ELEVENLABS_DEFAULT_VOICE_ID` | -- | -- | optional | Voices for speakers without `--voice-id-a`/`-b` (or a usable clone); a needed speaker with none fails with `Missing ElevenLabs voice ID for speaker A`. |
-| `HUGGINGFACE_TOKEN` / `PYANNOTE_TOKEN` / `HF_TOKEN` | -- | -- | optional | Diarization with `pyannote.audio`. Without it `DUO` and `--clone-voices` fail with an error that names these variables. |
+| `HUGGINGFACE_TOKEN` / `PYANNOTE_TOKEN` / `HF_TOKEN` | -- | -- | optional | Diarization with `pyannote.audio` (the token for its gated model; first set one wins). Without one `DUO` and `--clone-voices` fail with an error that names these variables. |
+| `HF_HOME` / `HF_HUB_CACHE` | -- | -- | optional | Where `huggingface_hub` caches the pyannote model (default `~/.cache/huggingface`); read by the library, not by `ad_inserter`. |
+| `TORCH_HOME` | -- | -- | optional | torch's cache dir for the weights pyannote loads (default `~/.cache/torch`); read by the library. |
 
 ## Memory
 Analysis never holds the upload at full quality. `analysis.load_analysis_audio`
@@ -253,4 +261,5 @@ encode MP3 are skipped when `ffmpeg` is not on `PATH`.
 blocks it in a stub (Whisper, a hung ffmpeg, a hung `/api/merge` or `/api/tts`
 on a loopback server), sends SIGTERM to it or its process group, and checks the
 exit code 143, that the work dir and the system temp dir are left empty, and
-that `insert_ad` deleted both voices it cloned.
+that `insert_ad` released both voices it cloned (and deleted directly the one
+the API answered 404 for).
