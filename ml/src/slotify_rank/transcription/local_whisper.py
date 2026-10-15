@@ -94,11 +94,30 @@ class WhisperTranscriber:
     _device: str = "cpu"
 
     def load(self) -> "WhisperTranscriber":
-        from transformers import WhisperForConditionalGeneration, WhisperProcessor
+        """Load the processor and model at the configured revision.
+
+        Inside :func:`slotify_rank.embeddings.resident.resident_models` (the
+        inference worker) a second ``load()`` of the same model id, revision,
+        device and dtype reuses the first one's weights instead of reloading.
+        """
+        from slotify_rank.embeddings.resident import acquire
 
         self._device = resolve_device(self.config.device)
         torch_dtype = resolve_dtype(self.config.dtype, self._device)
-        self._processor = WhisperProcessor.from_pretrained(
+        key = (
+            "whisper-transcriber",
+            self.config.model_id,
+            self.config.model_revision,
+            self._device,
+            self.config.dtype,
+        )
+        self._processor, self._model = acquire(key, lambda: self._build(torch_dtype))
+        return self
+
+    def _build(self, torch_dtype: Any) -> tuple[Any, Any]:
+        from transformers import WhisperForConditionalGeneration, WhisperProcessor
+
+        processor = WhisperProcessor.from_pretrained(
             self.config.model_id, revision=self.config.model_revision
         )
         model = WhisperForConditionalGeneration.from_pretrained(
@@ -107,8 +126,7 @@ class WhisperTranscriber:
             dtype=torch_dtype,
         )
         model.eval()
-        self._model = model.to(self._device)
-        return self
+        return processor, model.to(self._device)
 
     @property
     def device(self) -> str:
@@ -116,10 +134,12 @@ class WhisperTranscriber:
 
     def release(self) -> None:
         from slotify_rank.embeddings.device import free_model
+        from slotify_rank.embeddings.resident import is_resident
 
         model, self._model = self._model, None
         self._processor = None
-        if model is not None:
+        # A resident model belongs to the worker's scope, not to this wrapper.
+        if model is not None and not is_resident(model):
             free_model(model)
 
     def _require_loaded(self) -> None:

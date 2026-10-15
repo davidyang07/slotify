@@ -16,7 +16,9 @@ embedding_version: embeddings_v1
 embeddings:
   audio:
     model_id: openai/whisper-tiny.en
-    model_revision: main
+    # Commit SHA, never "main" -- see transcription_v1.yaml, which must name the
+    # same revision. Fetched by `python -m slotify_rank.cli infer warm`.
+    model_revision: 87c7102498dcde7456f24cfd30239ca606ed9063
     device: auto
     dtype: float32
 
@@ -39,7 +41,12 @@ embeddings:
 
   text:
     model_id: sentence-transformers/all-MiniLM-L6-v2
-    model_revision: main
+    # A commit SHA, never "main". "main" has resolved here since 2026-06-01 (a
+    # README metadata commit); the files this loader reads last changed in 2024
+    # (model.safetensors) and 2021 (config, tokenizer), so the weights are the
+    # ones the shipped checkpoint was built from. Fetched by
+    # `python -m slotify_rank.cli infer warm`.
+    model_revision: 1110a243fdf4706b3f48f1d95db1a4f5529b4d41
     device: auto
     dtype: float32
 

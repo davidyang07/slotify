@@ -113,12 +113,22 @@ cd ..
 echo "PYTHON_BIN=$(pwd)/ml/.venv/Scripts/python.exe" >> backend/.env   # Windows (Git Bash)
 # echo "PYTHON_BIN=$(pwd)/ml/.venv/bin/python" >> backend/.env       # macOS / Linux
 
-# 4) Check your environment
+# 4) Download the pinned Whisper and MiniLM snapshots once (~240 MB);
+#    the learned ranker then runs offline
+(cd ml && .venv/Scripts/python -m slotify_rank.cli infer warm)   # Windows
+# (cd ml && .venv/bin/python -m slotify_rank.cli infer warm)     # macOS / Linux
+
+# 5) Check your environment
 npm run preflight
 
-# 5) Run it
+# 6) Run it
 npm run demo
 ```
+
+The learned ranker runs as one persistent worker process, so models load once:
+the first ranking after startup takes a few seconds longer, the rest about 2 s
+for a short clip. `SLOTIFY_RANKER_PRELOAD=1` warms it at startup;
+`SLOTIFY_RANKER_WORKER=0` falls back to one process per request.
 
 Then open <http://localhost:5173> and drop in an audio file; analysis starts on drop.
 In development the UI calls the API through Vite's proxy, so it is same-origin

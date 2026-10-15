@@ -45,6 +45,11 @@ __all__ = [
 #: Default local models. Both run on CPU and neither requires a paid API.
 DEFAULT_WHISPER_MODEL = "openai/whisper-tiny.en"
 DEFAULT_TEXT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+#: Pinned Hugging Face commits, the same ones ml/configs/*.yaml name, so a
+#: pipeline run without config flags is as reproducible as one with them. A
+#: moving ref such as "main" would let serving drift away from training.
+DEFAULT_WHISPER_REVISION = "87c7102498dcde7456f24cfd30239ca606ed9063"
+DEFAULT_TEXT_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
 
 
 def _build(cls: type, payload: Mapping[str, Any], where: str):
@@ -109,10 +114,9 @@ class TranscriptionConfig(_Digestible):
     """
 
     model_id: str = DEFAULT_WHISPER_MODEL
-    #: Pinned Hugging Face revision. ``"main"`` means "whatever is current",
-    #: which is honest rather than reproducible; pin a commit SHA for a corpus
-    #: whose transcripts must be reproducible months later.
-    model_revision: str = "main"
+    #: Pinned Hugging Face commit (see DEFAULT_WHISPER_REVISION). ``"main"``
+    #: would mean "whatever is current", which is not reproducible.
+    model_revision: str = DEFAULT_WHISPER_REVISION
     language: str = "en"
     device: str = "auto"
     dtype: str = "float32"
@@ -312,7 +316,7 @@ class AudioEmbeddingConfig(_Digestible):
     """
 
     model_id: str = DEFAULT_WHISPER_MODEL
-    model_revision: str = "main"
+    model_revision: str = DEFAULT_WHISPER_REVISION
     device: str = "auto"
     dtype: str = "float32"
     chunk_ms: int = 30_000
@@ -350,7 +354,7 @@ class TextEmbeddingConfig(_Digestible):
     """Frozen MiniLM settings."""
 
     model_id: str = DEFAULT_TEXT_MODEL
-    model_revision: str = "main"
+    model_revision: str = DEFAULT_TEXT_REVISION
     device: str = "auto"
     dtype: str = "float32"
     batch_size: int = 32

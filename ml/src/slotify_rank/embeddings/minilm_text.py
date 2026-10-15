@@ -59,18 +59,38 @@ class MiniLmTextEncoder:
     _device: str = "cpu"
 
     def load(self) -> "MiniLmTextEncoder":
-        from sentence_transformers import SentenceTransformer
+        """Load the encoder at the configured revision.
+
+        Inside :func:`slotify_rank.embeddings.resident.resident_models` (the
+        inference worker) a second ``load()`` of the same model reuses the first.
+        ``max_seq_length`` is a setting on the loaded object rather than part of
+        its weights, so it is applied on every load, cached or not.
+        """
+        from slotify_rank.embeddings.resident import acquire
 
         self._device = resolve_device(self.config.device)
+        key = (
+            "minilm-text-encoder",
+            self.config.model_id,
+            self.config.model_revision,
+            self._device,
+            self.config.dtype,
+        )
+        model = acquire(key, self._build)
+        model.max_seq_length = self.config.max_seq_length
+        self._model = model
+        return self
+
+    def _build(self) -> Any:
+        from sentence_transformers import SentenceTransformer
+
         model = SentenceTransformer(
             self.config.model_id,
             revision=self.config.model_revision,
             device=self._device,
         )
-        model.max_seq_length = self.config.max_seq_length
         model.eval()
-        self._model = model
-        return self
+        return model
 
     @property
     def device(self) -> str:
@@ -85,9 +105,11 @@ class MiniLmTextEncoder:
 
     def release(self) -> None:
         from slotify_rank.embeddings.device import free_model
+        from slotify_rank.embeddings.resident import is_resident
 
         model, self._model = self._model, None
-        if model is not None:
+        # A resident model belongs to the worker's scope, not to this wrapper.
+        if model is not None and not is_resident(model):
             free_model(model)
 
     def encode(self, texts: Sequence[str]) -> np.ndarray:

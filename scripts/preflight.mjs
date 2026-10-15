@@ -318,6 +318,33 @@ if (checkpointReady && mlExtras) {
         "the checkpoint could not be loaded",
     );
   }
+
+  // The ranker worker runs offline against pinned Whisper and MiniLM commits.
+  // Without the snapshots it refuses to start and auto mode falls back to the
+  // heuristic, so say so here rather than on the first upload.
+  const warm = spawnSync(
+    mlPython,
+    ["-m", "slotify_rank.cli", "infer", "warm", "--check"],
+    {
+      cwd: path.join(REPO_ROOT, "ml"),
+      encoding: "utf8",
+      timeout: 60_000,
+      env: {
+        ...process.env,
+        PYTHONPATH: [path.join(REPO_ROOT, "ml", "src"), process.env.PYTHONPATH]
+          .filter(Boolean)
+          .join(path.delimiter),
+      },
+    },
+  );
+  record(
+    "pinned model snapshots",
+    "OPTIONAL",
+    warm.status === 0,
+    warm.status === 0
+      ? "Whisper and MiniLM are local -- the learned ranker runs offline"
+      : "missing -- run `cd ml && python -m slotify_rank.cli infer warm` once (RANKER_MODE=auto falls back to the heuristic until then)",
+  );
 }
 
 // -- credentials ------------------------------------------------------------

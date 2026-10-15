@@ -27,7 +27,11 @@ rankCandidates                                 services/ranker.ts
   ├─ mode = heuristic ──► rankWithHeuristic    lib/ranking.ts
   │
   └─ mode = learned ───► runLearnedRanker      services/learned-ranker.ts
-         └─ <ml python> -m slotify_rank.cli infer rank --audio … --checkpoint …
+         ├─ one long-lived worker (default):
+         │    <ml python> -m slotify_rank.cli infer serve --checkpoint …
+         │      ◄─► one JSON line per request / response
+         └─ SLOTIFY_RANKER_WORKER=0: per request
+              <ml python> -m slotify_rank.cli infer rank --audio … --work-dir …
                 └─ slotify_rank.inference      (below)
   ▼
 applySpacing → clampSlotMs → dedupeByMs → buildPlacementSignals
@@ -62,7 +66,9 @@ the same labelled candidates.
 
 ## Inside the Python side
 
-`slotify-rank infer rank` does five things, in `slotify_rank/inference/`.
+`slotify-rank infer rank` — and each request to `infer serve`, which runs the
+same routine (`inference/service.py::rank_audio`) — does five things, in
+`slotify_rank/inference/`.
 
 ### 1. A throwaway single-episode corpus
 
@@ -85,8 +91,10 @@ produce confident nonsense. Reusing the corpus code makes that bug
 *inexpressible*: there is exactly one implementation of "what a candidate's
 feature vector is".
 
-The cost is a scratch directory per request and a cold model load per process.
-The benefit is that training/serving skew cannot happen.
+The cost is a scratch directory per request and the models' load time. The
+benefit is that training/serving skew cannot happen. The worker (below) pays the
+load once per process instead of once per request; the scratch directory lives
+inside a work directory the caller owns.
 
 The episode is assigned the `development` split — never `train`, `validation` or
 `test`, so an uploaded file can never look like an evaluation row.
@@ -206,35 +214,163 @@ a client never has to guess.
 
 ---
 
-## Latency
+## The persistent worker
 
-Measured on CPU for a 19-second clip:
+`services/learned-ranker.ts` keeps **one** `python -m slotify_rank.cli infer
+serve --checkpoint … --normalizer …` process (`slotify_rank/inference/worker.py`).
+It loads torch, the checkpoint, its normalizer, Whisper, the Whisper encoder and
+MiniLM once, keeps the three encoders resident (`embeddings/resident.py`; the
+corpus pipeline still loads and frees one model per stage), and then answers
+requests one at a time:
 
-| Stage | Seconds |
-| --- | --- |
-| ffmpeg normalize | 4.0 |
-| candidate generation | 0.1 |
-| Whisper transcription | 25.6 |
-| acoustic + structural + text scalars | 8.0 |
-| Whisper encoder embeddings | 1.0 |
-| MiniLM embeddings | 3.4 |
-| assemble | 0.2 |
-| **model load** | **0.14** |
-| **forward pass** | **0.005** |
+```
+stdin   {"id": 7, "audio_path": "…/audio.mp3", "work_dir": "/tmp/slotify-rank-XXXX",
+         "episode_id": "upload", "skip_transcription": false}
+stdout  {"id": 7, "ok": true,  "payload": { …the infer-rank document… }}
+        {"id": 7, "ok": false, "error": "<last meaningful line of the error>"}
+```
 
-The model is 0.03 % of the wall clock. Transcription is 60 %. That is why the
-integration is a subprocess rather than a persistent model service: a service
-would optimise the two fastest stages. If latency needs to come down, the levers
-are a smaller Whisper, a cached transcript, or `--no-transcribe` (which masks the
-text modality — and says so in the response, rather than pretending it had a
-transcript).
+`payload` is exactly the `infer rank` document, so `validateLearnedRanking`
+applies to it unchanged; only `timings_seconds` differs (`model_load` is `0.0`:
+this request did not load the model). Nothing but responses reaches stdout — the
+worker moves file descriptor 1 onto stderr before importing anything that could
+print, and keeps a private copy for the protocol. Unknown request keys are
+refused, not ignored.
+
+**Lifecycle (Node side).**
+
+- Started on the first learned request, or at API startup with
+  `SLOTIFY_RANKER_PRELOAD=1`. Bound to one interpreter, checkpoint and
+  normalizer; a request for another checkpoint replaces it.
+- Requests are queued and sent one at a time. `SLOTIFY_RANKER_TIMEOUT_MS`
+  (default 600 000) runs from the moment a request is sent; the value is
+  validated at startup — anything but a positive number of milliseconds stops
+  the API rather than becoming a 1 ms timer.
+- On a timeout, a crash, a protocol violation, or an abort of the *running*
+  request (the client went away), the worker gets SIGTERM, then SIGKILL after
+  `SLOTIFY_KILL_GRACE_MS`, and the next request starts a fresh one. An aborted
+  *queued* request is dropped; the worker never sees it. A request is rejected
+  only after its worker has exited, so its work directory is never removed
+  under a running process.
+- A request the worker answers with `ok: false` (an unreadable upload, an
+  incompatible checkpoint) is an error for that request only; the worker keeps
+  serving. An exception the package does not raise on purpose is answered and
+  then the worker exits, so the next request gets a clean process.
+- An `onShutdown` hook (`lib/lifecycle.ts`) stops the worker and refuses
+  whatever is queued. The worker also exits on its own when its stdin closes,
+  so it cannot outlive a crashed API.
+
+**Errors keep their contract.** Every failure is a `LearnedRankerError` whose
+`message` is client-safe (the last meaningful line, paths removed) and whose
+`detail` is the worker's stderr for the server log. `services/ranker.ts` is
+unchanged: `RANKER_MODE=learned` fails loudly, `auto` falls back to the
+heuristic and says why.
+
+**Scratch files.** Node creates a work directory per request (`mkdtemp`) and
+removes it when the request settles; the worker builds the throwaway corpus in
+a fresh subdirectory of it and points `tempfile` there for the request. Nothing
+with the user's upload is written to the system temp directory, so a killed
+worker leaves nothing behind that Node does not remove. `infer rank` takes the
+same `--work-dir`, and turns SIGTERM into a clean unwind either way.
+
+**Environment.** The child (worker or per-request CLI) gets an allow-list, never
+`process.env`: `PATH`, `HOME`, `LANG`, `LC_*`, `TMPDIR`, `PYTHON*`, `HF_*`,
+`TRANSFORMERS_*`, `SENTENCE_TRANSFORMERS_*`, `TORCH*`, `OMP_*`, `MKL_*`,
+`SLOTIFY_RANKER_*`, plus the few paths the ML package reads (`XDG_CACHE_HOME`,
+`HUGGINGFACE_HUB_CACHE`, `FFMPEG_BIN`, `FFPROBE_BIN`, `SLOTIFY_REPO_ROOT`) and,
+on Windows, the system variables Python needs. Any name containing `TOKEN`,
+`SECRET`, `PASSWORD`, `CREDENTIAL` or `API_KEY` is dropped even if a prefix
+matches (`HF_TOKEN`), so `SLOTIFY_API_TOKEN`, `SLOTIFY_INTERNAL_TOKEN` and
+provider keys never reach it. The ranker never calls back into the API.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `SLOTIFY_RANKER_WORKER` | `1` | `0` runs `infer rank` once per request instead of the worker. |
+| `SLOTIFY_RANKER_PRELOAD` | `0` | `1` starts the worker at API startup, not on first use. |
+| `SLOTIFY_RANKER_TIMEOUT_MS` | `600000` | Per-request limit, from the moment the request is sent. Validated at startup. |
+| `SLOTIFY_KILL_GRACE_MS` | `5000` | SIGTERM-to-SIGKILL grace when the worker is stopped (shared with every child). |
+| `SLOTIFY_RANKER_SKIP_TRANSCRIPTION` | `0` | `1` skips Whisper per request (text modality masked, and the response says so). |
 
 ---
 
-## What to change if you want a persistent service
+## Model snapshots: pinned, offline, warmed
 
-`RankerPredictor` is already built to be constructed once and reused, and holds
-no request state. A FastAPI or long-running worker wrapping it would be a new
-entry point next to `inference_cli.py`, not a rewrite of anything below it. The
-Express side would swap `runLearnedRanker`'s `spawn` for an HTTP call; the
-`parseLearnedRanking` validation, and everything it refuses, stays as is.
+The three encoders load through `from_pretrained` at the `model_revision` the
+committed configs name. Those were `main` — "whatever the Hub serves today" —
+which meant every load resolved `main` over the network (a slow or unreachable
+Hub slowed or broke ranking) and a moved upstream `main` would have changed the
+served weights while every config said the same thing. They are now commit SHAs:
+
+| Model | Config | Revision |
+| --- | --- | --- |
+| `openai/whisper-tiny.en` | `transcription_v1.yaml`, `embeddings_v1.yaml` (audio) | `87c7102498dcde7456f24cfd30239ca606ed9063` |
+| `sentence-transformers/all-MiniLM-L6-v2` | `embeddings_v1.yaml` (text) | `1110a243fdf4706b3f48f1d95db1a4f5529b4d41` |
+
+Each is the commit `main` resolved to — on the Hub and in the local cache the
+shipped checkpoint was served from — when it was pinned (Whisper's `main` has
+not moved since 2024-01-22; MiniLM's last moved on 2026-06-01, a README metadata
+commit, and the weights it loads date from 2024 and 2021). So pinning changed no
+weights.
+
+**Pinning and the shipped checkpoint.** Changing a revision string changes the
+config digests and every cache identity that includes them (transcript, audio
+and text embeddings, and through the transcript the handcrafted features). None
+of those is recorded in, or compared against, the checkpoint or its normalizer:
+`assert_compatible` and `align_examples` compare column names, block widths and
+parts, the feature spec / pipeline / input-schema versions and the normalizer's
+identity — code constants and extracted values, never a model revision. In
+serving, the identities are only compared within the request's own fresh
+workspace. `tests/test_inference_hub.py` checks this end to end: the served
+schema and the ranking are identical under `main` and under the pinned SHA. In a
+corpus under `data/` built with `main`, the next `pipeline features` run treats
+those caches as stale and recomputes them — the same bytes, at the cost of the
+time.
+
+**Offline mode.** When every revision is a SHA whose snapshot (config and
+weights) is in the local Hugging Face cache — `HF_HUB_CACHE`, `HF_HOME`, … or
+`TRANSFORMERS_CACHE` / `SENTENCE_TRANSFORMERS_HOME` for their loaders — `infer
+rank` and `infer serve` set `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`
+before any Hugging Face library is imported (`inference/hub.py`). When a pinned
+snapshot is missing, `infer serve` refuses to start with an error that names the
+fix; the API reports it as the learned ranker's failure (auto mode then serves
+the heuristic and says why). `infer rank` says the same on stderr and downloads
+the pinned revision for that run, as it always has.
+
+**`infer warm`.** Downloads exactly the pinned snapshots, through the same
+loaders serving uses, so what lands in the cache is what an offline load asks
+for. `--check` downloads nothing and exits 1 if anything is missing; that is the
+step a preflight runs, and `infer warm` is the step a setup or a demo runs once.
+
+```bash
+cd ml
+.venv/bin/python -m slotify_rank.cli infer warm          # fetch (network)
+.venv/bin/python -m slotify_rank.cli infer warm --check  # verify (offline)
+```
+
+---
+
+## Latency
+
+`backend/audio_tests/ryan-test1.mp3` (22.9 s), CPU, warm Hugging Face cache, the
+shipped checkpoint, three consecutive `POST /api/insert-sections` (wall time of
+the whole request, analyser included):
+
+| Path | 1st | 2nd | 3rd |
+| --- | --- | --- | --- |
+| Before: `infer rank` per request, revisions `main`, online | 15.4 s | 13.7 s | 12.9 s |
+| Worker, started on first use | 8.3 s | 2.1 s | 2.7 s |
+| Worker, `SLOTIFY_RANKER_PRELOAD=1` | 6.7 s | 2.0 s | 2.1 s |
+
+Inside a warm worker the ranking itself takes ~1.4 s for that clip: normalize
+0.25, transcription 0.9, acoustic 0.06 (1.2 on a worker's first request, while
+librosa's numba kernels compile), audio embeddings 0.13, text embeddings 0.04,
+forward pass 0.002. One-shot `infer rank` on the same clip went from 20.5 s to
+9.3 s from the pinned revisions and offline mode alone. The rankings are byte-identical across all of these
+paths.
+
+The model is still a negligible share of the wall clock; what the worker removes
+is the per-request torch import and the three encoder loads, which dominated
+short clips. On long audio, transcription dominates again; the levers there are
+a smaller Whisper, `SLOTIFY_RANKER_SKIP_TRANSCRIPTION=1` / `--no-transcribe`
+(which masks the text modality — and says so in the response), or a longer
+`SLOTIFY_RANKER_TIMEOUT_MS`.

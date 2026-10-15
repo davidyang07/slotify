@@ -12,10 +12,17 @@ transcription:
   # 2x and 6x the runtime; see docs/feature-pipeline.md for measured figures.
   model_id: openai/whisper-tiny.en
 
-  # "main" means "whatever HuggingFace serves today", which is honest but not
-  # reproducible. Pin a commit SHA before generating a corpus whose transcripts
-  # must be reproducible months from now.
-  model_revision: main
+  # A commit SHA, never "main": "main" is whatever the Hub serves today, so a
+  # moved upstream would silently change what serving transcribes while every
+  # config digest still said "main". This is the commit "main" has resolved to
+  # since 2024-01-22 -- the snapshot every corpus and the shipped checkpoint were
+  # built from -- so pinning changed no weights. It must equal
+  # embeddings.audio.model_revision in embeddings_v1.yaml: the transcript and the
+  # speech representation come from the same weights.
+  #
+  # `python -m slotify_rank.cli infer warm` fetches exactly this snapshot; once
+  # it is cached, `infer rank` / `infer serve` run with HF_HUB_OFFLINE=1.
+  model_revision: 87c7102498dcde7456f24cfd30239ca606ed9063
 
   language: en
 

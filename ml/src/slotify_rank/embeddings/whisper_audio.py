@@ -80,11 +80,29 @@ class WhisperAudioEncoder:
     _device: str = "cpu"
 
     def load(self) -> "WhisperAudioEncoder":
-        from transformers import WhisperFeatureExtractor, WhisperModel
+        """Load the feature extractor and encoder at the configured revision.
+
+        Inside :func:`slotify_rank.embeddings.resident.resident_models` (the
+        inference worker) a second ``load()`` of the same model reuses the first.
+        """
+        from slotify_rank.embeddings.resident import acquire
 
         self._device = resolve_device(self.config.device)
         torch_dtype = resolve_dtype(self.config.dtype, self._device)
-        self._extractor = WhisperFeatureExtractor.from_pretrained(
+        key = (
+            "whisper-audio-encoder",
+            self.config.model_id,
+            self.config.model_revision,
+            self._device,
+            self.config.dtype,
+        )
+        self._extractor, self._model = acquire(key, lambda: self._build(torch_dtype))
+        return self
+
+    def _build(self, torch_dtype: Any) -> tuple[Any, Any]:
+        from transformers import WhisperFeatureExtractor, WhisperModel
+
+        extractor = WhisperFeatureExtractor.from_pretrained(
             self.config.model_id, revision=self.config.model_revision
         )
         model = WhisperModel.from_pretrained(
@@ -95,8 +113,7 @@ class WhisperAudioEncoder:
         model.eval()
         # Only the encoder is needed. Dropping the decoder halves resident
         # memory and removes any possibility of a generation path running.
-        self._model = model.get_encoder().to(self._device)
-        return self
+        return extractor, model.get_encoder().to(self._device)
 
     @property
     def device(self) -> str:
@@ -111,10 +128,12 @@ class WhisperAudioEncoder:
 
     def release(self) -> None:
         from slotify_rank.embeddings.device import free_model
+        from slotify_rank.embeddings.resident import is_resident
 
         model, self._model = self._model, None
         self._extractor = None
-        if model is not None:
+        # A resident model belongs to the worker's scope, not to this wrapper.
+        if model is not None and not is_resident(model):
             free_model(model)
 
     def encode_episode(

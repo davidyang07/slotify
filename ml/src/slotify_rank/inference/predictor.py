@@ -44,9 +44,9 @@ accumulates a graph, and ``map_location="cpu"`` so a CUDA-trained checkpoint
 loads on a laptop.
 
 **The model is loaded once.** Constructing a predictor reads the checkpoint;
-scoring reuses it. The Express API spawns one process per request today, so
-this matters mostly for batch evaluation -- but it also means a persistent
-service can be added without touching this file.
+scoring reuses it. That is what lets ``infer serve``
+(:mod:`slotify_rank.inference.worker`) hold one predictor for its lifetime and
+score request after request with it, without anything here changing.
 
 What a model was trained on is read from the checkpoint itself
 (``label_source`` / ``data_provenance``). Checkpoints written before those keys

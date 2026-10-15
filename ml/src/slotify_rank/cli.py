@@ -40,6 +40,8 @@ audio file; never trains::
 
     python -m slotify_rank.cli infer describe --checkpoint artifacts/training/<run>/best_checkpoint.pt
     python -m slotify_rank.cli infer rank --audio episode.mp3 --checkpoint <path> --output ranking.json
+    python -m slotify_rank.cli infer serve --checkpoint <path>      (JSON lines on stdin/stdout)
+    python -m slotify_rank.cli infer warm [--check]                (the pinned model snapshots)
     python -m slotify_rank.cli evaluation compare --labels LABELS.jsonl --model CHECKPOINT --split test
 
 Phase 5 -- the real-corpus experiment gate. Offline; reads labels and manifests
